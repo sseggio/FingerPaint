@@ -23,23 +23,40 @@ export function createSettingsStore(backend: StorageBackend = defaultBackend) {
     }
   };
 
+  // Keys changed before hydration finished (e.g. after the splash safety timeout): a late
+  // hydration result must not overwrite them.
+  const touched = new Set<keyof Settings>();
+  let hydrating = false;
+
   return create<SettingsState>()((set, get) => ({
     settings: { ...DEFAULT_SETTINGS },
     hydrated: false,
     async hydrate() {
+      hydrating = true;
       const { data } = await readValue(StorageKeys.settings, settingsSchema, backend);
-      set({ settings: data, hydrated: true });
+      hydrating = false;
+      const current = get().settings;
+      const local = Object.fromEntries([...touched].map((key) => [key, current[key]])) as Partial<Settings>;
+      const merged: Settings = { ...data, ...local };
+      const hadLocalChanges = touched.size > 0;
+      touched.clear();
+      set({ settings: merged, hydrated: true });
+      // Writes made while hydrating were deferred; persist the merged result once.
+      if (hadLocalChanges) await persist(merged);
     },
     async update(patch) {
       const next = { ...get().settings, ...patch };
       if (!isSettings(next)) throw new TypeError('invalid settings patch');
+      if (!get().hydrated) for (const key of Object.keys(patch) as (keyof Settings)[]) touched.add(key);
       set({ settings: next });
-      await persist(next);
+      // While a read is in flight, writing defaults + patch would clobber the stored values.
+      if (!hydrating) await persist(next);
     },
     async reset() {
       const next = { ...DEFAULT_SETTINGS };
+      if (!get().hydrated) for (const key of Object.keys(next) as (keyof Settings)[]) touched.add(key);
       set({ settings: next });
-      await persist(next);
+      if (!hydrating) await persist(next);
     },
   }));
 }

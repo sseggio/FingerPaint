@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "FingerPaint"
+  },
+  "android": {
+    "app_name": "FingerPaint"
+  }
+}

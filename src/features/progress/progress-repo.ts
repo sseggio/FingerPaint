@@ -16,10 +16,14 @@ import {
 } from './progress-schema';
 
 export const PROGRESS_SAVE_DELAY_MS = 400;
+/** First retry delay after a failed write; doubles on each consecutive failure. */
+export const PROGRESS_RETRY_DELAY_MS = 2000;
+export const PROGRESS_RETRY_MAX_DELAY_MS = 30_000;
 
 export interface ProgressRepoOptions {
   backend?: StorageBackend;
   delayMs?: number;
+  retryDelayMs?: number;
   now?: () => number;
 }
 
@@ -51,11 +55,19 @@ function warn(message: string) {
 export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressRepo {
   const backend = options.backend ?? defaultBackend;
   const delayMs = options.delayMs ?? PROGRESS_SAVE_DELAY_MS;
+  const retryDelayMs = options.retryDelayMs ?? PROGRESS_RETRY_DELAY_MS;
   const now = options.now ?? Date.now;
 
   let index: Record<string, ProgressSummary> = {};
   let indexDirty = false;
   const pending = new Map<string, Uint8Array>();
+  /** Batch handed to `multiSet` and not yet acknowledged (readable by `loadFilled`). */
+  let inFlight = new Map<string, Uint8Array>();
+  /** Artworks removed before the index was loaded (must not come back from storage). */
+  const removed = new Set<string>();
+  let failures = 0;
+  /** False until the stored index has been merged into `index` (writes wait for it). */
+  let indexLoaded = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let queue: Promise<void> = Promise.resolve();
 
@@ -64,8 +76,28 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     timer = undefined;
   };
 
+  const schedule = (ms: number) => {
+    cancelTimer();
+    timer = setTimeout(() => {
+      timer = undefined;
+      void flush();
+    }, ms);
+  };
+
+  /** Merges the stored index under in-memory entries (saved/removed before loading). */
+  const mergeStoredIndex = async () => {
+    const { data } = await readValue(StorageKeys.progressIndex, progressIndexSchema, backend);
+    const stored = sanitizeIndex(data).entries;
+    for (const id of removed) delete stored[id];
+    index = { ...stored, ...index };
+    indexLoaded = true;
+  };
+
   const writePending = async () => {
     if (!indexDirty && pending.size === 0) return;
+    // Writing before the index is loaded (save after the hydration timeout) would replace the
+    // stored index with only the in-memory entries and lose every other artwork's progress.
+    if (!indexLoaded) await mergeStoredIndex();
     const batch = new Map(pending);
     pending.clear();
     indexDirty = false;
@@ -76,12 +108,21 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     for (const [id, bits] of batch) {
       pairs.push([StorageKeys.progress(id), serializeValue({ filled: bitsetToBase64(bits) }, progressCellsSchema, time)]);
     }
+    inFlight = batch;
     try {
       await backend.multiSet(pairs);
+      failures = 0;
     } catch (e) {
-      warn(`write failed, will retry on next save (${String(e)})`);
+      failures += 1;
+      const retryIn = Math.min(retryDelayMs * 2 ** (failures - 1), PROGRESS_RETRY_MAX_DELAY_MS);
+      warn(`write failed, retrying in ${retryIn} ms (${String(e)})`);
       indexDirty = true;
-      for (const [id, bits] of batch) if (!pending.has(id)) pending.set(id, bits);
+      // Skip artworks removed while the write was in flight.
+      for (const [id, bits] of batch) if (!pending.has(id) && inFlight.has(id)) pending.set(id, bits);
+      // Do not rely on a future save or app backgrounding to retry.
+      if (timer === undefined) schedule(retryIn);
+    } finally {
+      inFlight = new Map();
     }
   };
 
@@ -93,13 +134,12 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
 
   return {
     async loadIndex() {
-      const { data } = await readValue(StorageKeys.progressIndex, progressIndexSchema, backend);
-      // Keep entries saved before hydration finished.
-      index = { ...sanitizeIndex(data).entries, ...index };
+      // Keep entries saved (or removed) before hydration finished.
+      await mergeStoredIndex();
       return { ...index };
     },
     async loadFilled(artworkId, bitCount) {
-      const live = pending.get(artworkId);
+      const live = pending.get(artworkId) ?? inFlight.get(artworkId);
       if (live) return live;
       const { data, status } = await readValue(StorageKeys.progress(artworkId), progressCellsSchema, backend);
       if (status !== 'ok' && status !== 'migrated') return undefined;
@@ -114,15 +154,14 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
       index = { ...index, [summary.artworkId]: summary };
       indexDirty = true;
       pending.set(summary.artworkId, bits);
-      cancelTimer();
-      timer = setTimeout(() => {
-        timer = undefined;
-        void flush();
-      }, delayMs);
+      removed.delete(summary.artworkId);
+      schedule(delayMs);
     },
     flush,
     async remove(artworkId) {
       pending.delete(artworkId);
+      inFlight.delete(artworkId);
+      removed.add(artworkId);
       const { [artworkId]: _removed, ...rest } = index;
       index = rest;
       indexDirty = true;

@@ -94,3 +94,4 @@ export function getRegistry(): ArtworkRegistry {
 export const listAlbums = () => getRegistry().listAlbums();
 export const listByAlbum = (albumId: string) => getRegistry().listByAlbum(albumId);
 export const getArtwork = (id: string) => getRegistry().getArtwork(id);
+export const listArtworks = () => getRegistry().listArtworks();
