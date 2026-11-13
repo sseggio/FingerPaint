@@ -59,6 +59,7 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/.claude/"
-    ]
+    ],
+    "resolver": "react-native-reanimated/jest/resolver"
   }
 }

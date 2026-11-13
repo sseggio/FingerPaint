@@ -19,8 +19,11 @@ export const colors = {
     ink: '#1B1A2E',
     inkSecondary: '#6B6880',
     border: '#ECE6F5',
-    primary: palette.pink,
+    /** Filled button background — white text on it passes WCAG AA (4.6:1). */
+    primary: '#E01F66',
     onPrimary: palette.white,
+    /** Primary-colored text on background/surface (AA). */
+    primaryText: '#C2185B',
     accent: palette.violet,
     success: palette.mint,
     warning: palette.sun,
@@ -34,8 +37,9 @@ export const colors = {
     ink: '#F7F5FF',
     inkSecondary: '#A7A3BC',
     border: '#332F48',
-    primary: palette.pink,
+    primary: '#E01F66',
     onPrimary: palette.white,
+    primaryText: palette.pink,
     accent: palette.violet,
     success: palette.mint,
     warning: palette.sun,

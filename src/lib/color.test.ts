@@ -24,5 +24,8 @@ describe('color utils', () => {
     expect(contrastRatio(c.ink, c.background)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(c.ink, c.surface)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(c.inkSecondary, c.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(c.onPrimary, c.primary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(c.primaryText, c.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(c.primaryText, c.surface)).toBeGreaterThanOrEqual(4.5);
   });
 });

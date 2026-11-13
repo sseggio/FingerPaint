@@ -1,5 +1,6 @@
 import { ActivityIndicator, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { readableTextOn } from '@/lib/color';
 import { radius, spacing, useTheme } from '@/theme';
 
 import { AppText } from './app-text';
@@ -31,7 +32,9 @@ export function Button({
   const { colors } = useTheme();
   const bg =
     variant === 'primary' ? (color ?? colors.primary) : variant === 'secondary' ? colors.surfaceAlt : 'transparent';
-  const tone = variant === 'primary' ? 'inverse' : 'default';
+  // Custom colors get black/white text picked for contrast; the default primary is AA with onPrimary.
+  const labelColor =
+    variant === 'primary' ? (color ? readableTextOn(color) : colors.onPrimary) : colors.ink;
 
   return (
     <PressableScale
@@ -46,11 +49,11 @@ export function Button({
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.onPrimary : colors.ink} />
+        <ActivityIndicator color={labelColor} />
       ) : (
         <View style={styles.row}>
           {icon}
-          <AppText variant="label" tone={tone}>
+          <AppText variant="label" color={labelColor}>
             {label}
           </AppText>
         </View>

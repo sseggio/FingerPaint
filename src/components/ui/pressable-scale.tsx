@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -20,6 +20,7 @@ export function PressableScale({
   onPress,
   ...rest
 }: PressableScaleProps) {
+  const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
@@ -28,7 +29,7 @@ export function PressableScale({
       accessibilityRole="button"
       {...rest}
       onPressIn={(e) => {
-        scale.set(withSpring(scaleTo, { damping: 15, stiffness: 400 }));
+        if (!reduceMotion) scale.set(withSpring(scaleTo, { damping: 15, stiffness: 400 }));
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
@@ -36,7 +37,7 @@ export function PressableScale({
         onPressOut?.(e);
       }}
       onPress={(e) => {
-        if (haptic) Haptics.selectionAsync().catch(() => undefined);
+        if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
         onPress?.(e);
       }}
       style={[style, animated]}

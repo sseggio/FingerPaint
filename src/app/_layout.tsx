@@ -28,19 +28,18 @@ export default function RootLayout() {
         <NativeTabs tintColor={colors.primary} backgroundColor={colors.surface}>
           <NativeTabs.Trigger name="index">
             <NativeTabs.Trigger.Label>Galerie</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf={{ default: 'square.grid.2x2', selected: 'square.grid.2x2.fill' }} />
-          </NativeTabs.Trigger>
-          <NativeTabs.Trigger name="create">
-            <NativeTabs.Trigger.Label>Créer</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf={{ default: 'paintbrush.pointed', selected: 'paintbrush.pointed.fill' }} />
+            <NativeTabs.Trigger.Icon sf={{ default: 'square.grid.2x2', selected: 'square.grid.2x2.fill' }}
+              md="grid_view" />
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="library">
             <NativeTabs.Trigger.Label>Mes œuvres</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf={{ default: 'heart', selected: 'heart.fill' }} />
+            <NativeTabs.Trigger.Icon sf={{ default: 'heart', selected: 'heart.fill' }}
+              md="favorite" />
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="settings">
             <NativeTabs.Trigger.Label>Réglages</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
+            <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
+              md="settings" />
           </NativeTabs.Trigger>
         </NativeTabs>
       </ThemeProvider>

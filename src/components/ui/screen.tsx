@@ -9,6 +9,7 @@ export type ScreenProps = ScrollViewProps & {
   title?: string;
   subtitle?: string;
   headerRight?: React.ReactNode;
+  /** When false, renders a plain View; ScrollView-only props are ignored. */
   scroll?: boolean;
 };
 
