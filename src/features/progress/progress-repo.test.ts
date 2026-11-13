@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { bitsetToBase64, createBitset, setBit } from '@/lib/bitset';
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
-import { createProgressRepo, PROGRESS_SAVE_DELAY_MS } from './progress-repo';
+import { createProgressRepo, PROGRESS_RETRY_DELAY_MS, PROGRESS_SAVE_DELAY_MS } from './progress-repo';
 import type { ProgressSummary } from './progress-schema';
 import { createProgressStore } from './progress-store';
 
@@ -127,6 +127,96 @@ describe('progress repo', () => {
     await repo.flush();
     expect(backend.multiSet).toHaveBeenCalledTimes(2);
     expect(repo.hasPending()).toBe(false);
+  });
+
+  it('loadFilled sees the batch being written until multiSet resolves', async () => {
+    let ack!: () => void;
+    const backend = {
+      getItem: jest.fn().mockResolvedValue(null),
+      multiSet: jest.fn(
+        () =>
+          new Promise<void>((r) => {
+            ack = r;
+          }),
+      ),
+      removeItem: jest.fn().mockResolvedValue(undefined),
+    };
+    const repo = createProgressRepo({ backend });
+    await repo.loadIndex();
+    backend.getItem.mockClear();
+    const bits = createBitset(BITS);
+    setBit(bits, 9);
+    repo.save(summary('cat', 1), bits);
+    const flushing = repo.flush();
+    for (let i = 0; i < 10 && backend.multiSet.mock.calls.length === 0; i++) await Promise.resolve();
+    expect(backend.multiSet).toHaveBeenCalledTimes(1);
+    expect(repo.hasPending()).toBe(false);
+    // Storage has nothing yet (getItem → null), but the in-flight batch is returned.
+    await expect(repo.loadFilled('cat', BITS)).resolves.toBe(bits);
+    expect(backend.getItem).not.toHaveBeenCalled();
+    ack();
+    await flushing;
+    await expect(repo.loadFilled('cat', BITS)).resolves.toBeUndefined();
+    expect(backend.getItem).toHaveBeenCalledWith(StorageKeys.progress('cat'));
+  });
+
+  it('re-arms a retry timer after a failed write (with backoff)', async () => {
+    jest.useFakeTimers();
+    const backend = {
+      getItem: jest.fn().mockResolvedValue(null),
+      multiSet: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('disk full'))
+        .mockRejectedValueOnce(new Error('disk full'))
+        .mockResolvedValue(undefined),
+      removeItem: jest.fn().mockResolvedValue(undefined),
+    };
+    const repo = createProgressRepo({ backend });
+    repo.save(summary('cat', 1), createBitset(BITS));
+    await repo.flush();
+    expect(backend.multiSet).toHaveBeenCalledTimes(1);
+    expect(repo.hasPending()).toBe(true);
+
+    // No new save and no explicit flush: the retry timer alone writes again.
+    await jest.advanceTimersByTimeAsync(PROGRESS_RETRY_DELAY_MS);
+    expect(backend.multiSet).toHaveBeenCalledTimes(2);
+    expect(repo.hasPending()).toBe(true);
+
+    // Second failure doubles the delay.
+    await jest.advanceTimersByTimeAsync(PROGRESS_RETRY_DELAY_MS);
+    expect(backend.multiSet).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(PROGRESS_RETRY_DELAY_MS);
+    expect(backend.multiSet).toHaveBeenCalledTimes(3);
+    expect(repo.hasPending()).toBe(false);
+
+    // Success: no further timer.
+    await jest.advanceTimersByTimeAsync(PROGRESS_RETRY_DELAY_MS * 20);
+    expect(backend.multiSet).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not resurrect an artwork removed before the index finished loading', async () => {
+    const seed = createProgressRepo();
+    seed.save(summary('cat', 1), createBitset(BITS));
+    seed.save(summary('fish', 1), createBitset(BITS));
+    await seed.flush();
+
+    const repo = createProgressRepo();
+    await repo.remove('cat');
+    expect(Object.keys(await repo.loadIndex())).toEqual(['fish']);
+    await expect(createProgressRepo().loadIndex()).resolves.toEqual({ fish: summary('fish', 1) });
+  });
+
+  it('a save before the index is loaded keeps the other stored entries', async () => {
+    const seed = createProgressRepo();
+    seed.save(summary('fish', 4), createBitset(BITS));
+    await seed.flush();
+
+    const repo = createProgressRepo();
+    repo.save(summary('cat', 1), createBitset(BITS));
+    await repo.flush();
+    const index = await createProgressRepo().loadIndex();
+    expect(Object.keys(index).sort()).toEqual(['cat', 'fish']);
+    expect(index.fish.filledCount).toBe(4);
   });
 
   it('removes an artwork from the index and storage', async () => {

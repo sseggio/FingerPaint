@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
-import { useSettingsStore } from '@/features/settings/settings-store';
+import { createSettingsStore, useSettingsStore } from '@/features/settings/settings-store';
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
 import { hydrateStores } from './hydrate';
@@ -44,5 +44,28 @@ describe('hydrateStores', () => {
     const pending = hydrateStores([() => new Promise<void>(() => undefined)], 3000);
     jest.advanceTimersByTime(3000);
     await expect(pending).resolves.toBe('timeout');
+  });
+
+  it('a hydration finishing after the timeout does not overwrite settings changed meanwhile', async () => {
+    jest.useFakeTimers();
+    let release!: (raw: string | null) => void;
+    const store = createSettingsStore({
+      getItem: () =>
+        new Promise<string | null>((r) => {
+          release = r;
+        }),
+      multiSet: (pairs) => AsyncStorage.multiSet(pairs),
+      removeItem: () => Promise.resolve(),
+    });
+    const late = store.getState().hydrate();
+    const pending = hydrateStores([() => late], 3000);
+    jest.advanceTimersByTime(3000);
+    await expect(pending).resolves.toBe('timeout');
+
+    // The app is now rendered with defaults; the user picks English.
+    await store.getState().update({ locale: 'en' });
+    release(JSON.stringify(createEnvelope({ ...DEFAULT_SETTINGS, locale: 'fr', theme: 'dark' }, 1)));
+    await late;
+    expect(store.getState().settings).toMatchObject({ locale: 'en', theme: 'dark' });
   });
 });
