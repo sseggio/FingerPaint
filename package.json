@@ -56,6 +56,9 @@
       "/node_modules/",
       "/.claude/"
     ],
-    "resolver": "react-native-reanimated/jest/resolver"
+    "resolver": "react-native-reanimated/jest/resolver",
+    "setupFiles": [
+      "<rootDir>/jest.setup.ts"
+    ]
   }
 }

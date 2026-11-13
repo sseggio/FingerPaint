@@ -19,9 +19,21 @@ function warn(message: string) {
   if (process.env.NODE_ENV !== 'production') console.warn(`[artwork] ${message}`);
 }
 
+export interface RegistryOptions {
+  /** Throw on an invalid albums manifest instead of degrading to an empty library. */
+  strict?: boolean;
+}
+
 /** Builds a registry from raw content. Invalid albums/artworks are skipped (with a dev warning). */
-export function createRegistry(rawAlbums: unknown, rawArtworks: readonly unknown[]): ArtworkRegistry {
+export function createRegistry(
+  rawAlbums: unknown,
+  rawArtworks: readonly unknown[],
+  options: RegistryOptions = {},
+): ArtworkRegistry {
   const albumIssues = validateAlbums(rawAlbums);
+  if (albumIssues.length > 0 && options.strict) {
+    throw new Error(`albums.json is invalid:\n${albumIssues.map(formatIssue).join('\n')}`);
+  }
   albumIssues.forEach((i) => warn(formatIssue(i)));
   const albums: AlbumSource[] =
     albumIssues.length === 0
@@ -68,9 +80,14 @@ export function createRegistry(rawAlbums: unknown, rawArtworks: readonly unknown
 
 let defaultRegistry: ArtworkRegistry | undefined;
 
-/** App-wide registry over the bundled content (created lazily). */
+/**
+ * App-wide registry over the bundled content (created lazily). In development an invalid
+ * albums.json fails loudly (it would otherwise silently hide the whole library).
+ */
 export function getRegistry(): ArtworkRegistry {
-  defaultRegistry ??= createRegistry(albumsData, artworkData);
+  defaultRegistry ??= createRegistry(albumsData, artworkData, {
+    strict: process.env.NODE_ENV !== 'production',
+  });
   return defaultRegistry;
 }
 

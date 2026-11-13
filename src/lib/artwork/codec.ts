@@ -30,8 +30,14 @@ export function valueToKey(value: number): string {
 /**
  * Decodes one RLE row (`"4.3A2B"` → `[0,0,0,0,1,1,1,2,2]`).
  * `paletteSize` rejects keys beyond the palette (pass KEYS.length to skip that check).
+ * `maxWidth`, when known, stops decoding as soon as the row would exceed it (cheap rejection
+ * of oversized or hostile rows instead of materializing them).
  */
-export function decodeRow(row: string, paletteSize: number = KEYS.length): number[] {
+export function decodeRow(
+  row: string,
+  paletteSize: number = KEYS.length,
+  maxWidth?: number,
+): number[] {
   const out: number[] = [];
   let i = 0;
   while (i < row.length) {
@@ -50,6 +56,9 @@ export function decodeRow(row: string, paletteSize: number = KEYS.length): numbe
     }
     const n = digits.length > 0 ? Number(digits) : 1;
     if (n > 4096) throw new RleError(`run length ${n} is too long`, start);
+    if (maxWidth !== undefined && out.length + n > maxWidth) {
+      throw new RleError(`decodes to more than ${maxWidth} cells`, start);
+    }
     for (let k = 0; k < n; k++) out.push(value);
     i++;
   }
@@ -101,7 +110,7 @@ export function decode(
   rows.forEach((row, y) => {
     let values: number[];
     try {
-      values = decodeRow(row, paletteSize);
+      values = decodeRow(row, paletteSize, width);
     } catch (e) {
       if (e instanceof RleError) throw new RleError(`row ${y}: ${e.message}`, e.column);
       throw e;
