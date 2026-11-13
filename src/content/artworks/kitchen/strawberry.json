@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "id": "strawberry",
+  "album": "kitchen",
+  "title": {
+    "fr": "Fraise",
+    "en": "Strawberry"
+  },
+  "w": 16,
+  "h": 16,
+  "palette": [
+    "#7A1030",
+    "#7A4A1E",
+    "#138A4A",
+    "#F2304B",
+    "#FF9AAE",
+    "#4FE08A",
+    "#FFE14D"
+  ],
+  "rows": [
+    "7.2B7.",
+    "4.2C.2B.2C4.",
+    "2.2C2FC2BC2F2C2.",
+    ".AC4F2C4FCA.",
+    "A2D2CF4CF2C2DA",
+    "AD2EDC4DC4DA",
+    "ADG4D2G4DGDA",
+    "ADE2DG4DG4DA",
+    "ADEG8DG2DA",
+    ".A4DG2DG4DA.",
+    ".ADG8DGDA.",
+    "2.A3DG2DG3DA2.",
+    "3.A8DA3.",
+    "4.ADG2DGDA4.",
+    "5.A4DA5.",
+    "6.4A6."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

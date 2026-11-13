@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "id": "potted-cactus",
+  "album": "garden",
+  "title": {
+    "fr": "Cactus en pot",
+    "en": "Potted cactus"
+  },
+  "w": 16,
+  "h": 20,
+  "palette": [
+    "#6B4226",
+    "#D9531E",
+    "#16935A",
+    "#FF5FA2",
+    "#FF8A3D",
+    "#3DD47A",
+    "#FFE14D"
+  ],
+  "rows": [
+    "7.2D7.",
+    "6.D2GD6.",
+    "7.2D7.",
+    "6.4F6.",
+    "6.FC2F6.",
+    "6.FC2F2.2F2.",
+    "6.FC2F2.FC2.",
+    "2.2F2.FC2F2.FC2.",
+    "2.CF2.FC2F2.FC2.",
+    "2.CF2.FC5FC2.",
+    "2.CF2.FC2F6.",
+    "2.C4FC2F6.",
+    "6.FC2F6.",
+    "6.FC2F6.",
+    "2.4AFC2F4A2.",
+    ".14B.",
+    "2.12E2.",
+    "2.3ED5ED2E2.",
+    "3.10E3.",
+    "4.8B4."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

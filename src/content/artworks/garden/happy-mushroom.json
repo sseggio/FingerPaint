@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "id": "happy-mushroom",
+  "album": "garden",
+  "title": {
+    "fr": "Champignon joyeux",
+    "en": "Happy mushroom"
+  },
+  "w": 16,
+  "h": 16,
+  "palette": [
+    "#1B1A2E",
+    "#5A1630",
+    "#FF3D5A",
+    "#FF8FB8",
+    "#2ED3A0",
+    "#F0B27A",
+    "#FFE8C2",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "5.6B5.",
+    "3.2B6C2B3.",
+    "2.B2C2H2C2H2CB2.",
+    ".B2C3H2C3H2CB.",
+    ".B3CH4CH3CB.",
+    "BCH10CHCB",
+    "B3H3C2H3C3HB",
+    "BCH4C2H4CHCB",
+    "2B12C2B",
+    ".14B.",
+    "3.B8GB3.",
+    "3.BGA4GAGB3.",
+    "3.BD6GDB3.",
+    "3.B8GB3.",
+    "3.B2F4G2FB3.",
+    ".14E."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

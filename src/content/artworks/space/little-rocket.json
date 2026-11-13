@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "id": "little-rocket",
+  "album": "space",
+  "title": {
+    "fr": "Petite fusée",
+    "en": "Little rocket"
+  },
+  "w": 16,
+  "h": 22,
+  "palette": [
+    "#2E6BE6",
+    "#7B5CFF",
+    "#FF3D5A",
+    "#FF8A3D",
+    "#B8B0D9",
+    "#8FE3FF",
+    "#FFE14D",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "7.2C7.",
+    "6.4C6.",
+    ".G3.6C5.",
+    "5.E4HE5.",
+    "4.E6HE4.",
+    "4.EH4AHE2.G.",
+    "4.EA4FAE4.",
+    "4.EA4FAE4.",
+    "4.EH4AHE4.",
+    "2.G.E6HE4.",
+    "4.E6BE4.",
+    "4.E6HE4.",
+    "3.CE6HEC2.G",
+    "2.2CE6HE2C2.",
+    ".3CE6HE3C.",
+    ".3CE6BE3C.",
+    ".2C2.6E2.2C.",
+    "5.6D5.",
+    "5.D4GD5.",
+    "6.D2GD3.G2.",
+    "6.4D6.",
+    "7.2D7."
+  ],
+  "access": "free",
+  "difficulty": 2
+}

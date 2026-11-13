@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "id": "tropical-fish",
+  "album": "ocean",
+  "title": {
+    "fr": "Poisson tropical",
+    "en": "Tropical fish"
+  },
+  "w": 20,
+  "h": 13,
+  "palette": [
+    "#1B1A2E",
+    "#7B5CFF",
+    "#3DB8FF",
+    "#FFC93C",
+    "#BDEBFF",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "18.E.",
+    "8.3B5.E3.",
+    "7.5B8.",
+    "2B4.8C6.",
+    "3B2.11C4.",
+    ".3B2CF6C2A2C3.",
+    "2.2B2CF6CAF3C2.",
+    "2.2B2CF12C.",
+    ".3B2DF11D2.",
+    "3B2.11D4.",
+    "2B4.8D6.",
+    "8.3B9.",
+    "9.B7.E2."
+  ],
+  "access": "free",
+  "difficulty": 1
+}
