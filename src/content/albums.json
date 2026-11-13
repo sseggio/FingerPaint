@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "albums": [
+    { "id": "garden", "title": { "fr": "Jardin", "en": "Garden" }, "order": 0 },
+    { "id": "ocean", "title": { "fr": "Océan", "en": "Ocean" }, "order": 1 },
+    { "id": "kitchen", "title": { "fr": "Cuisine", "en": "Kitchen" }, "order": 2 },
+    { "id": "animals", "title": { "fr": "Animaux", "en": "Animals" }, "order": 3 },
+    { "id": "space", "title": { "fr": "Espace", "en": "Space" }, "order": 4 },
+    { "id": "deep-ocean", "title": { "fr": "Océan profond", "en": "Deep ocean" }, "order": 5, "pack": "ocean" }
+  ]
+}
