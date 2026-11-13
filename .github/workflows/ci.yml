@@ -1,0 +1,32 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [claude/trusting-turing-c692ne]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+        if: hashFiles('package-lock.json') != ''
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Typecheck
+        if: hashFiles('package-lock.json') != ''
+        run: npx tsc --noEmit
+      - name: Lint
+        if: hashFiles('package-lock.json') != ''
+        run: npx expo lint
+      - name: Tests
+        if: hashFiles('package-lock.json') != ''
+        run: npm test -- --ci
+      - name: Audit (prod deps)
+        if: hashFiles('package-lock.json') != ''
+        run: npm audit --omit=dev --audit-level=high
