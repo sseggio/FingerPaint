@@ -40,4 +40,14 @@ describe('artwork registry (bundled content)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('[broken]'));
     warn.mockRestore();
   });
+
+  it('throws an explicit error on an invalid albums.json in strict (dev) mode', () => {
+    expect(() => createRegistry({ v: 2, albums: 'nope' }, [], { strict: true })).toThrow(/albums\.json is invalid/);
+  });
+
+  it('degrades to an empty library on an invalid albums.json when not strict', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(createRegistry({ v: 2 }, []).listAlbums()).toEqual([]);
+    warn.mockRestore();
+  });
 });

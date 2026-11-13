@@ -70,6 +70,13 @@ describe('RLE codec', () => {
     expect(() => decodeRow(row)).toThrow(message);
   });
 
+  it('stops decoding as soon as the expected width is exceeded', () => {
+    expect(decodeRow('4A4B', KEYS.length, 8)).toHaveLength(8);
+    expect(() => decodeRow('4A4000B', KEYS.length, 8)).toThrow('decodes to more than 8 cells');
+    expect(() => decodeRow('8A.', KEYS.length, 8)).toThrow(RleError);
+    expect(() => decode(['8A', '9A'], 8, 2)).toThrow('row 1: decodes to more than 8 cells');
+  });
+
   it('rejects keys outside the palette', () => {
     expect(() => decodeRow('ABC', 2)).toThrow('outside the palette');
   });

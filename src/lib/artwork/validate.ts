@@ -128,7 +128,7 @@ export function validateArtwork(raw: unknown, ctx: ArtworkContext = {}, index = 
       return;
     }
     try {
-      const values = decodeRow(row, paletteSize);
+      const values = decodeRow(row, paletteSize, sizeOk ? (raw.w as number) : undefined);
       if (sizeOk && values.length !== raw.w) {
         push(`row ${y}`, `decodes to ${values.length} cells, expected ${String(raw.w)}`);
       }
