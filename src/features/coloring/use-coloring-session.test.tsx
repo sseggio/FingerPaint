@@ -139,4 +139,25 @@ describe('useColoringSession', () => {
     await act(async () => again.result.current.fill(A, 'tap'));
     expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
   });
+
+  it('reports daily activity on the first fill of each local day only', async () => {
+    const store = await freshStore();
+    const onDailyActivity = jest.fn();
+    let time = new Date(2026, 10, 9, 23, 58).getTime();
+    const { result } = await renderHook(() =>
+      useColoringSession(artwork, { store, now: () => time, onDailyActivity }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // A wrong color changes nothing and does not count.
+    await act(async () => result.current.fill([B[0]], 'tap'));
+    expect(onDailyActivity).not.toHaveBeenCalled();
+    await act(async () => result.current.fill([A[0]], 'tap'));
+    await act(async () => result.current.fill([A[1]], 'tap'));
+    expect(onDailyActivity).toHaveBeenCalledTimes(1);
+    time = new Date(2026, 10, 10, 0, 1).getTime(); // past local midnight
+    await act(async () => result.current.fill([A[2]], 'tap'));
+    expect(onDailyActivity).toHaveBeenCalledTimes(2);
+  });
 });

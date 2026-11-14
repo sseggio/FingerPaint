@@ -19,6 +19,8 @@ export const PROGRESS_SAVE_DELAY_MS = 400;
 /** First retry delay after a failed write; doubles on each consecutive failure. */
 export const PROGRESS_RETRY_DELAY_MS = 2000;
 export const PROGRESS_RETRY_MAX_DELAY_MS = 30_000;
+/** Max rounds `loadIndex` waits for operations queued while it was waiting. */
+export const LOAD_INDEX_MAX_WAITS = 8;
 
 export interface ProgressRepoOptions {
   backend?: StorageBackend;
@@ -183,9 +185,14 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
       // A `removeAll` queued while the stored index was being read must win: wait for every
       // queued operation (the generation it bumps drops the stale read) so the snapshot never
       // brings erased entries back into the store.
-      for (let pendingQueue = queue; ; pendingQueue = queue) {
+      // Bounded: a steady stream of saves (each extending the queue) cannot keep hydration
+      // waiting forever; after the last round the snapshot is still consistent with the
+      // in-memory index, which every queued operation updates synchronously.
+      let pendingQueue = queue;
+      for (let round = 0; round < LOAD_INDEX_MAX_WAITS; round++) {
         await pendingQueue;
         if (pendingQueue === queue) break;
+        pendingQueue = queue;
       }
       return { ...index };
     },

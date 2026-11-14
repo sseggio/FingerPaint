@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { StoreApi } from 'zustand';
 
+import { useDailyStore } from '@/features/daily/daily-store';
 import { useProgressStore, type ProgressState } from '@/features/progress/progress-store';
 import type { Artwork } from '@/lib/artwork/types';
+import { toDayKey } from '@/lib/daily';
 import { createFrameCoalescer } from '@/lib/frame-coalescer';
 
 import type { FillSource } from './canvas/use-fill-gestures';
@@ -34,7 +36,13 @@ export interface ColoringController {
 export interface ColoringSessionOptions {
   store?: Pick<StoreApi<ProgressState>, 'getState'>;
   now?: () => number;
+  /** Called on the first successful fill of each local day (forgiving streak, F10). */
+  onDailyActivity?: () => void;
 }
+
+const recordDailyActivity = () => {
+  void useDailyStore.getState().recordActivity();
+};
 
 /**
  * Coloring session of one artwork, restored from and saved to the progress store. Saves are
@@ -44,6 +52,7 @@ export interface ColoringSessionOptions {
 export function useColoringSession(artwork: Artwork, options: ColoringSessionOptions = {}): ColoringController {
   const store = options.store ?? useProgressStore;
   const now = options.now ?? Date.now;
+  const onDailyActivity = options.onDailyActivity ?? recordDailyActivity;
 
   const [session, setSession] = useState<ColoringSession | null>(null);
   const [revision, setRevision] = useState(0);
@@ -58,9 +67,13 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
   const timeRef = useRef<{ base: number; since: number | null }>({ base: 0, since: null });
   const storeRef = useRef(store);
   const nowRef = useRef(now);
+  const dailyRef = useRef(onDailyActivity);
+  /** Local day already reported to the daily streak during this visit. */
+  const reportedDayRef = useRef<string | null>(null);
   useEffect(() => {
     storeRef.current = store;
     nowRef.current = now;
+    dailyRef.current = onDailyActivity;
   });
 
   // Several batches in one frame (taps, a long drag) rebuild the color layer only once.
@@ -154,6 +167,11 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
       }
       dirtyRef.current = true;
       coalescer.request();
+      const day = toDayKey(new Date(nowRef.current()));
+      if (reportedDayRef.current !== day) {
+        reportedDayRef.current = day;
+        dailyRef.current();
+      }
       if (result.completedNow) {
         coloringFeedback.artworkDone();
         setCompletion('celebrate');
