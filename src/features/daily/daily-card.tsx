@@ -9,7 +9,7 @@ import { openArtwork } from '@/features/library/open-artwork';
 import type { ArtworkSource } from '@/lib/artwork/types';
 import { JOKERS_PER_WEEK, type StreakView } from '@/lib/daily';
 import { percentFilled, type ProgressEntry } from '@/lib/library';
-import { palette, radius, spacing, useTheme } from '@/theme';
+import { palette, radius, sizes, spacing, useTheme } from '@/theme';
 
 export const DAILY_THUMB_SIZE = 104;
 
@@ -22,7 +22,7 @@ const FLAME = [
   [1, 2, 2, 2, 1],
   [0, 1, 2, 1, 0],
 ] as const;
-const FLAME_PIXEL = 4;
+const FLAME_PIXEL = sizes.iconPixel;
 
 /** Decorative pixel flame; dimmed when the streak has not started (or restarts). */
 export const PixelFlame = memo(function PixelFlame({ lit }: { lit: boolean }) {
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   },
   streak: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   jokers: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
-  joker: { width: 12, height: 12, borderRadius: radius.xs, borderWidth: 2 },
+  joker: { width: sizes.jokerSquare, height: sizes.jokerSquare, borderRadius: radius.xs, borderWidth: sizes.jokerBorder },
   shrink: { flexShrink: 1 },
   flame: { gap: 0 },
   flameRow: { flexDirection: 'row' },

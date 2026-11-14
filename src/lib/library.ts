@@ -17,6 +17,7 @@ export interface ProgressEntry {
   status: ArtworkStatus;
   filledCount: number;
   updatedAt: number;
+  completedAt?: number;
 }
 
 export type ProgressLookup = Readonly<Record<string, ProgressEntry | undefined>>;
@@ -70,6 +71,35 @@ export function continueList<T extends CatalogArtwork>(
     })
     .sort((a, b) => (index[b.id]?.updatedAt ?? 0) - (index[a.id]?.updatedAt ?? 0) || a.id.localeCompare(b.id))
     .slice(0, Math.max(0, limit));
+}
+
+export type GallerySegment = 'completed' | 'in_progress';
+
+/** Date shown for a gallery artwork: completion for finished ones, last coloring otherwise. */
+export function galleryDate(entry: ProgressEntry): number {
+  return entry.status === 'completed' ? (entry.completedAt ?? entry.updatedAt) : entry.updatedAt;
+}
+
+/**
+ * "My artworks": finished artworks, or started ones (at least one filled cell), most recent
+ * first (completion date for finished ones, last coloring for the others). Catalog only.
+ */
+export function galleryList<T extends CatalogArtwork>(
+  artworks: readonly T[],
+  index: ProgressLookup,
+  segment: GallerySegment,
+): T[] {
+  return artworks
+    .filter((a) => {
+      const entry = index[a.id];
+      if (!entry) return false;
+      return segment === 'completed' ? entry.status === 'completed' : entry.status === 'in_progress' && entry.filledCount > 0;
+    })
+    .sort((a, b) => {
+      const da = index[a.id];
+      const db = index[b.id];
+      return (db ? galleryDate(db) : 0) - (da ? galleryDate(da) : 0) || a.id.localeCompare(b.id);
+    });
 }
 
 export type DifficultyFilter = 'all' | Difficulty;

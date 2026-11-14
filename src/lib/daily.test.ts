@@ -193,6 +193,12 @@ describe('forgiving streak', () => {
     expect(viewStreak(play([]), '2026-11-14')).toMatchObject({ streak: 0, restart: false, jokersLeft: 2 });
   });
 
+  it('is active today only on the exact last active day (not after a clock change)', () => {
+    const s = play(['2026-11-09', '2026-11-10']);
+    expect(viewStreak(s, '2026-11-09').activeToday).toBe(false);
+    expect(viewStreak(s, '2026-11-10').activeToday).toBe(true);
+  });
+
   it('survives DST: a 23 h or 25 h day never counts as a missed day', () => {
     const lateSat = Date.UTC(2026, 2, 28, 22, 50); // Paris Sat 23:50, then Sun 23:50 (23 h later)
     const days = [lateSat, lateSat + 23 * HOUR, lateSat + 23 * HOUR + 30 * 60_000].map((t) =>

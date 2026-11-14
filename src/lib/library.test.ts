@@ -4,6 +4,8 @@ import {
   chunk,
   continueList,
   filterArtworks,
+  galleryDate,
+  galleryList,
   hasActiveFilters,
   NO_FILTERS,
   percentFilled,
@@ -108,5 +110,34 @@ describe('helpers', () => {
   it('chunks rows', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
     expect(chunk([], 3)).toEqual([]);
+  });
+});
+
+describe('galleryList', () => {
+  const gallery = {
+    cactus: { ...entry('completed', 100), completedAt: 20 },
+    whale: entry('completed', 30),
+    mushroom: entry('in_progress', 30),
+    fish: entry('in_progress', 50),
+    rocket: entry('in_progress', 40, 0),
+    gone: entry('completed', 99),
+  };
+
+  it('lists finished artworks by completion date, newest first (catalog only)', () => {
+    expect(galleryList(catalog, gallery, 'completed').map((a) => a.id)).toEqual(['whale', 'cactus']);
+  });
+
+  it('lists started artworks with at least one cell by last coloring', () => {
+    expect(galleryList(catalog, gallery, 'in_progress').map((a) => a.id)).toEqual(['fish', 'mushroom']);
+  });
+
+  it('dates finished artworks by completion, others by last update', () => {
+    expect(galleryDate(gallery.cactus)).toBe(20);
+    expect(galleryDate(gallery.whale)).toBe(30);
+    expect(galleryDate(gallery.fish)).toBe(50);
+  });
+
+  it('is empty without progress', () => {
+    expect(galleryList(catalog, {}, 'completed')).toEqual([]);
   });
 });

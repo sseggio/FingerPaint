@@ -55,6 +55,16 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as cons
 /** `xs` only rounds tiny decorative pixels (confetti squares, progress tracks). */
 export const radius = { xs: 4, sm: 12, md: 20, lg: 28, pill: 999 } as const;
 
+/** Fixed sizes of small decorative pixel elements (pixel-art icons, joker squares). */
+export const sizes = {
+  /** One pixel of a pixel-art icon (streak flame, empty-state art). */
+  iconPixel: 4,
+  /** Joker indicator square of the daily card. */
+  jokerSquare: 12,
+  /** Outline of the joker squares. */
+  jokerBorder: 2,
+} as const;
+
 export const typography = {
   display: { fontSize: 34, fontWeight: '900', letterSpacing: -0.5 },
   title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.3 },

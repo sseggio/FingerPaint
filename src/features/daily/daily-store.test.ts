@@ -74,3 +74,28 @@ describe('useDailyStore', () => {
     expect((await stored()).data.streak).toBe(6);
   });
 });
+
+describe('daily store replace / reset', () => {
+  const state = { lastActiveDay: '2026-11-14', streak: 3, best: 4, jokerDays: [], activeDays: ['2026-11-14'] };
+
+  it('replace persists the whole state; reset erases it', async () => {
+    const store = createDailyStore();
+    await store.getState().hydrate();
+    await store.getState().replace(state);
+    expect(store.getState().daily).toEqual(state);
+    expect((await stored()).data).toEqual(state);
+    await store.getState().reset();
+    expect(store.getState().daily).toMatchObject({ streak: 0, best: 0, lastActiveDay: null });
+    expect((await stored()).data.streak).toBe(0);
+  });
+
+  it('a replace during hydration wins over the stale stored value', async () => {
+    await AsyncStorage.setItem(StorageKeys.daily, JSON.stringify(createEnvelope({ ...state, streak: 1, best: 1 }, 1)));
+    const store = createDailyStore();
+    const hydrating = store.getState().hydrate();
+    const replacing = store.getState().replace(state);
+    await Promise.all([hydrating, replacing]);
+    expect(store.getState().daily).toEqual(state);
+    expect((await stored()).data).toEqual(state);
+  });
+});
