@@ -1,4 +1,4 @@
-import { router, Stack } from 'expo-router';
+import { Redirect, router, Stack } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, Button, Card, Toast } from '@/components/ui';
 import { listArtworks } from '@/features/artwork/registry';
+import { lockReason } from '@/features/entitlements/can-access';
+import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { PixelCanvas, type PixelCanvasHandle } from '@/features/coloring/canvas/pixel-canvas';
 import { CompletionCard } from '@/features/coloring/completion-card';
 import { Confetti } from '@/features/coloring/confetti';
@@ -66,7 +68,12 @@ function ColoringView({ artwork }: { artwork: Artwork }) {
   // Only the next artwork id is derived from the progress index: the screen re-renders when that
   // id changes, not on every save of the index.
   // While coloring, the selector returns null without reading the index at all.
-  const orderedIds = useMemo(() => listArtworks().map((a) => a.id), []);
+  // "Next" never offers a locked artwork.
+  const entitlements = useEntitlementsStore((s) => s.entitlements);
+  const orderedIds = useMemo(
+    () => listArtworks().filter((a) => a.id === artwork.id || !lockReason(a.access, entitlements)).map((a) => a.id),
+    [artwork.id, entitlements],
+  );
   const nextId = useProgressStore(
     useCallback(
       (s: ProgressState) => (completion === 'none' ? null : nextArtworkId(artwork.id, orderedIds, s.index)),
@@ -186,6 +193,10 @@ function ColoringView({ artwork }: { artwork: Artwork }) {
 export function ColoringScreen({ artworkId }: { artworkId: unknown }) {
   const { colors } = useTheme();
   const artwork = resolveColoringArtwork(artworkId);
+  const entitlements = useEntitlementsStore((s) => s.entitlements);
+  // Navigation guard (deep links included): locked content never opens the coloring screen.
+  const reason = artwork ? lockReason(artwork.access, entitlements) : null;
+  if (reason) return <Redirect href={{ pathname: '/shop', params: { reason } }} />;
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {artwork ? <ColoringView key={artwork.id} artwork={artwork} /> : <NotFound />}

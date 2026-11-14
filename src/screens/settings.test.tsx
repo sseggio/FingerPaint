@@ -23,6 +23,13 @@ async function storedSettings() {
   return JSON.parse((await AsyncStorage.getItem(StorageKeys.settings)) ?? '{}').data;
 }
 
+const originalRemoveAll = useProgressStore.getState().removeAll;
+
+afterEach(() => {
+  // One test stubs removeAll on the shared store: never leak it to the next tests.
+  useProgressStore.setState({ removeAll: originalRemoveAll });
+});
+
 beforeEach(async () => {
   await AsyncStorage.clear();
   // Hydrating enables writes; then start every test from the defaults.

@@ -6,7 +6,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import * as registry from '@/features/artwork/registry';
 import { getArtwork } from '@/features/artwork/registry';
+import { DEFAULT_ENTITLEMENTS } from '@/features/entitlements/can-access';
+import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -20,7 +23,7 @@ jest.mock('@shopify/react-native-skia', () =>
   require('@shopify/react-native-skia/lib/commonjs/mock').Mock((globalThis as { CanvasKit?: unknown }).CanvasKit),
 );
 jest.mock('@/features/coloring/canvas/glyph-atlas', () => ({
-  createNumberAtlas: (count: number) => ({ image: {}, count, spritePx: 96, columns: 8 }),
+  createNumberAtlas: (count: number) => ({ image: { dispose: () => undefined }, count, spritePx: 96, columns: 8 }),
 }));
 jest.mock('expo-localization', () => ({ useLocales: () => [{ languageCode: 'en', languageTag: 'en-US' }] }));
 jest.mock('expo-haptics', () => ({
@@ -28,10 +31,14 @@ jest.mock('expo-haptics', () => ({
   selectionAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: 'light' },
 }));
-jest.mock('expo-router', () => ({
-  router: { back: jest.fn(), replace: jest.fn(), canGoBack: () => true },
-  Stack: { Screen: () => null },
-}));
+jest.mock('expo-router', () => {
+  const { Text } = jest.requireActual('react-native');
+  return {
+    router: { back: jest.fn(), replace: jest.fn(), canGoBack: () => true },
+    Stack: { Screen: () => null },
+    Redirect: ({ href }: { href: unknown }) => <Text testID="redirect">{JSON.stringify(href)}</Text>,
+  };
+});
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
   return { SafeAreaView: View };
@@ -91,5 +98,20 @@ describe('ColoringScreen', () => {
     await renderScreen('tabby-cat');
     const first = screen.getByRole('button', { name: /^Color 1, [a-z ]+, 0 of \d+ cells$/ });
     expect(first).toBeSelected();
+  });
+
+  it('never opens a locked artwork: redirects to the shop (deep-link guard)', async () => {
+    const real = getArtwork('tabby-cat');
+    if (!real) throw new Error('fixture missing');
+    const spy = jest.spyOn(registry, 'getArtwork').mockImplementation((id) => (id === 'tabby-cat' ? { ...real, access: 'pro' } : undefined));
+    useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
+    await renderScreen('tabby-cat');
+    expect(screen.queryByLabelText('Palette')).toBeNull();
+    expect(JSON.parse(screen.getByTestId('redirect').props.children)).toEqual({ pathname: '/shop', params: { reason: 'pro' } });
+
+    useEntitlementsStore.setState({ entitlements: { pro: true, packs: [], source: 'mock' } });
+    await renderScreen('tabby-cat');
+    expect(screen.getByLabelText('Palette')).toBeTruthy();
+    spy.mockRestore();
   });
 });

@@ -40,10 +40,8 @@ export function createProgressStore(repo: ProgressRepo = createProgressRepo()) {
       await repo.remove(artworkId);
     },
     async removeAll() {
-      const ids = Object.keys(get().index);
       set({ index: {} });
-      // Sequential: each removal flushes the index once.
-      for (const id of ids) await repo.remove(id);
+      await repo.removeAll();
     },
   }));
 }
