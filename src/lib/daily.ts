@@ -111,6 +111,12 @@ export function seededShuffle<T>(items: readonly T[], seed: number): T[] {
 
 /** First day of the daily sequence (earlier dates use this day's artwork). */
 export const DAILY_EPOCH: DayKey = '2024-01-01';
+/**
+ * Length of the daily sequence (~100 years). Days beyond it wrap around to the start, which
+ * bounds the memoized sequence (one entry per day) if the clock is set centuries ahead. The
+ * wrap is harmless: the no-repeat guarantee only breaks for the 30 days around the seam, which
+ * nobody will live to see in 2124.
+ */
 const DAILY_SEQUENCE_SPAN = 36_525;
 
 interface Sequence {
@@ -237,8 +243,8 @@ export function viewStreak(state: DailyState, today: DayKey): StreakView {
   const week = isoWeekStart(today);
   const usedThisWeek =
     jokersUsedInWeek(state.jokerDays, week) + covered.filter((d) => isoWeekStart(d) === week).length;
-  const activeToday =
-    state.lastActiveDay !== null && dayNumber(state.lastActiveDay) >= dayNumber(today) && state.streak > 0;
+  // Strict equality: a last active day after `today` (clock moved back) is not "today".
+  const activeToday = state.lastActiveDay === today && state.streak > 0;
   return {
     streak: alive ? state.streak : 0,
     best: state.best,

@@ -15,6 +15,10 @@ export interface DailyStoreState {
    * Activity recorded before hydration is replayed on top of the stored state.
    */
   recordActivity(): Promise<void>;
+  /** Replaces the whole state (backup import) and persists it. */
+  replace(daily: DailyState): Promise<void>;
+  /** Erases the streak (settings "reset progress"). */
+  reset(): Promise<void>;
 }
 
 export interface DailyStoreOptions {
@@ -46,12 +50,18 @@ export function createDailyStore(options: DailyStoreOptions = {}) {
   /** Days recorded before the stored state was read (replayed by `hydrate`). */
   const early: DayKey[] = [];
   let canWrite = false;
+  let replaced = false;
 
   return create<DailyStoreState>()((set, get) => ({
     daily: dailySchema.defaults(),
     hydrated: false,
     async hydrate() {
       const { data } = await readValue(StorageKeys.daily, dailySchema, backend);
+      // Replaced (import / reset) while reading: the stored value is stale.
+      if (replaced) {
+        set({ hydrated: true });
+        return;
+      }
       canWrite = true;
       const merged = early.reduce(recordActivity, data);
       const changed = early.length > 0;
@@ -67,6 +77,18 @@ export function createDailyStore(options: DailyStoreOptions = {}) {
       if (!canWrite) early.push(today);
       set({ daily: next });
       if (canWrite) await persist(next);
+    },
+    async replace(daily) {
+      // An explicit overwrite: earlier unsaved activity is superseded, and a late hydration
+      // must not bring the old stored state back.
+      early.length = 0;
+      canWrite = true;
+      replaced = true;
+      set({ daily, hydrated: true });
+      await persist(daily);
+    },
+    async reset() {
+      await get().replace(dailySchema.defaults());
     },
   }));
 }

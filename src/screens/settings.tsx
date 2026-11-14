@@ -1,7 +1,10 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppText, Button, Screen, SegmentedControl, SettingsSection, SwitchRow, Toast } from '@/components/ui';
+import { exportBackup, pickBackup, usePendingImportStore } from '@/features/backup/backup-io';
+import { useDailyStore } from '@/features/daily/daily-store';
 import { useLocale, useT, type LocalePreference } from '@/features/i18n';
 import { useProgressStore } from '@/features/progress/progress-store';
 import type { SessionTimerMin, Settings } from '@/features/settings/settings-schema';
@@ -89,28 +92,90 @@ function WellbeingSection() {
   );
 }
 
-function DataSection({ onReset }: { onReset(): void }) {
+type Notice = { message: string; accent: string };
+
+function DataSection({ onNotice }: { onNotice(notice: Notice): void }) {
   const t = useT();
   const removeAll = useProgressStore((s) => s.removeAll);
-  const confirm = () => {
+  const resetDaily = useDailyStore((s) => s.reset);
+  const setPlan = usePendingImportStore((s) => s.setPlan);
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+
+  const confirmReset = () => {
     Alert.alert(t('settings.data.confirmTitle'), t('settings.data.confirmBody'), [
       { text: t('settings.data.cancel'), style: 'cancel' },
       {
         text: t('settings.data.confirm'),
         style: 'destructive',
         onPress: () => {
-          void removeAll().then(onReset);
+          void Promise.all([removeAll(), resetDaily()]).then(() =>
+            onNotice({ message: t('settings.data.done'), accent: palette.mint }),
+          );
         },
       },
     ]);
   };
+
+  const exportData = async () => {
+    setBusy('export');
+    try {
+      const outcome = await exportBackup(t('settings.data.exportDialog'));
+      if (outcome === 'unavailable') onNotice({ message: t('settings.data.exportUnavailable'), accent: palette.sun });
+    } catch {
+      onNotice({ message: t('settings.data.exportFailed'), accent: palette.orange });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const importData = async () => {
+    setBusy('import');
+    try {
+      const outcome = await pickBackup();
+      if (outcome.status === 'error') {
+        onNotice({ message: t(`settings.data.error.${outcome.error}`), accent: palette.orange });
+      } else if (outcome.status === 'ready') {
+        setPlan(outcome.plan);
+        router.push('/backup-import');
+      }
+    } catch {
+      onNotice({ message: t('settings.data.error.read-failed'), accent: palette.orange });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <SettingsSection title={t('settings.data.title')} accent={palette.orange}>
       <View style={styles.block}>
         <AppText tone="secondary" variant="caption">
+          {t('settings.data.backupHint')}
+        </AppText>
+        <Button
+          label={t('settings.data.export')}
+          accessibilityLabel={t('settings.data.exportLabel')}
+          loading={busy === 'export'}
+          disabled={busy === 'import'}
+          onPress={() => {
+            void exportData();
+          }}
+        />
+        <Button
+          variant="secondary"
+          label={t('settings.data.import')}
+          accessibilityLabel={t('settings.data.importLabel')}
+          loading={busy === 'import'}
+          disabled={busy === 'export'}
+          onPress={() => {
+            void importData();
+          }}
+        />
+      </View>
+      <View style={styles.block}>
+        <AppText tone="secondary" variant="caption">
           {t('settings.data.resetHint')}
         </AppText>
-        <Button variant="secondary" label={t('settings.data.reset')} onPress={confirm} />
+        <Button variant="secondary" label={t('settings.data.reset')} onPress={confirmReset} />
       </View>
     </SettingsSection>
   );
@@ -119,7 +184,7 @@ function DataSection({ onReset }: { onReset(): void }) {
 export function SettingsScreen() {
   const t = useT();
   const { colors } = useTheme();
-  const [resetDone, setResetDone] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   return (
     <View style={styles.root}>
@@ -156,18 +221,18 @@ export function SettingsScreen() {
           />
         </SettingsSection>
         <WellbeingSection />
-        <DataSection onReset={() => setResetDone(true)} />
+        <DataSection onNotice={setNotice} />
         <AppText variant="caption" color={colors.inkSecondary} style={styles.footer}>
           {t('settings.privacy')}
         </AppText>
       </Screen>
-      {resetDone ? (
+      {notice ? (
         <View style={styles.toast} pointerEvents="box-none">
           <Toast
-            message={t('settings.data.done')}
-            accent={palette.mint}
-            durationMs={2500}
-            onTimeout={() => setResetDone(false)}
+            message={notice.message}
+            accent={notice.accent}
+            durationMs={3500}
+            onTimeout={() => setNotice(null)}
           />
         </View>
       ) : null}

@@ -63,6 +63,15 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="backup-import"
+            options={{
+              presentation: 'modal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.ink,
+            }}
+          />
+          <Stack.Screen
             name="color/[artworkId]"
             options={{
               headerBackButtonDisplayMode: 'minimal',

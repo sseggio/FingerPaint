@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
 
+import { exportBackup, pickBackup, usePendingImportStore } from '@/features/backup/backup-io';
+import { useDailyStore } from '@/features/daily/daily-store';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { createSettingsStore, useSettingsStore } from '@/features/settings/settings-store';
@@ -14,6 +16,11 @@ jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: 'light' },
 }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('@/features/backup/backup-io', () => {
+  const actual = jest.requireActual('@/features/backup/backup-io');
+  return { ...actual, exportBackup: jest.fn(async () => 'shared'), pickBackup: jest.fn(async () => ({ status: 'cancelled' })) };
+});
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
   return { SafeAreaView: View };
@@ -22,6 +29,10 @@ jest.mock('react-native-safe-area-context', () => {
 async function storedSettings() {
   return JSON.parse((await AsyncStorage.getItem(StorageKeys.settings)) ?? '{}').data;
 }
+
+const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+const mockedExport = exportBackup as jest.Mock;
+const mockedPick = pickBackup as jest.Mock;
 
 const originalRemoveAll = useProgressStore.getState().removeAll;
 
@@ -97,5 +108,62 @@ describe('SettingsScreen', () => {
     expect(removeAll).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Progress reset.')).toBeTruthy();
     alert.mockRestore();
+  });
+
+  it('reset also erases the streak (fp:daily) and says so', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await useDailyStore.getState().replace({
+      lastActiveDay: '2026-11-14',
+      streak: 3,
+      best: 5,
+      jokerDays: [],
+      activeDays: ['2026-11-14'],
+    });
+    await render(<SettingsScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Reset progress' }));
+    expect(alert.mock.calls[0][1]).toBe('Every colored cell and your streak will be erased. This cannot be undone.');
+    const buttons = alert.mock.calls[0][2] as AlertButton[];
+    await act(async () => {
+      buttons[1].onPress?.();
+    });
+    expect(useDailyStore.getState().daily).toMatchObject({ streak: 0, best: 0, lastActiveDay: null });
+    expect(JSON.parse((await AsyncStorage.getItem(StorageKeys.daily)) ?? 'null').data.streak).toBe(0);
+    alert.mockRestore();
+  });
+
+  it('exports a backup from the Data section', async () => {
+    await render(<SettingsScreen />);
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
+    });
+    expect(mockedExport).toHaveBeenCalledWith('Save your FingerPaint backup');
+    mockedExport.mockResolvedValueOnce('unavailable');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
+    });
+    expect(screen.getByText('Sharing is not available on this device.')).toBeTruthy();
+  });
+
+  it('imports: errors are explained, a valid file opens the confirmation', async () => {
+    await render(<SettingsScreen />);
+    const importButton = () => screen.getByRole('button', { name: 'Import a backup file' });
+    await act(async () => {
+      fireEvent.press(importButton());
+    });
+    expect(router.push).not.toHaveBeenCalled();
+
+    mockedPick.mockResolvedValueOnce({ status: 'error', error: 'checksum' });
+    await act(async () => {
+      fireEvent.press(importButton());
+    });
+    expect(screen.getByText('This backup is damaged or was modified: it was not imported.')).toBeTruthy();
+
+    const plan = { writes: [], daily: useDailyStore.getState().daily, settings: DEFAULT_SETTINGS, summary: {} };
+    mockedPick.mockResolvedValueOnce({ status: 'ready', plan });
+    await act(async () => {
+      fireEvent.press(importButton());
+    });
+    expect(usePendingImportStore.getState().plan).toBe(plan);
+    expect(router.push).toHaveBeenCalledWith('/backup-import');
   });
 });
