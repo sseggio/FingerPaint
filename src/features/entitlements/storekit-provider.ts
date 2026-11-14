@@ -1,4 +1,5 @@
 import type * as ExpoIap from 'expo-iap';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { normalizeSkus } from './catalog';
 import {
@@ -46,12 +47,34 @@ export function loadExpoIap(): IapModule | null {
   }
 }
 
+/** The part of React Native's `AppState` used to notice the return to the foreground (injectable). */
+export interface AppStateLike {
+  addEventListener(type: 'change', listener: (state: AppStateStatus) => void): { remove(): void };
+}
+
+export interface StoreKitOptions {
+  /** A purchase with no answer from the store after this delay resolves as `timeout` (default 2 min). */
+  timeoutMs?: number;
+  /**
+   * Back from the background (e.g. the user left to fix a payment method), a purchase still
+   * waiting gets this much longer for the store to answer before resolving as `timeout`.
+   */
+  foregroundGraceMs?: number;
+  appState?: AppStateLike;
+}
+
+export const PURCHASE_TIMEOUT_MS = 2 * 60 * 1000;
+export const FOREGROUND_GRACE_MS = 10 * 1000;
+
 function errorKind(code: string | undefined): PurchaseErrorKind | 'cancelled' | 'owned' | 'pending' {
   switch (code) {
     case 'user-cancelled':
       return 'cancelled';
     case 'already-owned':
       return 'owned';
+    // Not a failure: the payment awaits an approval outside of the app (Ask to Buy, bank
+    // authentication…). Nothing is unlocked now; if approved, the transaction arrives later
+    // through `purchaseUpdatedListener` (even after a relaunch) and is granted then.
     case 'pending':
     case 'deferred-payment':
       return 'pending';
@@ -83,10 +106,19 @@ export class StoreKitProvider implements EntitlementsProvider {
   private connecting: Promise<IapModule> | null = null;
   private readonly listeners = new Set<ProviderListener>();
   private readonly waiting = new Map<Sku, (result: PurchaseResult) => void>();
+  private readonly timers = new Map<Sku, ReturnType<typeof setTimeout>>();
   private readonly load: () => IapModule | null;
+  private readonly timeoutMs: number;
+  private readonly foregroundGraceMs: number;
+  private readonly appState: AppStateLike;
+  private appStateSubscription: { remove(): void } | null = null;
+  private wentToBackground = false;
 
-  constructor(load: () => IapModule | null = loadExpoIap) {
+  constructor(load: () => IapModule | null = loadExpoIap, options: StoreKitOptions = {}) {
     this.load = load;
+    this.timeoutMs = options.timeoutMs ?? PURCHASE_TIMEOUT_MS;
+    this.foregroundGraceMs = options.foregroundGraceMs ?? FOREGROUND_GRACE_MS;
+    this.appState = options.appState ?? AppState;
   }
 
   init(): Promise<void> {
@@ -133,6 +165,10 @@ export class StoreKitProvider implements EntitlementsProvider {
     // One purchase per product at a time: a second tap waits for the same outcome.
     if (this.waiting.has(sku)) return { status: 'error', sku, error: 'failed' };
     const outcome = new Promise<PurchaseResult>((resolve) => this.waiting.set(sku, resolve));
+    // Never wait forever (a lost callback would keep the shop busy): resolve as `timeout`. If
+    // the store completes the purchase later, the listener still grants it.
+    this.arm(sku, this.timeoutMs);
+    this.watchAppState();
     try {
       await iap.requestPurchase({
         request: { apple: { sku }, google: { skus: [sku] } },
@@ -155,6 +191,7 @@ export class StoreKitProvider implements EntitlementsProvider {
       }
     }
     const purchases = await iap.getAvailablePurchases();
+    // A pending (not yet approved) purchase is not owned yet: it is granted once approved.
     return normalizeSkus(purchases.filter((p) => p.purchaseState !== 'pending').map((p) => p.productId));
   }
 
@@ -168,7 +205,38 @@ export class StoreKitProvider implements EntitlementsProvider {
   private settle(sku: Sku, result: PurchaseResult) {
     const resolve = this.waiting.get(sku);
     this.waiting.delete(sku);
+    const timer = this.timers.get(sku);
+    if (timer !== undefined) clearTimeout(timer);
+    this.timers.delete(sku);
+    if (this.waiting.size === 0) {
+      this.appStateSubscription?.remove();
+      this.appStateSubscription = null;
+      this.wentToBackground = false;
+    }
     resolve?.(result);
+  }
+
+  /** (Re)starts the deadline of a waiting purchase. */
+  private arm(sku: Sku, ms: number) {
+    const previous = this.timers.get(sku);
+    if (previous !== undefined) clearTimeout(previous);
+    this.timers.set(
+      sku,
+      setTimeout(() => this.settle(sku, { status: 'error', sku, error: 'timeout' }), ms),
+    );
+  }
+
+  /** While a purchase waits: back from the background, shorten its deadline to the grace delay. */
+  private watchAppState() {
+    if (this.appStateSubscription) return;
+    this.appStateSubscription = this.appState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        this.wentToBackground = true;
+      } else if (state === 'active' && this.wentToBackground) {
+        this.wentToBackground = false;
+        for (const sku of this.waiting.keys()) this.arm(sku, this.foregroundGraceMs);
+      }
+    });
   }
 
   private async onPurchase(iap: IapModule, purchase: IapPurchase) {

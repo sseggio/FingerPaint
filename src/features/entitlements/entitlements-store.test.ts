@@ -237,4 +237,25 @@ describe('entitlements store (store-backed, offline-first)', () => {
     await expect(store.getState().purchase(SKUS.pro)).resolves.toEqual({ status: 'error', sku: SKUS.pro, error: 'failed' });
     expect(store.getState().busy).toBeNull();
   });
+
+  it('a silent refresh never revokes a purchase granted while it was in flight', async () => {
+    const provider = fakeStore();
+    let answer: (skus: Sku[]) => void = () => undefined;
+    // The store's answer was computed before the purchase: it does not contain it.
+    (provider.restore as jest.Mock).mockImplementationOnce(() => new Promise<Sku[]>((r) => (answer = r)));
+    const store = createEntitlementsStore({ provider });
+    await store.getState().hydrate();
+    const refreshing = store.getState().connect();
+    await new Promise((r) => setTimeout(r, 0));
+    await provider.push([SKUS.neonPack]);
+    expect(store.getState().entitlements.packs).toEqual(['neon']);
+    answer([SKUS.pro]);
+    await refreshing;
+    expect(store.getState().owned).toEqual([SKUS.pro, SKUS.neonPack]);
+    expect(await stored()).toMatchObject({ data: { owned: [SKUS.pro, SKUS.neonPack] } });
+
+    // A later answer (requested after the grant) is authoritative again: a refund revokes.
+    await store.getState().restore();
+    expect(store.getState().owned).toEqual([]);
+  });
 });

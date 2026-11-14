@@ -1,11 +1,13 @@
-import { loadExpoIap, StoreKitProvider, type IapModule } from './storekit-provider';
+import type { AppStateStatus } from 'react-native';
+
+import { loadExpoIap, StoreKitProvider, type AppStateLike, type IapModule } from './storekit-provider';
 import { SKUS } from './types';
 
 type PurchaseEvent = { productId: string; purchaseState: 'pending' | 'purchased' | 'unknown' };
 type ErrorEvent = { code?: string; productId?: string | null };
 
 /** In-memory stand-in for expo-iap: requestPurchase answers through the listeners, like the real one. */
-function fakeIap(options: { owned?: string[]; onRequest?: (sku: string) => PurchaseEvent | ErrorEvent | 'throw' } = {}) {
+function fakeIap(options: { owned?: string[]; onRequest?: (sku: string) => PurchaseEvent | ErrorEvent | 'throw' | 'silent' } = {}) {
   let onPurchase: ((p: PurchaseEvent) => void) | null = null;
   let onError: ((e: ErrorEvent) => void) | null = null;
   const calls: string[] = [];
@@ -20,6 +22,7 @@ function fakeIap(options: { owned?: string[]; onRequest?: (sku: string) => Purch
       const sku = request.apple.sku;
       const answer = options.onRequest?.(sku) ?? { productId: sku, purchaseState: 'purchased' };
       if (answer === 'throw') throw Object.assign(new Error('not prepared'), { code: 'not-prepared' });
+      if (answer === 'silent') return null;
       setTimeout(() => {
         if ('purchaseState' in answer) onPurchase?.(answer);
         else onError?.(answer);
@@ -44,6 +47,20 @@ function fakeIap(options: { owned?: string[]; onRequest?: (sku: string) => Purch
   };
   return { iap, calls, module: iap as unknown as IapModule, emit: (p: PurchaseEvent) => onPurchase?.(p) };
 }
+
+/** Controllable AppState stand-in. */
+function fakeAppState() {
+  const listeners = new Set<(state: AppStateStatus) => void>();
+  const appState: AppStateLike = {
+    addEventListener: (_type, listener) => {
+      listeners.add(listener);
+      return { remove: () => listeners.delete(listener) };
+    },
+  };
+  return { appState, listeners, emit: (state: AppStateStatus) => listeners.forEach((l) => l(state)) };
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('StoreKitProvider (expo-iap)', () => {
   it('is loaded lazily and absent under Jest / Expo Go without crashing', () => {
@@ -150,5 +167,52 @@ describe('StoreKitProvider (expo-iap)', () => {
     const provider = new StoreKitProvider(() => module);
     await expect(provider.init()).rejects.toThrow('offline');
     await expect(provider.purchase(SKUS.pro)).resolves.toMatchObject({ status: 'purchased' });
+  });
+
+  it('never waits forever: no answer resolves as timeout, a late purchase is still granted', async () => {
+    const { module, emit } = fakeIap({ onRequest: () => 'silent' });
+    const { appState, listeners } = fakeAppState();
+    const provider = new StoreKitProvider(() => module, { timeoutMs: 20, appState });
+    const listener = jest.fn();
+    provider.subscribe(listener);
+    await expect(provider.purchase(SKUS.pro)).resolves.toEqual({ status: 'error', sku: SKUS.pro, error: 'timeout' });
+    expect(listeners.size).toBe(0);
+    // A new attempt is possible (not stuck as "in flight").
+    const second = provider.purchase(SKUS.pro);
+    emit({ productId: SKUS.pro, purchaseState: 'purchased' });
+    await expect(second).resolves.toEqual({ status: 'purchased', sku: SKUS.pro });
+    expect(listener).toHaveBeenCalledWith([SKUS.pro]);
+  });
+
+  it('back from the background, a waiting purchase only gets a short grace delay', async () => {
+    const { module } = fakeIap({ onRequest: () => 'silent' });
+    const { appState, emit } = fakeAppState();
+    const provider = new StoreKitProvider(() => module, { timeoutMs: 60_000, foregroundGraceMs: 10, appState });
+    let result: unknown = null;
+    void provider.purchase(SKUS.oceanPack).then((r) => (result = r));
+    await wait(5);
+    // The StoreKit sheet only makes the app inactive: no reset.
+    emit('inactive');
+    emit('active');
+    await wait(30);
+    expect(result).toBeNull();
+    emit('background');
+    emit('active');
+    await wait(30);
+    expect(result).toEqual({ status: 'error', sku: SKUS.oceanPack, error: 'timeout' });
+  });
+
+  it('clears its deadline once the store answers', async () => {
+    jest.useFakeTimers();
+    try {
+      const { module } = fakeIap();
+      const provider = new StoreKitProvider(() => module, { timeoutMs: 1000 });
+      const outcome = provider.purchase(SKUS.pro);
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(outcome).resolves.toEqual({ status: 'purchased', sku: SKUS.pro });
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

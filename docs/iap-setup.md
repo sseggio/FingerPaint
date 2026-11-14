@@ -23,6 +23,8 @@ Pro n'inclut **pas** les packs : chaque pack est un achat de contenu distinct (v
   - le lancement : le cache est lu pendant le splash, puis la connexion au store se fait en arrière-plan. Elle charge les prix et appelle `getAvailablePurchases` en mode silencieux. **La réponse du store remplace le cache** : le store est la source de vérité (remboursements compris). Hors ligne, le cache reste valable ;
   - « Restaurer les achats » : `restorePurchases()` (synchronisation App Store) puis `getAvailablePurchases()`. L'opération est idempotente : sans changement, rien n'est réécrit ;
   - l'achat : `requestPurchase` → `purchaseUpdatedListener` → **octroi + écriture du cache, puis `finishTransaction`**. Si l'écriture échoue, la transaction n'est pas terminée et iOS la rejouera au prochain lancement. Les transactions interrompues ou approuvées plus tard (Ask to Buy) arrivent par le même listener ;
+  - le délai : sans réponse du store, `purchase()` se résout en `timeout` après 2 min, ou 10 s après un retour au premier plan depuis l'arrière-plan (la boutique n'est jamais bloquée). Un achat qui aboutit plus tard est quand même accordé par le listener ;
+  - la course restauration / achat : une réponse du store demandée **avant** un octroi ne retire jamais cet octroi (il est fusionné) ; la réponse suivante redevient la référence (remboursements) ;
   - les erreurs : `user-cancelled` donne un message calme (« rien n'a été débité »). `already-owned` déclenche une restauration silencieuse. Les erreurs réseau ou de store affichent un message honnête.
 - Une sauvegarde `.fingerpaint` ne contient **jamais** les achats, et l'import les ignore.
 
@@ -44,7 +46,7 @@ Pro n'inclut **pas** les packs : chaque pack est un achat de contenu distinct (v
 
 - Le plugin `expo-iap` est déclaré dans `app.json` (`plugins`). Un **development build** est donc nécessaire, car Expo Go ne contient pas le module : `npx expo run:ios` ou `eas build --profile development`.
 - Le provider est choisi **à la compilation** par `EXPO_PUBLIC_IAP_PROVIDER` (Expo injecte la valeur dans le bundle).
-- Exemple `eas.json` (créé en F13) :
+- Profils de `eas.json` (F13) :
 
 ```json
 {
@@ -94,7 +96,7 @@ En local : `EXPO_PUBLIC_IAP_PROVIDER=mock npx expo start`. Sans variable, la val
 
 ### TestFlight
 
-1. `eas build --profile preview --platform ios` (ou `production`), puis `eas submit`.
+1. `npx eas-cli@latest build -p ios --profile production`, puis `npx eas-cli@latest submit -p ios --latest` (une build `preview` est en distribution interne ad hoc : elle s'installe sur les appareils enregistrés mais ne peut pas être envoyée sur TestFlight). Voir `docs/testflight-checklist.md`.
 2. Les testeurs TestFlight achètent dans l'environnement sandbox, **sans être débités**. Les achats intégrés doivent exister dans App Store Connect, mais pas forcément être approuvés.
 3. Refaire les scénarios ci-dessus, et vérifier que la boutique affiche les prix localisés du store.
 

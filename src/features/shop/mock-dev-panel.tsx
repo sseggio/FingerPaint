@@ -34,7 +34,7 @@ export function MockDevPanel({ onNotice }: { onNotice(message: string): void }) 
         {t('shop.dev.next')}
       </AppText>
       <SegmentedControl<MockOutcome>
-        accessibilityLabel={t('shop.dev.next')}
+        accessibilityLabel={t('shop.dev.nextLabel')}
         value={next}
         onChange={setNext}
         options={MOCK_OUTCOMES.map((value) => ({ value, label: t(`shop.dev.outcome.${value}`) }))}
@@ -42,6 +42,7 @@ export function MockDevPanel({ onNotice }: { onNotice(message: string): void }) 
       <Button
         variant="secondary"
         label={t('shop.dev.approve')}
+        accessibilityLabel={t('shop.dev.approveLabel')}
         onPress={() => {
           void provider.approvePending();
         }}
@@ -49,6 +50,7 @@ export function MockDevPanel({ onNotice }: { onNotice(message: string): void }) 
       <Button
         variant="secondary"
         label={t('shop.dev.reset')}
+        accessibilityLabel={t('shop.dev.resetLabel')}
         onPress={() => {
           void provider
             .reset()

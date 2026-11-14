@@ -6,6 +6,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/react-native-skia": "2.14.0",
     "expo": "~58.0.25",
+    "expo-application": "~58.1.2",
     "expo-constants": "~58.0.16",
     "expo-document-picker": "~58.0.5",
     "expo-file-system": "~58.0.13",
@@ -51,7 +52,8 @@
     "lint": "expo lint",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "validate:art": "jest --ci --testPathPatterns src/content/"
+    "validate:art": "jest --ci --testPathPatterns src/content/",
+    "generate:icons": "node scripts/generate-icons.mjs"
   },
   "private": true,
   "jest": {

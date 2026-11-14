@@ -112,6 +112,14 @@ describe('SettingsScreen', () => {
     router.push.mockClear();
   });
 
+  it('opens About from Settings', async () => {
+    await render(<SettingsScreen />);
+    expect(screen.getByRole('header', { name: 'About' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'About FingerPaint' }));
+    expect(router.push).toHaveBeenCalledWith('/about');
+    router.push.mockClear();
+  });
+
   it('sets the session timer', async () => {
     await render(<SettingsScreen />);
     await fireEvent.press(screen.getByRole('radio', { name: '20 min' }));

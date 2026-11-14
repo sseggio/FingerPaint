@@ -63,6 +63,15 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="about"
+            options={{
+              headerBackButtonDisplayMode: 'minimal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.ink,
+            }}
+          />
+          <Stack.Screen
             name="backup-import"
             options={{
               presentation: 'modal',
