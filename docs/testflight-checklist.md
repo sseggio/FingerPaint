@@ -90,7 +90,7 @@ Suggestions (FR et EN, mode clair, une en sombre) :
   >
   > FingerPaint, c'est le coloriage relaxant comme il devrait être : sans publicité, sans pistage, sans énergie ni minuteur. Tout fonctionne hors ligne et tes données restent sur ton appareil.
   >
-  > • 48 illustrations originales en 6 albums : jardin, océan, cuisine, animaux, espace…
+  > • 32 illustrations originales gratuites en 5 albums (jardin, océan, cuisine, animaux, espace), plus 8 avec FingerPaint Pro et un pack de 8 « Océan profond » (achats uniques)
   > • Coloriage fluide : zoom, glisser pour remplir, indices gratuits et illimités
   > • Une image du jour et une série indulgente (des jokers, jamais de pression)
   > • Accessible : mode daltonien avec symboles, gros numéros, contraste élevé, mode gaucher
@@ -109,7 +109,7 @@ Suggestions (FR et EN, mode clair, une en sombre) :
   >
   > FingerPaint is relaxing coloring the way it should be: no ads, no tracking, no energy, no timers. Everything works offline and your data stays on your device.
   >
-  > • 48 original illustrations in 6 albums: garden, ocean, kitchen, animals, space…
+  > • 32 free original illustrations in 5 albums (garden, ocean, kitchen, animals, space), plus 8 with FingerPaint Pro and an 8-artwork "Deep Ocean" pack (one-time purchases)
   > • Smooth coloring: zoom, drag to fill, free and unlimited hints
   > • A daily picture and a forgiving streak (jokers, never pressure)
   > • Accessible: colorblind mode with symbols, large numbers, high contrast, left-handed mode
