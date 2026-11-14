@@ -270,3 +270,25 @@ describe('useProgressStore', () => {
     expect(fresh.getState().index).toEqual({});
   });
 });
+
+describe('progress store removeAll', () => {
+  it('erases every artwork (index and bitsets), in memory and in storage', async () => {
+    const store = createProgressStore(createProgressRepo());
+    await store.getState().hydrate();
+    const bits = createBitset(BITS);
+    setBit(bits, 1);
+    store.getState().save(summary('cat', 1), bits);
+    store.getState().save(summary('fish', 1), bits);
+    await store.getState().flush();
+
+    await store.getState().removeAll();
+    expect(store.getState().index).toEqual({});
+    expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
+    expect(await AsyncStorage.getItem(StorageKeys.progress('fish'))).toBeNull();
+
+    const fresh = createProgressStore(createProgressRepo());
+    await fresh.getState().hydrate();
+    expect(fresh.getState().index).toEqual({});
+  });
+});
+

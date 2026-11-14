@@ -40,7 +40,7 @@ export function SegmentedControl<T extends string>({
               if (!selected) onChange(option.value);
             }}
             style={[styles.segment, selected && { backgroundColor: colors.primary }]}>
-            <AppText variant="label" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
+            <AppText variant="label" tone={selected ? 'inverse' : 'default'} numberOfLines={2} style={styles.label}>
               {option.label}
             </AppText>
           </PressableScale>
@@ -59,5 +59,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
+  // Large Dynamic Type sizes wrap onto a second line instead of being cut.
+  label: { textAlign: 'center' },
 });

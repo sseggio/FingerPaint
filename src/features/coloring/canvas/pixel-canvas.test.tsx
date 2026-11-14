@@ -8,7 +8,9 @@ import { toArtwork } from '@/lib/artwork/codec';
 
 import { createPerfArtworkSource } from './__fixtures__/perf-artwork';
 import { createColorPixels } from './layers';
-import { PixelCanvas } from './pixel-canvas';
+import { createRef } from 'react';
+
+import { PixelCanvas, type PixelCanvasHandle } from './pixel-canvas';
 
 jest.mock('@shopify/react-native-skia', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use import
@@ -80,5 +82,45 @@ describe('PixelCanvas (Skia mock)', () => {
     expect(types.filter((t) => t === 'skImage')).toHaveLength(3);
     // Drag preview + grid.
     expect(types.filter((t) => t === 'skPath')).toHaveLength(2);
+  });
+
+  it('moves the view to a cell for the Find hint, at any zoom, with or without motion', async () => {
+    const ref = createRef<PixelCanvasHandle>();
+    await render(
+      <GestureHandlerRootView>
+        <PixelCanvas
+          ref={ref}
+          artwork={artwork}
+          colorPixels={createColorPixels(artwork.width, artwork.height)}
+          colorRevision={0}
+          activeColor={0}
+          onFill={() => undefined}
+          accessibilityLabel="Artwork"
+        />
+      </GestureHandlerRootView>,
+    );
+    // Not measured yet: nothing to move.
+    expect(ref.current?.getViewCenter()).toBeNull();
+    expect(ref.current?.focusCell(0, false)).toBe(false);
+
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
+      });
+    });
+    // Fitted: the view is centered on the grid.
+    expect(ref.current?.getViewCenter()).toEqual({ x: artwork.width / 2, y: artwork.height / 2 });
+
+    const index = 100 * artwork.width + 20;
+    await act(async () => {
+      expect(ref.current?.focusCell(index, false)).toBe(true);
+    });
+    const center = ref.current!.getViewCenter()!;
+    expect(center.x).toBeCloseTo(20.5);
+    expect(center.y).toBeCloseTo(100.5);
+    // The pulsing marker is drawn on top.
+    expect(hostTypes()).toContain('skRect');
+    expect(ref.current?.focusCell(-1, true)).toBe(false);
+    expect(ref.current?.focusCell(artwork.width * artwork.height, true)).toBe(false);
   });
 });

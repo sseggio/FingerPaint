@@ -183,6 +183,38 @@ export function doubleTapViewport(
   return clampViewport(zoomAt(v, readable, fx, fy), grid, view, bounds);
 }
 
+/** Cell size the "Find" hint zooms to (at least): numbers are readable, even in large mode. */
+export const FOCUS_CELL_PT = 28;
+
+/** World point (in cells) at the center of the view. */
+export function viewCenter(v: Viewport, view: Size): { x: number; y: number } {
+  'worklet';
+  return screenToWorld(view.width / 2, view.height / 2, v);
+}
+
+/**
+ * "Find" hint target: the cell (col, row) centered in the view (as far as the pan bounds allow),
+ * zoomed in to at least `minCellPt` per cell. A deeper zoom is kept, so it works at any zoom.
+ */
+export function focusCellViewport(
+  v: Viewport,
+  col: number,
+  row: number,
+  grid: Size,
+  view: Size,
+  bounds: ScaleBounds,
+  minCellPt = FOCUS_CELL_PT,
+): Viewport {
+  'worklet';
+  const scale = clamp(Math.max(v.scale, minCellPt), bounds.min, bounds.max);
+  return clampViewport(
+    { scale, tx: view.width / 2 - (col + 0.5) * scale, ty: view.height / 2 - (row + 0.5) * scale },
+    grid,
+    view,
+    bounds,
+  );
+}
+
 /**
  * Base for packing range bounds into one number. Bounds go from 0 to the grid size, and the
  * artwork validator caps grids at MAX_SIZE (128), so each bound takes MAX_SIZE + 1 values.

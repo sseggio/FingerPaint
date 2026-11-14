@@ -1,4 +1,4 @@
-import { DRAG_BATCH_MAX, emptyStroke, pendingCount, strokeTo, takeBatch } from './fill-stroke';
+import { DRAG_BATCH_MAX, emptyStroke, pendingCount, previewStart, strokeTo, takeBatch } from './fill-stroke';
 
 const grid = { width: 64, height: 64 };
 /** Every cell has value 1 except column 10 (value 2). */
@@ -70,5 +70,18 @@ describe('drag-to-fill stroke', () => {
 
   it('collects nothing without an active color', () => {
     expect(drag([[1, 1], [5, 1]], 0).batches).toEqual([]);
+  });
+});
+
+describe('previewStart', () => {
+  it('draws the pending cells and the previous batch only', () => {
+    const s = emptyStroke();
+    expect(previewStart(s)).toBe(0);
+    s.cells = Array.from({ length: DRAG_BATCH_MAX * 3 + 10 }, (_, i) => i);
+    s.sent = DRAG_BATCH_MAX;
+    expect(previewStart(s)).toBe(0);
+    s.sent = DRAG_BATCH_MAX * 3;
+    expect(previewStart(s)).toBe(DRAG_BATCH_MAX * 2);
+    expect(s.cells.length - previewStart(s)).toBeLessThanOrEqual(DRAG_BATCH_MAX * 2 + 10);
   });
 });
