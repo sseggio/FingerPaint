@@ -40,3 +40,10 @@ describe('NoopProvider', () => {
     expect(typeof p.subscribe()).toBe('function');
   });
 });
+
+describe('providerKind in release builds', () => {
+  it('never enables the mock outside __DEV__', () => {
+    expect(providerKind('mock', 'ios', false)).toBe('none');
+    expect(providerKind('storekit', 'ios', false)).toBe('storekit');
+  });
+});

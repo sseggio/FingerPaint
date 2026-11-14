@@ -16,9 +16,12 @@ export type { EntitlementsProvider } from './types';
 export function providerKind(
   value: string | undefined = process.env.EXPO_PUBLIC_IAP_PROVIDER,
   os: string = Platform.OS,
+  isDev: boolean = __DEV__,
 ): EntitlementsSource {
   const v = (value ?? '').trim().toLowerCase();
-  if (v === 'mock') return 'mock';
+  // The mock grants every purchase for free: never allow it in a release build, even if
+  // the env var is misconfigured.
+  if (v === 'mock') return isDev ? 'mock' : 'none';
   if (v === 'storekit') return os === 'web' ? 'none' : 'storekit';
   return 'none';
 }
