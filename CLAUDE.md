@@ -30,7 +30,7 @@ Utilise uniquement les tokens de `src/theme` (pas de couleurs en dur hors donné
 - Couleurs (clair) : fond `#FFF8F0`, surface `#FFFFFF`, encre `#1B1A2E`, texte secondaire `#6B6880`,
   accent rose électrique `#FF3D7F` (token `palette.pink`, décoratif), **fond de bouton primaire `#E01F66`** (token `primary`, texte blanc AA), texte rose `primaryText` (`#C2185B` clair / `#FF3D7F` sombre), violet `#7B5CFF`, jaune soleil `#FFC93C`, menthe `#2ED3A0`, ciel `#3DB8FF`, orange `#FF8A3D`.
 - Couleurs (sombre) : fond `#14121F`, surface `#1F1C2E`, encre `#F7F5FF`, secondaire `#A7A3BC` (accents identiques).
-- Rayons : 12 / 20 / 28. Espacements base 4 (4, 8, 12, 16, 24, 32). Ombres douces colorées.
+- Rayons : 12 / 20 / 28 (+ `radius.xs` 4 pour les micro-éléments : barres de progression, badges). Espacements base 4 (4, 8, 12, 16, 24, 32). Ombres douces colorées.
 - Typo : système, titres très gras (800/900), arrondis, tailles 34/28/22/17/15/13.
 - Micro-interactions : pressions avec léger scale (0.96) + haptique légère, confettis sur complétion, transitions ressorts.
 - Accessibilité : `accessibilityLabel` sur tout élément interactif, contrastes AA, Dynamic Type respecté, mode daltonien.

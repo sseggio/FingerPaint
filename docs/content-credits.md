@@ -103,3 +103,5 @@ Aucune œuvre ne reprend une marque, un logo, un personnage ou un univers exista
 | `blue-whale` | La grande baleine | The great whale | 64×40 | 11 | 2 | Pack ocean |
 | `giant-squid` | Calmar géant | Giant squid | 48×48 | 12 | 3 | Pack ocean |
 | `abyss-reef` | Le récif des abysses | The abyssal reef | 96×96 | 22 | 3 | Pack ocean |
+
+![Aperçu des 48 illustrations V1](content-preview.png)
