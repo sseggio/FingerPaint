@@ -3,7 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { bitsetToBase64, createBitset, setBit } from '@/lib/bitset';
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
-import { createProgressRepo, PROGRESS_RETRY_DELAY_MS, PROGRESS_SAVE_DELAY_MS } from './progress-repo';
+import {
+  createProgressRepo,
+  LOAD_INDEX_MAX_WAITS,
+  PROGRESS_RETRY_DELAY_MS,
+  PROGRESS_SAVE_DELAY_MS,
+} from './progress-repo';
 import type { ProgressSummary } from './progress-schema';
 import { createProgressStore } from './progress-store';
 
@@ -353,5 +358,30 @@ describe('progress store removeAll', () => {
     expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
     const fresh = createProgressRepo();
     expect(await fresh.loadIndex()).toEqual({});
+  });
+
+  it('loadIndex stops waiting after a bounded number of queue rounds', async () => {
+    let writes = 0;
+    let stop = false;
+    const bits = createBitset(BITS);
+    // Every write queues another one: an unbounded wait would never resolve.
+    const backend = {
+      getItem: (key: string) => AsyncStorage.getItem(key),
+      removeItem: (key: string) => AsyncStorage.removeItem(key),
+      multiSet: async () => {
+        writes += 1;
+        if (stop) return;
+        repo.save(summary('cat', writes), bits);
+        void repo.flush();
+      },
+    };
+    const repo = createProgressRepo({ backend, delayMs: 60_000 });
+    repo.save(summary('cat', 0), bits);
+    void repo.flush();
+    const index = await repo.loadIndex();
+    stop = true;
+    expect(index.cat).toBeDefined();
+    expect(writes).toBeLessThanOrEqual(LOAD_INDEX_MAX_WAITS + 2);
+    await repo.flush();
   });
 });

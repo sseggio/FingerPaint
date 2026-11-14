@@ -51,6 +51,18 @@ export const en = {
   'library.badge.proLong': 'included with Pro',
   'library.badge.packLong': 'part of a pack',
 
+  'daily.title': 'Artwork of the day',
+  'daily.new': 'New today',
+  'daily.inProgress': '{percent} % colored',
+  'daily.done': 'Finished, well done!',
+  'daily.cta': 'Color it',
+  'daily.streak': { one: '{count} day in a row', other: '{count} days in a row' },
+  'daily.streakStart': 'Color one cell to start a streak',
+  'daily.restart': 'Here we go again!',
+  'daily.jokers': { one: '{count} joker left this week', other: '{count} jokers left this week' },
+  'daily.jokersHint': 'Missed a day? Up to 2 a week are covered automatically.',
+  'daily.cardLabel': 'Artwork of the day: “{title}”, {state}. {streak}. {jokers}. Open to color',
+
   'album.metaLabel': 'Album picture: it lights up in color once every artwork of the album is finished',
   'album.empty': 'New illustrations are on their way.',
   'album.notFound.title': 'Album not found',

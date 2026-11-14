@@ -19,7 +19,7 @@ Aucune œuvre ne reprend une marque, un logo, un personnage ou un univers exista
 
 ## Répartition
 
-- 32 œuvres gratuites, 8 Pro réparties dans les albums gratuits (les plus détaillées) et 8 dans le pack `ocean` (tout l'album Océan profond).
+- 32 œuvres gratuites, 8 Pro réparties dans les albums gratuits (les plus détaillées) et 8 dans le pack `ocean` (tout l'album Océan profond, id `deep-ocean`). Attention : l'album gratuit `ocean` (Océan) et le pack `ocean` sont deux identifiants distincts.
 - Les œuvres font de 16 à 64 px de côté, sauf deux grandes scènes de 96×96 (« Le jardin en fleurs », « Le récif des abysses »).
 - Elles comptent de 6 à 23 couleurs, avec un ΔE76 d'au moins 10 entre deux couleurs.
 - Le contenu total pèse moins de 70 Ko, soit nettement moins que la limite de 1 Mo vérifiée par `src/content/content.test.ts`.
@@ -39,7 +39,7 @@ Aucune œuvre ne reprend une marque, un logo, un personnage ou un univers exista
 | `bee-and-flower` | Abeille et cosmos | Bee and cosmos | 48×48 | 17 | 3 | Pro |
 | `flower-garden` | Le jardin en fleurs | Garden in bloom | 96×96 | 23 | 3 | Pro |
 
-### Océan / Ocean (`ocean`)
+### Océan / Ocean (album `ocean`, gratuit)
 
 | Œuvre | FR | EN | Taille | Couleurs | Difficulté | Accès |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -91,7 +91,7 @@ Aucune œuvre ne reprend une marque, un logo, un personnage ou un univers exista
 | `ringed-planet` | Planète à anneaux | Ringed planet | 32×32 | 11 | 2 | Gratuit |
 | `moon-base` | La base lunaire | Moon base | 64×64 | 19 | 3 | Pro |
 
-### Océan profond / Deep ocean (`deep-ocean`, pack `ocean`)
+### Océan profond / Deep ocean (album `deep-ocean`, pack `ocean`)
 
 | Œuvre | FR | EN | Taille | Couleurs | Difficulté | Accès |
 | --- | --- | --- | --- | --- | --- | --- |

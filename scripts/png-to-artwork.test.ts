@@ -66,4 +66,29 @@ describe('png-to-artwork', () => {
   it('rejects an invalid access value', () => {
     expect(() => convert('tiny-4x4-rgba.png', '--access', 'gold')).toThrow();
   });
+
+  function run(args: string[]): { status: number | null; stderr: string } {
+    try {
+      execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, stderr: '' };
+    } catch (e) {
+      const err = e as { status: number | null; stderr: string };
+      return { status: err.status, stderr: String(err.stderr) };
+    }
+  }
+
+  it('rejects a flag without a value', () => {
+    const fixture = join(FIXTURES, 'tiny-4x4-rgba.png');
+    expect(run([fixture, '--id', 'tiny', '--album', 'garden', '--out'])).toMatchObject({ status: 2 });
+    const res = run([fixture, '--id', '--album', 'garden', '--out', '-']);
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain('--id needs a value');
+  });
+
+  it('validates --id and --album before reading the file', () => {
+    // The input does not exist: a kebab-case error (not a read error) proves validation runs first.
+    const res = run(['/nonexistent.png', '--id', '../evil', '--album', 'garden', '--out', '-']);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('kebab-case');
+  });
 });

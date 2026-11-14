@@ -1,3 +1,4 @@
+import { useDailyStore } from '@/features/daily/daily-store';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
@@ -10,6 +11,7 @@ type Hydrator = () => Promise<void>;
 const defaultHydrators: readonly Hydrator[] = [
   () => useSettingsStore.getState().hydrate(),
   () => useProgressStore.getState().hydrate(),
+  () => useDailyStore.getState().hydrate(),
 ];
 
 /**

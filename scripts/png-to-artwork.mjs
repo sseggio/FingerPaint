@@ -115,10 +115,19 @@ export function pngToArtwork(buffer, meta) {
   };
 }
 
-function parseArgs(argv) {
+const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Parses `<input> --flag value ...`. A flag without a value (or followed by another flag) is an error. */
+export function parseArgs(argv) {
   const [input, ...rest] = argv;
   const opts = {};
-  for (let i = 0; i < rest.length; i += 2) opts[rest[i].replace(/^--/, '')] = rest[i + 1];
+  for (let i = 0; i < rest.length; i += 2) {
+    const flag = rest[i];
+    const value = rest[i + 1];
+    if (!flag.startsWith('--')) throw new Error(`unexpected argument "${flag}"`);
+    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value`);
+    opts[flag.slice(2)] = value;
+  }
   return { input, opts };
 }
 
@@ -130,10 +139,23 @@ function parseAccess(value) {
 }
 
 function main() {
-  const { input, opts } = parseArgs(process.argv.slice(2));
-  if (!input || !opts.id || !opts.album) {
-    console.error('usage: node scripts/png-to-artwork.mjs <file.png> --id <id> --album <album> [options]');
+  const usage = 'usage: node scripts/png-to-artwork.mjs <file.png> --id <id> --album <album> [options]';
+  let parsed;
+  try {
+    parsed = parseArgs(process.argv.slice(2));
+  } catch (e) {
+    console.error(`error: ${e.message}\n${usage}`);
     process.exit(2);
+  }
+  const { input, opts } = parsed;
+  if (!input || !opts.id || !opts.album) {
+    console.error(usage);
+    process.exit(2);
+  }
+  // Validated before decoding: they become a file path.
+  if (!SAFE_ID.test(opts.id) || !SAFE_ID.test(opts.album)) {
+    console.error('error: --id and --album must be kebab-case (a-z, 0-9, -)');
+    process.exit(1);
   }
   const difficulty = Number(opts.difficulty ?? 1);
   if (![1, 2, 3].includes(difficulty)) throw new Error('--difficulty must be 1, 2 or 3');
@@ -146,11 +168,6 @@ function main() {
     difficulty,
     maxColors: opts['max-colors'] ? Number(opts['max-colors']) : undefined,
   });
-  const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-  if (!SAFE_ID.test(artwork.id) || !SAFE_ID.test(artwork.album)) {
-    console.error('error: --id and --album must be kebab-case (a-z, 0-9, -)');
-    process.exit(1);
-  }
   const json = `${JSON.stringify(artwork, null, 2)}\n`;
   for (const w of warnings) console.error(`warning: ${w}`);
   if (opts.out === '-') {

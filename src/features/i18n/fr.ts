@@ -47,6 +47,18 @@ export const fr: Dictionary = {
   'library.badge.proLong': 'inclus dans Pro',
   'library.badge.packLong': 'fait partie d’un pack',
 
+  'daily.title': 'Image du jour',
+  'daily.new': 'Nouvelle aujourd’hui',
+  'daily.inProgress': 'Coloriée à {percent} %',
+  'daily.done': 'Terminée, bravo !',
+  'daily.cta': 'Colorier',
+  'daily.streak': { one: '{count} jour de suite', other: '{count} jours de suite' },
+  'daily.streakStart': 'Colorie une case pour lancer ta série',
+  'daily.restart': 'On repart !',
+  'daily.jokers': { one: '{count} joker restant cette semaine', other: '{count} jokers restants cette semaine' },
+  'daily.jokersHint': 'Un jour sans colorier ? Jusqu’à 2 par semaine sont couverts automatiquement.',
+  'daily.cardLabel': 'Image du jour : « {title} », {state}. {streak}. {jokers}. Ouvrir pour colorier',
+
   'album.metaLabel': 'Image de l’album : elle s’illumine en couleur quand toutes ses illustrations sont terminées',
   'album.empty': 'De nouvelles illustrations arrivent bientôt.',
   'album.notFound.title': 'Album introuvable',

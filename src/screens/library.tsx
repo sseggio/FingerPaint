@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, PressableScale } from '@/components/ui';
 import { listAlbums, listArtworks } from '@/features/artwork/registry';
+import { DailySection } from '@/features/daily/daily-section';
 import { PERF_ARTWORK_ID } from '@/features/coloring/perf-artwork-id';
 import { useT } from '@/features/i18n';
 import { AlbumCard } from '@/features/library/album-card';
@@ -49,7 +50,7 @@ function PixelStrip() {
 }
 
 /** Home screen: greeting, "Continue" carousel, filters, album cards (or filtered artworks). */
-export function LibraryScreen() {
+export function LibraryScreen({ now }: { now?: () => Date } = {}) {
   const t = useT();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -167,6 +168,8 @@ export function LibraryScreen() {
           <AppText variant="caption">{t('library.stats', totals)}</AppText>
         </View>
       </View>
+
+      <DailySection artworks={artworks} index={index} now={now} />
 
       {continueItems.length > 0 ? (
         <View style={styles.section}>
