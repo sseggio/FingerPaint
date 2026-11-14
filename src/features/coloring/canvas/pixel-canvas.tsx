@@ -31,7 +31,7 @@ import {
 import type { Artwork } from '@/lib/artwork/types';
 import { previewStart, type StrokeState } from '@/lib/fill-stroke';
 import { maxVisibleCells, numberThreshold as thresholdFor, type CellRange, type Size } from '@/lib/geometry';
-import { colors, palette } from '@/theme';
+import { canvasThemes, type CanvasThemeColors } from '@/theme';
 
 import { createNumberAtlas, type GlyphAtlas } from './glyph-atlas';
 import { glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
@@ -63,6 +63,8 @@ export interface PixelCanvasProps {
   colorblindSymbols?: boolean;
   /** High-contrast mode: stronger grid lines, glyphs with a halo. */
   highContrast?: boolean;
+  /** Canvas look (cosmetic): backdrop, grid and "Find" ring colors. */
+  theme?: CanvasThemeColors;
   accessibilityLabel: string;
   ref?: Ref<PixelCanvasHandle>;
 }
@@ -169,6 +171,7 @@ export function PixelCanvas({
   dragToFill = true,
   colorblindSymbols = false,
   highContrast = false,
+  theme = canvasThemes.classic,
   accessibilityLabel,
   ref,
 }: PixelCanvasProps) {
@@ -299,8 +302,9 @@ export function PixelCanvas({
   return (
     <GestureDetector gesture={gesture}>
       <View
-        style={styles.root}
+        style={[styles.root, theme.backdrop ? { backgroundColor: theme.backdrop } : null]}
         onLayout={onLayout}
+        testID="pixel-canvas"
         accessible
         accessibilityRole="image"
         accessibilityLabel={accessibilityLabel}>
@@ -327,11 +331,11 @@ export function PixelCanvas({
                 path={gridPath}
                 style="stroke"
                 strokeWidth={0}
-                color={colors.light.ink}
+                color={theme.grid}
                 opacity={gridOpacity}
               />
-              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={palette.white} opacity={pulse} />
-              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={palette.pink} opacity={pulse} />
+              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={theme.halo} opacity={pulse} />
+              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={theme.ring} opacity={pulse} />
             </Group>
           </Canvas>
         ) : null}

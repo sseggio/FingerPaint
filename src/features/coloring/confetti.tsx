@@ -9,7 +9,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { funAccents, radius } from '@/theme';
+import { confettiPalettes, radius } from '@/theme';
 
 /** One fall, slightly longer than a screen transition: this is the rare "delight" moment. */
 const DURATION_MS = 2200;
@@ -31,7 +31,11 @@ export interface ConfettiPiece {
 }
 
 /** Deterministic pieces (seeded LCG): the same burst every time, testable. */
-export function confettiPieces(count = PIECES, seed = 7): ConfettiPiece[] {
+export function confettiPieces(
+  count = PIECES,
+  seed = 7,
+  colors: readonly string[] = confettiPalettes.classic,
+): ConfettiPiece[] {
   let state = seed;
   const random = () => {
     state = (state * 1664525 + 1013904223) % 4294967296;
@@ -43,7 +47,7 @@ export function confettiPieces(count = PIECES, seed = 7): ConfettiPiece[] {
     delay: random() * 0.3,
     spin: 1 + random() * 2,
     size: 8 + random() * 6,
-    color: funAccents[i % funAccents.length],
+    color: colors[i % colors.length],
   }));
 }
 
@@ -75,11 +79,11 @@ function Piece({ piece, progress, height }: { piece: ConfettiPiece; progress: Sh
  * Purely decorative (hidden from screen readers, never intercepts touches). With reduce motion
  * on, nothing falls: the completion card alone tells the story.
  */
-export function Confetti() {
+export function Confetti({ colors = confettiPalettes.classic }: { colors?: readonly string[] }) {
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(0);
   const [height, setHeight] = useState(0);
-  const pieces = useMemo(() => confettiPieces(), []);
+  const pieces = useMemo(() => confettiPieces(undefined, undefined, colors), [colors]);
 
   useEffect(() => {
     if (reduceMotion || height <= 0) return;

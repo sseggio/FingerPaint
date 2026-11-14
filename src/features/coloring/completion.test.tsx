@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { confettiPalettes } from '@/theme';
 
 import { CompletionCard } from './completion-card';
 import { Confetti, confettiPieces } from './confetti';
@@ -60,6 +61,17 @@ describe('Confetti', () => {
     mockReducedMotion.mockReturnValue(true);
     await render(<Confetti />);
     expect(screen.queryByTestId('confetti', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('uses the cosmetic palette it is given (neon, gold)', async () => {
+    await render(<Confetti colors={confettiPalettes.neon} />);
+    const layer = screen.getByTestId('confetti', { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent(layer, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } } });
+    });
+    const colors = new Set(confettiPieces(42, 7, confettiPalettes.neon).map((p) => p.color));
+    expect([...colors].sort()).toEqual([...confettiPalettes.neon].sort());
+    expect(confettiPieces(6, 7, confettiPalettes.gold).every((p) => confettiPalettes.gold.includes(p.color))).toBe(true);
   });
 
   it('builds a deterministic burst in the accent colors', () => {

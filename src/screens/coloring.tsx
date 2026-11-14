@@ -8,6 +8,7 @@ import { AppText, Button, Card, Toast } from '@/components/ui';
 import { listArtworks } from '@/features/artwork/registry';
 import { lockReason } from '@/features/entitlements/can-access';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
+import { useCosmetics } from '@/features/entitlements/use-cosmetics';
 import { PixelCanvas, type PixelCanvasHandle } from '@/features/coloring/canvas/pixel-canvas';
 import { CompletionCard } from '@/features/coloring/completion-card';
 import { Confetti } from '@/features/coloring/confetti';
@@ -21,7 +22,7 @@ import { useSettingsStore } from '@/features/settings/settings-store';
 import { useBreakReminder } from '@/features/wellbeing/break-reminder';
 import type { Artwork } from '@/lib/artwork/types';
 import { findNearestUnfilledCell } from '@/lib/hints';
-import { palette, spacing, useTheme } from '@/theme';
+import { canvasThemes, confettiPalettes, palette, spacing, useTheme } from '@/theme';
 
 /** How long the "Find" messages stay on screen. */
 const HINT_TOAST_MS = 2500;
@@ -59,6 +60,7 @@ function ColoringView({ artwork }: { artwork: Artwork }) {
   const colorblind = useSettingsStore((s) => s.settings.colorblindSymbols);
   const highContrast = useSettingsStore((s) => s.settings.highContrast);
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
+  const cosmetics = useCosmetics();
   const title = localizedTitle(artwork.title, locale);
   const { session, revision, activeColor, completion, selectColor, fill } = useColoringSession(artwork);
   const canvas = useRef<PixelCanvasHandle>(null);
@@ -132,12 +134,13 @@ function ColoringView({ artwork }: { artwork: Artwork }) {
           largeNumbers={largeNumbers}
           colorblindSymbols={colorblind}
           highContrast={highContrast}
+          theme={canvasThemes[cosmetics.canvas]}
           activeColor={coloring ? activeColor : null}
           onFill={coloring ? fill : undefined}
           dragToFill={dragToFill}
           accessibilityLabel={label}
         />
-        {completion === 'celebrate' ? <Confetti /> : null}
+        {completion === 'celebrate' ? <Confetti colors={confettiPalettes[cosmetics.confetti]} /> : null}
         <View style={styles.toasts} pointerEvents="box-none">
           {coloring && breakReminder.visible ? (
             <Toast

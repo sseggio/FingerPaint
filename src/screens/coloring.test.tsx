@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { bitsetToBase64, createBitset, setBit } from '@/lib/bitset';
 import { createEnvelope, StorageKeys } from '@/lib/storage';
+import { canvasThemes } from '@/theme';
 
 import { ColoringScreen } from './coloring';
 
@@ -113,5 +114,24 @@ describe('ColoringScreen', () => {
     await renderScreen('tabby-cat');
     expect(screen.getByLabelText('Palette')).toBeTruthy();
     spy.mockRestore();
+  });
+
+  it('applies the Neon canvas theme when the pack is owned, and not when turned off', async () => {
+    const backdrop = () => {
+      const style = [screen.getByTestId('pixel-canvas').props.style].flat(3);
+      return style.find((s: { backgroundColor?: string } | null) => s?.backgroundColor)?.backgroundColor;
+    };
+    useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
+    await renderScreen('tabby-cat');
+    expect(backdrop()).toBeUndefined();
+
+    useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['neon'], source: 'mock' } });
+    await renderScreen('tabby-cat');
+    expect(backdrop()).toBe(canvasThemes.neon.backdrop);
+
+    useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS, neonTheme: false } });
+    await renderScreen('tabby-cat');
+    expect(backdrop()).toBeUndefined();
+    useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
   });
 });

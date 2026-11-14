@@ -5,6 +5,8 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { AppText, Button, Screen, SegmentedControl, SettingsSection, SwitchRow, Toast } from '@/components/ui';
 import { exportBackup, pickBackup, usePendingImportStore } from '@/features/backup/backup-io';
 import { useDailyStore } from '@/features/daily/daily-store';
+import { ownsGold, ownsNeon } from '@/features/entitlements/cosmetics';
+import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useLocale, useT, type LocalePreference } from '@/features/i18n';
 import { useProgressStore } from '@/features/progress/progress-store';
 import type { SessionTimerMin, Settings } from '@/features/settings/settings-schema';
@@ -92,13 +94,43 @@ function WellbeingSection() {
   );
 }
 
+/** Toggles of owned cosmetics only (nothing is shown for what is not owned: no upsell here). */
+function CosmeticsSection() {
+  const t = useT();
+  const neon = useEntitlementsStore((s) => ownsNeon(s.entitlements));
+  const gold = useEntitlementsStore((s) => ownsGold(s.entitlements));
+  if (!neon && !gold) return null;
+  return (
+    <SettingsSection title={t('settings.cosmetics.title')} accent={palette.pink}>
+      {neon ? <SettingSwitch name="neonTheme" label={t('settings.neon.label')} description={t('settings.neon.hint')} /> : null}
+      {gold ? (
+        <SettingSwitch name="goldConfetti" label={t('settings.gold.label')} description={t('settings.gold.hint')} />
+      ) : null}
+    </SettingsSection>
+  );
+}
+
+function ShopSection() {
+  const t = useT();
+  return (
+    <SettingsSection title={t('settings.shop.title')} accent={palette.violet}>
+      <View style={styles.block}>
+        <AppText tone="secondary" variant="caption">
+          {t('settings.shop.hint')}
+        </AppText>
+        <Button variant="secondary" label={t('settings.shop.open')} onPress={() => router.push('/shop')} />
+      </View>
+    </SettingsSection>
+  );
+}
+
 type Notice = { message: string; accent: string };
 
 function DataSection({ onNotice }: { onNotice(notice: Notice): void }) {
   const t = useT();
   const removeAll = useProgressStore((s) => s.removeAll);
   const resetDaily = useDailyStore((s) => s.reset);
-  const setPlan = usePendingImportStore((s) => s.setPlan);
+  const setPending = usePendingImportStore((s) => s.setPending);
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const confirmReset = () => {
@@ -135,7 +167,7 @@ function DataSection({ onNotice }: { onNotice(notice: Notice): void }) {
       if (outcome.status === 'error') {
         onNotice({ message: t(`settings.data.error.${outcome.error}`), accent: palette.orange });
       } else if (outcome.status === 'ready') {
-        setPlan(outcome.plan);
+        setPending({ backup: outcome.backup, plan: outcome.plan });
         router.push('/backup-import');
       }
     } catch {
@@ -220,7 +252,9 @@ export function SettingsScreen() {
             description={t('settings.leftHanded.hint')}
           />
         </SettingsSection>
+        <CosmeticsSection />
         <WellbeingSection />
+        <ShopSection />
         <DataSection onNotice={setNotice} />
         <AppText variant="caption" color={colors.inkSecondary} style={styles.footer}>
           {t('settings.privacy')}

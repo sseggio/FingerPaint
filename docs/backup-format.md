@@ -29,12 +29,17 @@ JSON UTF-8 versionné, produit par `src/features/backup/backup-format.ts` :
 - **Jamais d'achats / entitlements** : ils ne sont ni écrits ni lus. Tout membre inconnu (par
   exemple un `entitlements` injecté) est ignoré à l'import.
 
-### Validation à l'import (tout ou rien)
+### Validation à l'import
 
-Refus si : fichier > 5 Mo, JSON invalide, `format` différent, `version` ≠ 1, checksum faux,
-`createdAt` invalide, réglages ou série invalides, id d'illustration absent du catalogue,
-bitset mal formé ou de mauvaise longueur, bits hors grille, `filledCount` ≠ nombre de bits,
-statut incohérent (`completed` ⇔ toutes les cases).
+Refus du fichier entier si : fichier > 5 Mo, JSON invalide, `format` différent, `version` ≠ 1,
+checksum faux, `createdAt` invalide, réglages ou série invalides, bitset mal formé ou de
+mauvaise longueur, bits hors grille, `filledCount` ≠ nombre de bits, statut incohérent
+(`completed` ⇔ toutes les cases).
+
+Les ids d'illustration absents du catalogue (sauvegarde d'une version plus récente) sont
+**ignorés et comptés** (« N illustrations inconnues de cette version (ignorées) » dans le
+résumé), sans rejeter le reste. Les réglages ajoutés après la v1 (`neonTheme`, `goldConfetti`)
+prennent leur valeur par défaut s'ils manquent.
 
 ### Fusion
 
@@ -44,7 +49,9 @@ statut incohérent (`completed` ⇔ toutes les cases).
   coloriés plus tard de l'autre côté sont rejoués dessus ; `best` = max.
 - Réglages : restaurés depuis la sauvegarde.
 
-Un écran de confirmation (`/backup-import`) résume les changements avant d'appliquer.
+Un écran de confirmation (`/backup-import`) résume les changements avant d'appliquer. Au
+moment d'appliquer, le plan de fusion est **recalculé depuis l'état courant** : ce qui a été
+colorié (ou effacé) pendant que l'écran était ouvert n'est jamais écrasé.
 
 ## Export PNG
 
@@ -58,3 +65,6 @@ une case = un carré de `scale`×`scale` pixels en échantillonnage nearest-neig
 - Œuvre en cours : l'état partiel est exporté (cases non remplies en gris clair, comme dans l'app).
 - « Exporter en PNG » garde une copie dans `Documents/exports/` puis ouvre la feuille de partage
   (Enregistrer l'image, Fichiers…) ; « Partager » passe par une copie temporaire du cache.
+- Nettoyage : seule la dernière exportation de chaque œuvre est gardée dans `exports/`, les
+  anciennes copies de partage du cache sont purgées à chaque partage, et seule la dernière
+  sauvegarde `.fingerpaint` reste dans `cache/backups/`.

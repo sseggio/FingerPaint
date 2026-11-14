@@ -45,7 +45,8 @@
             "fr"
           ]
         }
-      ]
+      ],
+      "expo-iap"
     ],
     "experiments": {
       "typedRoutes": true,

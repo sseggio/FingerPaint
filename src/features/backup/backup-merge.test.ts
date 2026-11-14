@@ -21,6 +21,7 @@ const empty = (): DailyState => ({ ...EMPTY_DAILY_STATE, jokerDays: [], activeDa
 function backup(entries: ProgressSummary[], d: DailyState = empty()): DecodedBackup {
   return {
     createdAt: 42,
+    unknownCount: 0,
     progress: new Map(entries.map((s) => [s.artworkId, { summary: s, bits: createBitset(64) }])),
     daily: d,
     settings: { ...DEFAULT_SETTINGS, haptics: false },
