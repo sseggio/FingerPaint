@@ -146,6 +146,11 @@ function main() {
     difficulty,
     maxColors: opts['max-colors'] ? Number(opts['max-colors']) : undefined,
   });
+  const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  if (!SAFE_ID.test(artwork.id) || !SAFE_ID.test(artwork.album)) {
+    console.error('error: --id and --album must be kebab-case (a-z, 0-9, -)');
+    process.exit(1);
+  }
   const json = `${JSON.stringify(artwork, null, 2)}\n`;
   for (const w of warnings) console.error(`warning: ${w}`);
   if (opts.out === '-') {
