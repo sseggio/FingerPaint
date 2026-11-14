@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "id": "butterfly",
+  "album": "garden",
+  "title": {
+    "fr": "Papillon arc-en-ciel",
+    "en": "Rainbow butterfly"
+  },
+  "w": 32,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#4A2381",
+    "#8A6BFF",
+    "#FF4F9A",
+    "#FF9A3D",
+    "#5CC8FF",
+    "#FFD84D",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "12.A6.A12.",
+    "12.2A4.2A12.",
+    "7.7BA2.A7B7.",
+    "5.B2H4D2E4A2E4D2HB5.",
+    "4.BD2H3D3E4A3E3D2HDB4.",
+    "3.2H5D4E4A4E5D2H3.",
+    "2.B3H3D6E2A6E3D3HB2.",
+    ".BD2H3D6EG2AG6E3D2HDB.",
+    ".B6D5E2G2A2G5E6DB.",
+    ".B6D4E3G2A3G4E6DB.",
+    ".B6D4E3G2A3G4E6DB.",
+    ".B6D4E2GB2AB2G4E6DB.",
+    "2.B5D4BGB.2A.BG4B5DB2.",
+    "2.2B2D2B4C2B.2A.2B4C2B2D2B2.",
+    "4.2B6C2FB2AB2F6C2B4.",
+    "5.B7CFB2ABF7CB5.",
+    "5.B8CF2AF8CB5.",
+    "5.B9C2A9CB5.",
+    "6.B8C2A8CB6.",
+    "6.B2H6C2A6C2HB6.",
+    "7.2B4C2B2A2B4C2B7.",
+    "9.4B6.4B9.",
+    "32.",
+    "32."
+  ],
+  "access": "free",
+  "difficulty": 2
+}

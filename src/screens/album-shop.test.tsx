@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
+import { listByAlbum } from '@/features/artwork/registry';
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
@@ -43,7 +44,7 @@ describe('AlbumScreen', () => {
   it('shows the album banner and a tile per artwork', async () => {
     useProgressStore.setState({ index: { 'potted-cactus': entry('potted-cactus', 'completed') } });
     await render(<AlbumScreen albumId="garden" />);
-    expect(screen.getByLabelText('Album Garden, 1 of 2 finished')).toBeTruthy();
+    expect(screen.getByLabelText('Album Garden, 1 of 8 finished')).toBeTruthy();
     expect(screen.getByLabelText(/Album picture/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open “Potted cactus”, finished' })).toBeTruthy();
     const mushroom = screen.getByRole('button', { name: 'Open “Happy mushroom”, not started' });
@@ -52,7 +53,8 @@ describe('AlbumScreen', () => {
   });
 
   it('reveals the complete album', async () => {
-    useProgressStore.setState({ index: { 'tabby-cat': entry('tabby-cat', 'completed') } });
+    const animals = listByAlbum('animals');
+    useProgressStore.setState({ index: Object.fromEntries(animals.map((a) => [a.id, entry(a.id, 'completed')])) });
     await render(<AlbumScreen albumId="animals" />);
     expect(screen.getByLabelText(/Album Animals, complete!/)).toBeTruthy();
   });

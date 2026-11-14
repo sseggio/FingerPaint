@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "id": "sleepy-moon",
+  "album": "space",
+  "title": {
+    "fr": "Lune endormie",
+    "en": "Sleepy moon"
+  },
+  "w": 24,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#D98A00",
+    "#FF9AB0",
+    "#8FD8FF",
+    "#FFD23F",
+    "#FFF0A0"
+  ],
+  "rows": [
+    "24.",
+    "24.",
+    "8.4B12.",
+    "6.2B2FB9.D3.",
+    "4.2B3FB14.",
+    "3.B4FB15.",
+    "3.B2F2EB15.",
+    "2.B2F3EB8.B4.D.",
+    "2.B2F2EB9.B6.",
+    ".B2F3EB6.3BE3B3.",
+    ".B2F2E2B7.B3EB4.",
+    ".BF5EB7.3B5.",
+    ".BF3EAEA7.B.B5.",
+    ".BF4EAB15.",
+    ".BF6EB14.",
+    "2.B2EB3ECB13.",
+    "2.B4EAEAEB12.",
+    "3.B8E3B3.B5.",
+    "3.B10EF4B5.",
+    "4.2B3EB6E2B6.",
+    "6.2B6E2B8.",
+    "8.6B.D5.D2.",
+    "24.",
+    "24."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

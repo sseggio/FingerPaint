@@ -180,6 +180,13 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     async loadIndex() {
       // Keep entries saved (or removed) before hydration finished.
       await mergeStoredIndex();
+      // A `removeAll` queued while the stored index was being read must win: wait for every
+      // queued operation (the generation it bumps drops the stale read) so the snapshot never
+      // brings erased entries back into the store.
+      for (let pendingQueue = queue; ; pendingQueue = queue) {
+        await pendingQueue;
+        if (pendingQueue === queue) break;
+      }
       return { ...index };
     },
     async loadFilled(artworkId, bitCount) {

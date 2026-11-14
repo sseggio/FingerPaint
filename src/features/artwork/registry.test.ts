@@ -6,13 +6,16 @@ describe('artwork registry (bundled content)', () => {
   });
 
   it('lists artworks by album', () => {
-    expect(listByAlbum('garden').map((a) => a.id)).toEqual(['potted-cactus', 'happy-mushroom']);
+    const garden = listByAlbum('garden').map((a) => a.id);
+    expect(garden).toHaveLength(8);
+    expect(garden).toEqual(expect.arrayContaining(['potted-cactus', 'happy-mushroom', 'flower-garden']));
+    expect(listByAlbum('deep-ocean')).toHaveLength(8);
     expect(listByAlbum('nowhere')).toEqual([]);
   });
 
   it('decodes every bundled artwork', () => {
     const sources = getRegistry().listArtworks();
-    expect(sources).toHaveLength(6);
+    expect(sources).toHaveLength(48);
     for (const source of sources) {
       const art = getArtwork(source.id);
       expect(art).toBeDefined();

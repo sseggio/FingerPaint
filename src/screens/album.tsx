@@ -65,7 +65,7 @@ function AlbumView({ album, accent }: { album: AlbumSource; accent: string }) {
   const header = (
     <View style={[styles.banner, { backgroundColor: accent, shadowColor: accent }]}>
       <View accessible accessibilityLabel={t('album.metaLabel')}>
-        <AlbumMosaic artworks={artworks} index={index} size={MOSAIC_SIZE} />
+        <AlbumMosaic artworks={artworks} revealed={progress.complete} size={MOSAIC_SIZE} />
       </View>
       <View
         style={styles.bannerText}

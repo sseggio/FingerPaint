@@ -82,6 +82,14 @@ export function LibraryScreen() {
     return { done, inProgress };
   }, [artworks, index]);
 
+  // Each album's artworks, computed once: a stable array per card keeps AlbumCard memoized.
+  const artworksByAlbum = useMemo(() => {
+    const map = new Map<string, ArtworkSource[]>();
+    for (const album of albums) map.set(album.id, []);
+    for (const a of artworks) map.get(a.album)?.push(a);
+    return map;
+  }, [albums, artworks]);
+
   const data = useMemo<Item[]>(() => {
     if (filtering) {
       if (filtered.length === 0) return [{ kind: 'empty', key: 'empty' }];
@@ -89,19 +97,19 @@ export function LibraryScreen() {
     }
     return albums
       .map((album, i) => {
-        const albumArtworks = artworks.filter((a) => a.album === album.id);
+        const albumArtworks = artworksByAlbum.get(album.id) ?? [];
         return {
           kind: 'album' as const,
           key: album.id,
           album,
           artworks: albumArtworks,
-          progress: albumProgress(album.id, artworks, index),
+          progress: albumProgress(album.id, albumArtworks, index),
           accent: accentOf(i),
         };
       })
       // Albums without artworks yet (announced packs) are hidden until content ships.
       .filter((item) => item.artworks.length > 0);
-  }, [albums, artworks, columns, filtered, filtering, index]);
+  }, [albums, artworksByAlbum, columns, filtered, filtering, index]);
 
   const renderItem = useCallback<ListRenderItem<Item>>(
     ({ item }) => {
@@ -111,7 +119,6 @@ export function LibraryScreen() {
             album={item.album}
             artworks={item.artworks}
             progress={item.progress}
-            index={index}
             accent={item.accent}
             onPress={openAlbum}
           />
@@ -240,7 +247,7 @@ const styles = StyleSheet.create({
   header: { gap: spacing.xl, marginBottom: spacing.lg },
   hero: { gap: spacing.sm, marginTop: spacing.sm },
   strip: { flexDirection: 'row', gap: spacing.sm, marginVertical: spacing.xs },
-  stripPixel: { width: 18, height: 18, borderRadius: 5 },
+  stripPixel: { width: 18, height: 18, borderRadius: radius.xs },
   stats: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

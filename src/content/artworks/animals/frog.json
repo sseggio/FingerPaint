@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "id": "frog",
+  "album": "animals",
+  "title": {
+    "fr": "Grenouille sur son nénuphar",
+    "en": "Frog on a lily pad"
+  },
+  "w": 24,
+  "h": 20,
+  "palette": [
+    "#1B1A2E",
+    "#0F5E4A",
+    "#2F6B12",
+    "#22A884",
+    "#FF6FA5",
+    "#7ED957",
+    "#FFC2DA",
+    "#C2F28A",
+    "#F2F7B0",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "24.",
+    "24.",
+    "5.4C6.4C5.",
+    "4.CH2JHC4.CH2JHC4.",
+    "4.C4JC4.C4JC4.",
+    "3.CH3JAF4CHA3JFC3.",
+    "4.C2J2A3F3H2A2JC4.",
+    "4.CF2J8F2JFC4.",
+    "4.CH13FC4.",
+    "3.C2HFA8FA3FC3.",
+    "3.CHE2FAF4IFA2FEFC3.",
+    "3.CH3F8I4FC3.",
+    "3.CH2F10I3FC3.",
+    "4.C2F10I2FC4.",
+    "3.4CF8IF2C3E2.",
+    ".BC4F3C4I3C2FEGE2.",
+    "B2D5C2D4CDB3C3E2B",
+    ".2B18D2B.",
+    "3.4B10D4B3.",
+    "7.10B7."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

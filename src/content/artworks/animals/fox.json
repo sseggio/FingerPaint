@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "id": "fox",
+  "album": "animals",
+  "title": {
+    "fr": "Renard malicieux",
+    "en": "Clever fox"
+  },
+  "w": 24,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#B8400A",
+    "#FF7A1C",
+    "#FF8FA3",
+    "#FFB15C",
+    "#F2D9C8",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "24.",
+    "2.B18.B2.",
+    "2.3B14.3B2.",
+    "2.B2CB12.B2CB2.",
+    "2.B2AC2B8.2BC2AB2.",
+    "2.B3A2C8B2C3AB2.",
+    "2.BC2A2B8E2B2ACB2.",
+    "2.BCAB4E8CBACB2.",
+    "3.2B3E11C2B3.",
+    "3.B3E13CB3.",
+    "3.B2E14CB3.",
+    "2.B2E2CA8CA4CB2.",
+    ".B3E2CA8CA5CB.",
+    "2.B5G8C5GB2.",
+    "3.BGD2GF6CF2GDFB3.",
+    "4.B5GF2CF4GFB4.",
+    "5.B11GFB5.",
+    "6.B9GFB6.",
+    "7.B7GFB7.",
+    "8.B5GFB8.",
+    "9.BG2AFB9.",
+    "10.B2AB10.",
+    "11.2B11.",
+    "24."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

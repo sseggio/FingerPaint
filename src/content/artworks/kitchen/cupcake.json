@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "id": "cupcake",
+  "album": "kitchen",
+  "title": {
+    "fr": "Cupcake à la cerise",
+    "en": "Cherry cupcake"
+  },
+  "w": 24,
+  "h": 24,
+  "palette": [
+    "#8E0F2A",
+    "#B5306B",
+    "#3A8A3A",
+    "#F0263F",
+    "#FF5FA2",
+    "#D98AA8",
+    "#3DB8FF",
+    "#FF9CC8",
+    "#2ED3A0",
+    "#FFC93C",
+    "#FFD6E6",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "13.C10.",
+    "10.3AC10.",
+    "9.ADLDA10.",
+    "9.A3DA10.",
+    "9.F3ALF9.",
+    "8.F3L3KF8.",
+    "7.F3L5KF7.",
+    "6.F3L4KE2KF6.",
+    "5.F3L6F3KF5.",
+    "4.F3L11KF4.",
+    "5.FL5KE3KJKF5.",
+    "3.2FLK10F2K2F3.",
+    "2.F4L2KJ5KG2KI2KF2.",
+    "3.2F14K2F3.",
+    "4.B14FB4.",
+    "5.BH2E6FB2EB5.",
+    "5.BH2EB2EB2EB2EB5.",
+    "5.BH2EB2EB2EB2EB5.",
+    "5.BH2EB2EB2EB2EB5.",
+    "6.BHEB2EB2EBEB6.",
+    "6.BHEB2EB2EBEB6.",
+    "6.BHEB2EB2EBEB6.",
+    "6.12B6.",
+    "24."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

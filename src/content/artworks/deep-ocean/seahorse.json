@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "id": "seahorse",
+  "album": "deep-ocean",
+  "title": {
+    "fr": "Hippocampe",
+    "en": "Seahorse"
+  },
+  "w": 24,
+  "h": 32,
+  "palette": [
+    "#120A1E",
+    "#0B1745",
+    "#15287A",
+    "#22409E",
+    "#A3360A",
+    "#0E6B5E",
+    "#FF6F9C",
+    "#22B89A",
+    "#FF8A1C",
+    "#FFC85C",
+    "#6FF0FF",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "24D",
+    "4D2K5DEDE10D",
+    "3DKD2K3D3EDE9D",
+    "3D4KD2E3J2E5DK3D",
+    "4D2K2DE2JLAIE9D",
+    "7D2EJI2AIE9D",
+    "4D3EIEJ4IE4DK4D",
+    "3DEI5E3I3E8D",
+    "4DE4DEG2E2IE8D",
+    "9DEJ5IE7D",
+    "10DE5IE7D",
+    "7CK2CE5IE7C",
+    "10C2J4IE7C",
+    "10CEJ4I2E6C",
+    "9C3J4I2E6C",
+    "3CF5CE2J4I2E6C",
+    "2C2F5C3J4I2E6C",
+    "2CF6CEJ5I2E6C",
+    "C2F6C3J3IE8C",
+    "C2F6CEJ4IE5CF2C",
+    "CF6C4J2IE6CF2C",
+    "B2F6BEJ2IE7BF2B",
+    "B2F6BE3IEBE4B2F2B",
+    "2B2F5BEJ3IEIE2B2F3B",
+    "2BFHF4BEJ5IEBFHF3B",
+    "2BFHF4BEJ6IE2F4B",
+    "3BFHF4BE6IE2F4B",
+    "3BFHF5B2E2I2EFHF4B",
+    "3BFHF7B2E3BFHF3B",
+    "2BF2HF12BF2HF2B",
+    "2BFHF14BF2HFB",
+    "BF2HF15BFHFB"
+  ],
+  "access": {
+    "pack": "ocean"
+  },
+  "difficulty": 2
+}

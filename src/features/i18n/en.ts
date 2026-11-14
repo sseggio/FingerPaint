@@ -51,7 +51,7 @@ export const en = {
   'library.badge.proLong': 'included with Pro',
   'library.badge.packLong': 'part of a pack',
 
-  'album.metaLabel': 'Album picture: each piece lights up when its artwork is finished',
+  'album.metaLabel': 'Album picture: it lights up in color once every artwork of the album is finished',
   'album.empty': 'New illustrations are on their way.',
   'album.notFound.title': 'Album not found',
   'album.notFound.body': 'This album does not exist or is no longer available.',
