@@ -4,6 +4,8 @@ import { Alert, type AlertButton } from 'react-native';
 
 import { exportBackup, pickBackup, usePendingImportStore } from '@/features/backup/backup-io';
 import { useDailyStore } from '@/features/daily/daily-store';
+import { DEFAULT_ENTITLEMENTS } from '@/features/entitlements/can-access';
+import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { createSettingsStore, useSettingsStore } from '@/features/settings/settings-store';
@@ -83,6 +85,33 @@ describe('SettingsScreen', () => {
     expect(fresh.getState().settings.colorblindSymbols).toBe(true);
   });
 
+  it('shows cosmetic toggles only for what is owned', async () => {
+    useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
+    await render(<SettingsScreen />);
+    expect(screen.queryByRole('header', { name: 'Looks' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Neon theme' })).toBeNull();
+
+    await act(async () => {
+      useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['neon'], source: 'mock' } });
+    });
+    await render(<SettingsScreen />);
+    expect(screen.getByRole('header', { name: 'Looks' })).toBeTruthy();
+    expect(screen.queryByRole('switch', { name: 'Golden confetti' })).toBeNull();
+    await fireEvent.press(screen.getByRole('switch', { name: 'Neon theme' }));
+    expect(useSettingsStore.getState().settings.neonTheme).toBe(false);
+    expect((await storedSettings()).neonTheme).toBe(false);
+    await act(async () => {
+      useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
+    });
+  });
+
+  it('opens the shop from Settings, without pressure', async () => {
+    await render(<SettingsScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Open the shop' }));
+    expect(router.push).toHaveBeenCalledWith('/shop');
+    router.push.mockClear();
+  });
+
   it('sets the session timer', async () => {
     await render(<SettingsScreen />);
     await fireEvent.press(screen.getByRole('radio', { name: '20 min' }));
@@ -159,11 +188,12 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('This backup is damaged or was modified: it was not imported.')).toBeTruthy();
 
     const plan = { writes: [], daily: useDailyStore.getState().daily, settings: DEFAULT_SETTINGS, summary: {} };
-    mockedPick.mockResolvedValueOnce({ status: 'ready', plan });
+    const backup = { createdAt: 1, unknownCount: 0, progress: new Map(), daily: plan.daily, settings: DEFAULT_SETTINGS };
+    mockedPick.mockResolvedValueOnce({ status: 'ready', backup, plan });
     await act(async () => {
       fireEvent.press(importButton());
     });
-    expect(usePendingImportStore.getState().plan).toBe(plan);
+    expect(usePendingImportStore.getState().pending).toEqual({ backup, plan });
     expect(router.push).toHaveBeenCalledWith('/backup-import');
   });
 });

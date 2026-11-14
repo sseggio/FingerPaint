@@ -26,8 +26,10 @@ export interface LocalState {
 
 export interface ImportSummary {
   createdAt: number;
-  /** Artworks with progress in the file. */
+  /** Artworks with progress in the file (known to this version). */
   inFile: number;
+  /** Entries of artworks this version does not know: skipped. */
+  skippedUnknown: number;
   /** Artworks with no local progress, restored from the file. */
   added: number;
   /** Artworks where the file is more advanced than the device. */
@@ -124,6 +126,7 @@ export function planImport(local: LocalState, backup: DecodedBackup, today: DayK
     summary: {
       createdAt: backup.createdAt,
       inFile: backup.progress.size,
+      skippedUnknown: backup.unknownCount,
       added,
       improved,
       kept,

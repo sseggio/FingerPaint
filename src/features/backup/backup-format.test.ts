@@ -99,7 +99,7 @@ describe('serializeBackup / parseBackup', () => {
     const result = parseBackup(resign(file), catalog);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(Object.keys(result.backup).sort()).toEqual(['createdAt', 'daily', 'progress', 'settings']);
+    expect(Object.keys(result.backup).sort()).toEqual(['createdAt', 'daily', 'progress', 'settings', 'unknownCount']);
     expect(JSON.stringify(result.backup.settings)).not.toMatch(/pro|pack/);
   });
 });
@@ -137,14 +137,38 @@ describe('parseBackup rejections', () => {
     expectError(JSON.stringify({ ...base(), format: 'other-app' }), 'not-a-backup');
   });
 
-  it('rejects unknown artwork ids', () => {
+  it('skips and counts unknown artwork ids instead of rejecting the file', () => {
     const file = base();
     const progress = file.payload.progress as Record<string, unknown>;
     progress.dragon = { ...summary('dragon', 1, 'in_progress'), filled: bitsetToBase64(bitsWith(8, 1)) };
-    expectError(resign(file), 'unknown-artwork');
+    progress.unicorn = 'whatever: never decoded';
+    const result = parseBackup(resign(file), catalog);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.backup.unknownCount).toBe(2);
+    expect([...result.backup.progress.keys()].sort()).toEqual(['cat', 'fish']);
+
     const proto = base();
     (proto.payload.progress as Record<string, unknown>)['constructor'] = (proto.payload.progress as Record<string, unknown>).cat;
-    expectError(resign(proto), 'unknown-artwork');
+    const protoResult = parseBackup(resign(proto), catalog);
+    if (!protoResult.ok) throw new Error(protoResult.error);
+    expect(protoResult.backup.unknownCount).toBe(1);
+    expect(protoResult.backup.progress.has('constructor')).toBe(false);
+  });
+
+  it('still rejects an invalid entry of a known artwork', () => {
+    const file = base();
+    (file.payload.progress as Record<string, unknown>).cat = { filled: 'AAAA' };
+    expectError(resign(file), 'invalid');
+  });
+
+  it('accepts backups written before the cosmetic settings existed', () => {
+    const file = base();
+    const settings = file.payload.settings as Record<string, unknown>;
+    delete settings.neonTheme;
+    delete settings.goldConfetti;
+    const result = parseBackup(resign(file), catalog);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.backup.settings).toMatchObject({ neonTheme: true, goldConfetti: true });
   });
 
   it('rejects bitsets of the wrong length, bits beyond the grid and mismatched counts', () => {

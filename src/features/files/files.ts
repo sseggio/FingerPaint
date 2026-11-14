@@ -38,6 +38,30 @@ export async function writeFile(
   return file.uri;
 }
 
+/**
+ * Deletes the files of `<location>/<folder>` matched by `shouldDelete` (by file name). Best
+ * effort and synchronous: a file that cannot be deleted is left for the next time.
+ */
+export function pruneFolder(location: FileLocation, folder: string, shouldDelete: (name: string) => boolean): number {
+  let removed = 0;
+  try {
+    const dir = new Directory(location === 'cache' ? Paths.cache : Paths.document, folder);
+    if (!dir.exists) return 0;
+    for (const entry of dir.list()) {
+      if (!(entry instanceof File) || !shouldDelete(entry.name)) continue;
+      try {
+        entry.delete();
+        removed++;
+      } catch {
+        // Locked or already gone: try again next time.
+      }
+    }
+  } catch {
+    // Folder unreadable: nothing to clean.
+  }
+  return removed;
+}
+
 export interface ShareOptions {
   mimeType: string;
   UTI?: string;
@@ -70,6 +94,8 @@ export async function pickFile(): Promise<PickedFile | null> {
 /** Reads a text file, refusing it (FileTooLargeError) when larger than `maxBytes`. */
 export async function readTextFile(uri: string, maxBytes: number): Promise<string> {
   const file = new File(uri);
+  // `size` can be 0 when the platform cannot tell (some providers / not yet materialized files):
+  // it is then not trusted as "empty", the text is read and `parseBackup` bounds its length.
   if (file.exists && file.size > maxBytes) throw new FileTooLargeError();
   return file.text();
 }

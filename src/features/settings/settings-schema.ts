@@ -15,6 +15,10 @@ export interface Settings {
   highContrast: boolean;
   leftHanded: boolean;
   sessionTimerMin: SessionTimerMin;
+  /** Neon pack (cosmetic): canvas theme + confetti, when owned. On by default, can be turned off. */
+  neonTheme: boolean;
+  /** Pro bonus cosmetic: golden confetti, when owned. */
+  goldConfetti: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
@@ -27,6 +31,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   highContrast: false,
   leftHanded: false,
   sessionTimerMin: 0,
+  neonTheme: true,
+  goldConfetti: true,
 });
 
 const LOCALES: readonly unknown[] = ['system', 'fr', 'en'];
@@ -39,10 +45,15 @@ const BOOLEAN_KEYS = [
   'largeNumbers',
   'highContrast',
   'leftHanded',
+  'neonTheme',
+  'goldConfetti',
 ] as const;
 
-/** v0 keys copied as-is into v1 (the others are renamed or derived). */
-const V0_CARRIED_KEYS = BOOLEAN_KEYS.filter((k) => k !== 'colorblindSymbols');
+/** v0 keys copied as-is into v1 (the others are renamed, derived or newer). */
+const V0_CARRIED_KEYS = ['dragToFill', 'haptics', 'largeNumbers', 'highContrast', 'leftHanded'] as const;
+
+/** Keys added after v1, with their defaults (filled in by the v1 → v2 migration and on backup import). */
+const V2_KEYS = ['neonTheme', 'goldConfetti'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -72,6 +83,7 @@ export function migrateSettingsV0toV1(data: unknown): unknown {
     if (Object.prototype.hasOwnProperty.call(data, key)) carried[key] = data[key];
   }
   return {
+    // Current defaults (the v1 → v2 step keeps them as they are).
     ...DEFAULT_SETTINGS,
     ...carried,
     locale: language === 'fr' || language === 'en' ? language : 'system',
@@ -80,9 +92,25 @@ export function migrateSettingsV0toV1(data: unknown): unknown {
   };
 }
 
+/** v2 adds the cosmetic toggles (F12); everything else is unchanged. */
+export function migrateSettingsV1toV2(data: unknown): unknown {
+  return withNewerSettingsDefaults(data);
+}
+
+/**
+ * Fills the keys added after v1 with their defaults when they are missing (settings v1, and
+ * backups written before v2). Returns the input unchanged when it is not an object.
+ */
+export function withNewerSettingsDefaults(data: unknown): unknown {
+  if (!isRecord(data)) return data;
+  const out: Record<string, unknown> = { ...data };
+  for (const key of V2_KEYS) if (!Object.prototype.hasOwnProperty.call(out, key)) out[key] = DEFAULT_SETTINGS[key];
+  return out;
+}
+
 export const settingsSchema: Schema<Settings> = {
-  version: 1,
-  migrations: { 0: migrateSettingsV0toV1 },
+  version: 2,
+  migrations: { 0: migrateSettingsV0toV1, 1: migrateSettingsV1toV2 },
   guard: isSettings,
   defaults: () => ({ ...DEFAULT_SETTINGS }),
 };

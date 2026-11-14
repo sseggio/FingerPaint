@@ -28,6 +28,7 @@ jest.mock('@/features/files/files', () => {
       return uri;
     }),
     shareFile: jest.fn(async () => true),
+    pruneFolder: jest.fn(() => 0),
     pickFile: jest.fn(async () => null),
     readTextFile: jest.fn(async (uri: string, maxBytes: number) => {
       const content = disk.get(uri);
@@ -43,6 +44,7 @@ const mocked = files as unknown as typeof files & {
   writeFile: jest.Mock;
   shareFile: jest.Mock;
   pickFile: jest.Mock;
+  pruneFolder: jest.Mock;
 };
 
 const NOW = new Date(2026, 10, 14, 10, 0);
@@ -119,7 +121,7 @@ describe('backup export → reinstall → import', () => {
     expect(outcome.status).toBe('ready');
     if (outcome.status !== 'ready') return;
     expect(outcome.plan.summary).toMatchObject({ inFile: 2, added: 2, improved: 0, kept: 0, completedAfter: 1, streakAfter: 6 });
-    await applyImport(outcome.plan);
+    await applyImport(outcome.backup, NOW);
 
     // Everything is back, in memory and in storage (fresh stores hydrate it).
     const fresh = createProgressStore(createProgressRepo());
@@ -152,7 +154,7 @@ describe('backup export → reinstall → import', () => {
     const outcome = await pickBackup(NOW);
     if (outcome.status !== 'ready') throw new Error(`unexpected ${outcome.status}`);
     expect(outcome.plan.summary).toMatchObject({ improved: 1, kept: 1, added: 0 });
-    await applyImport(outcome.plan);
+    await applyImport(outcome.backup, NOW);
     expect(useProgressStore.getState().index['tabby-cat'].filledCount).toBe(5);
     expect(useProgressStore.getState().index.owl.filledCount).toBe(50);
   });
@@ -174,6 +176,33 @@ describe('backup export → reinstall → import', () => {
     mocked.pickFile.mockResolvedValueOnce({ uri: 'file:///missing', name: 'm' });
     await expect(pickBackup(NOW)).resolves.toEqual({ status: 'error', error: 'read-failed' });
     expect(useProgressStore.getState().index['tabby-cat'].filledCount).toBe(5);
+  });
+
+  it('re-plans from the current state when applying (changes made meanwhile are kept)', async () => {
+    await useProgressStore.getState().importEntries([colored('tabby-cat', 5)]);
+    await exportBackup('Save', () => NOW);
+    const fileUri = await (mocked.writeFile.mock.results[0].value as Promise<string>);
+    await useProgressStore.getState().remove('tabby-cat');
+
+    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.fingerpaint' });
+    const outcome = await pickBackup(NOW);
+    if (outcome.status !== 'ready') throw new Error(`unexpected ${outcome.status}`);
+    expect(outcome.plan.summary).toMatchObject({ added: 1, kept: 0 });
+
+    // While the confirmation screen is open, the user colors further on this device.
+    await useProgressStore.getState().importEntries([colored('tabby-cat', 8)]);
+    const applied = await applyImport(outcome.backup, NOW);
+    expect(applied.summary).toMatchObject({ added: 0, improved: 0, kept: 1 });
+    expect(applied.writes).toEqual([]);
+    expect(useProgressStore.getState().index['tabby-cat'].filledCount).toBe(8);
+  });
+
+  it('keeps only the latest exported backup in the cache', async () => {
+    await exportBackup('Save', () => NOW);
+    expect(mocked.pruneFolder).toHaveBeenCalledWith('cache', 'backups', expect.any(Function));
+    const shouldDelete = mocked.pruneFolder.mock.calls[0][2] as (name: string) => boolean;
+    expect(shouldDelete('fingerpaint-2026-11-14.fingerpaint')).toBe(false);
+    expect(shouldDelete('fingerpaint-2026-11-01.fingerpaint')).toBe(true);
   });
 
   it('says when sharing is unavailable', async () => {

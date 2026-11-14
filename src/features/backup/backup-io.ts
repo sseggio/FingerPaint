@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { getArtwork } from '@/features/artwork/registry';
 import { useDailyStore } from '@/features/daily/daily-store';
-import { FileTooLargeError, pickFile, readTextFile, shareFile, writeFile } from '@/features/files/files';
+import { FileTooLargeError, pickFile, pruneFolder, readTextFile, shareFile, writeFile } from '@/features/files/files';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { toDayKey } from '@/lib/daily';
@@ -16,6 +16,7 @@ import {
   type BackupData,
   type BackupError,
   type CatalogLookup,
+  type DecodedBackup,
 } from './backup-format';
 import { planImport, type ImportPlan } from './backup-merge';
 
@@ -53,7 +54,10 @@ export function backupFileName(date: Date): string {
 export async function exportBackup(dialogTitle: string, now: () => Date = () => new Date()): Promise<'shared' | 'unavailable'> {
   const date = now();
   const text = serializeBackup(await collectBackupData(), date.getTime());
-  const uri = await writeFile('cache', 'backups', backupFileName(date), text);
+  const name = backupFileName(date);
+  const uri = await writeFile('cache', 'backups', name, text);
+  // Earlier exports are only temporary share copies: keep the latest one.
+  pruneFolder('cache', 'backups', (file) => file !== name);
   // `application/octet-stream` keeps the `.fingerpaint` extension on iOS (no type is appended).
   const shared = await shareFile(uri, { mimeType: 'application/octet-stream', dialogTitle });
   return shared ? 'shared' : 'unavailable';
@@ -62,24 +66,30 @@ export async function exportBackup(dialogTitle: string, now: () => Date = () => 
 export type PickOutcome =
   | { status: 'cancelled' }
   | { status: 'error'; error: BackupError | 'read-failed' }
-  | { status: 'ready'; plan: ImportPlan };
+  | { status: 'ready'; backup: DecodedBackup; plan: ImportPlan };
+
+/** Plans an import against the CURRENT local state (nothing is applied). */
+export function planFromCurrentState(backup: DecodedBackup, today: Date = new Date()): ImportPlan {
+  return planImport(
+    { index: useProgressStore.getState().index, daily: useDailyStore.getState().daily },
+    backup,
+    toDayKey(today),
+  );
+}
 
 /** Reads, validates and plans an import from raw file text (nothing is applied). */
 export function prepareImport(text: string, today: Date = new Date()): PickOutcome {
   const result = parseBackup(text, catalogLookup);
   if (!result.ok) return { status: 'error', error: result.error };
-  const plan = planImport(
-    { index: useProgressStore.getState().index, daily: useDailyStore.getState().daily },
-    result.backup,
-    toDayKey(today),
-  );
-  return { status: 'ready', plan };
+  return { status: 'ready', backup: result.backup, plan: planFromCurrentState(result.backup, today) };
 }
 
 /** Lets the user pick a backup file, then validates it and computes the merge plan. */
 export async function pickBackup(today: Date = new Date()): Promise<PickOutcome> {
   const picked = await pickFile();
   if (!picked) return { status: 'cancelled' };
+  // Fast path only: some document providers report no size, or 0, for a file that is not empty.
+  // `readTextFile` checks the real size again, and `parseBackup` the text length.
   if (picked.size !== undefined && picked.size > MAX_BACKUP_BYTES) return { status: 'error', error: 'too-large' };
   let text: string;
   try {
@@ -90,20 +100,33 @@ export async function pickBackup(today: Date = new Date()): Promise<PickOutcome>
   return prepareImport(text, today);
 }
 
-/** Applies a confirmed plan: progress entries, merged streak, restored settings. */
-export async function applyImport(plan: ImportPlan): Promise<void> {
+/**
+ * Applies a confirmed backup: progress entries, merged streak, restored settings. The merge is
+ * recomputed from the current state at this moment (the user may have colored, or reset, while
+ * the confirmation screen was open), so nothing done in between is overwritten. Returns the
+ * plan actually applied.
+ */
+export async function applyImport(backup: DecodedBackup, today: Date = new Date()): Promise<ImportPlan> {
+  const plan = planFromCurrentState(backup, today);
   await useProgressStore.getState().importEntries(plan.writes);
   await useDailyStore.getState().replace(plan.daily);
   await useSettingsStore.getState().update(plan.settings);
+  return plan;
 }
 
-/** Validated plan waiting for the user's confirmation (passed to the confirmation screen). */
+/** A validated backup and its preview plan, waiting for the user's confirmation. */
+export interface PendingImport {
+  backup: DecodedBackup;
+  /** Preview shown on the confirmation screen (recomputed when applied). */
+  plan: ImportPlan;
+}
+
 export interface PendingImportState {
-  plan: ImportPlan | null;
-  setPlan(plan: ImportPlan | null): void;
+  pending: PendingImport | null;
+  setPending(pending: PendingImport | null): void;
 }
 
 export const usePendingImportStore = create<PendingImportState>()((set) => ({
-  plan: null,
-  setPlan: (plan) => set({ plan }),
+  pending: null,
+  setPending: (pending) => set({ pending }),
 }));

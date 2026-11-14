@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
-import { DEFAULT_SETTINGS, isSettings, migrateSettingsV0toV1 } from './settings-schema';
+import { DEFAULT_SETTINGS, isSettings, migrateSettingsV0toV1, migrateSettingsV1toV2 } from './settings-schema';
 import { createSettingsStore } from './settings-store';
 
 function deferred<T>() {
@@ -101,6 +101,16 @@ describe('useSettingsStore', () => {
     const store = createSettingsStore();
     await store.getState().hydrate();
     expect(store.getState()).toMatchObject({ hydrated: true, settings: DEFAULT_SETTINGS });
+  });
+
+  it('migrates v1 settings to v2 (cosmetic toggles on by default, the rest kept)', async () => {
+    const { neonTheme: _n, goldConfetti: _g, ...v1 } = { ...DEFAULT_SETTINGS, haptics: false, theme: 'dark' as const };
+    await AsyncStorage.setItem(StorageKeys.settings, JSON.stringify(createEnvelope(v1, 1)));
+    const store = createSettingsStore();
+    await store.getState().hydrate();
+    expect(store.getState().settings).toEqual({ ...DEFAULT_SETTINGS, haptics: false, theme: 'dark', neonTheme: true, goldConfetti: true });
+    expect(migrateSettingsV1toV2({ ...v1, neonTheme: false })).toMatchObject({ neonTheme: false, goldConfetti: true });
+    expect(migrateSettingsV1toV2('nope')).toBe('nope');
   });
 
   it('resets to defaults', async () => {

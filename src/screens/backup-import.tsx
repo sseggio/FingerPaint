@@ -35,6 +35,9 @@ function SummaryCard({ summary }: { summary: ImportSummary }) {
         {t('import.createdAt', { date: formatDate(summary.createdAt) })}
       </AppText>
       <SummaryLine accent={palette.sky} text={t('import.inFile', { count: summary.inFile })} />
+      {summary.skippedUnknown > 0 ? (
+        <SummaryLine accent={palette.orange} text={t('import.skippedUnknown', { count: summary.skippedUnknown })} />
+      ) : null}
       <SummaryLine accent={palette.mint} text={t('import.added', { count: summary.added })} />
       <SummaryLine accent={palette.violet} text={t('import.improved', { count: summary.improved })} />
       <SummaryLine accent={palette.sun} text={t('import.kept', { count: summary.kept })} />
@@ -49,21 +52,23 @@ function SummaryCard({ summary }: { summary: ImportSummary }) {
 export function BackupImportScreen() {
   const t = useT();
   const { colors } = useTheme();
-  const plan = usePendingImportStore((s) => s.plan);
-  const setPlan = usePendingImportStore((s) => s.setPlan);
+  const pending = usePendingImportStore((s) => s.pending);
+  const setPending = usePendingImportStore((s) => s.setPending);
+  const plan = pending?.plan ?? null;
   const [state, setState] = useState<'idle' | 'applying' | 'done' | 'failed'>('idle');
 
   const cancel = () => {
-    setPlan(null);
+    setPending(null);
     close();
   };
 
   const confirm = async () => {
-    if (!plan) return;
+    if (!pending) return;
     setState('applying');
     try {
-      await applyImport(plan);
-      setPlan(null);
+      // Re-planned against the current state: changes made since the preview are kept.
+      await applyImport(pending.backup);
+      setPending(null);
       setState('done');
     } catch {
       setState('failed');

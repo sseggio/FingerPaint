@@ -10,6 +10,8 @@ export const StorageKeys = {
   progress: (artworkId: string) => `fp:progress:${artworkId}`,
   daily: 'fp:daily',
   entitlements: 'fp:entitlements',
+  /** Ledger of the mock purchase provider (dev / internal builds only). */
+  mockStore: 'fp:mock-store',
 } as const;
 
 /** Subset of the AsyncStorage API we rely on (injectable for tests). */

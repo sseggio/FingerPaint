@@ -85,3 +85,38 @@ export const funAccents = [
   palette.sky,
   palette.orange,
 ] as const;
+
+/** Neon pack (cosmetic, F12): glowing accents on a deep night backdrop. */
+export const neon = {
+  night: '#0B0820',
+  cyan: '#00F0FF',
+  magenta: '#FF2BD6',
+  lime: '#B6FF3C',
+  yellow: '#FFE94D',
+  violet: '#9B6BFF',
+} as const;
+
+/** Pro bonus cosmetic: golden confetti. */
+export const gold = ['#FFC93C', '#FFD86B', '#FFB000', '#FFF1B8', '#FF8A3D', '#E8A317'] as const;
+
+export interface CanvasThemeColors {
+  /** Behind the artwork (null: the screen background). */
+  backdrop: string | null;
+  grid: string;
+  /** "Find" ring and its halo. */
+  ring: string;
+  halo: string;
+}
+
+/** Looks of the coloring canvas (the artwork's own colors never change). */
+export const canvasThemes: Readonly<Record<'classic' | 'neon', CanvasThemeColors>> = {
+  classic: { backdrop: null, grid: colors.light.ink, ring: palette.pink, halo: palette.white },
+  neon: { backdrop: neon.night, grid: neon.cyan, ring: neon.magenta, halo: neon.cyan },
+};
+
+/** Confetti colors per style. */
+export const confettiPalettes: Readonly<Record<'classic' | 'neon' | 'gold', readonly string[]>> = {
+  classic: funAccents,
+  neon: [neon.cyan, neon.magenta, neon.lime, neon.yellow, neon.violet],
+  gold,
+};

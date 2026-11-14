@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { applyImport, usePendingImportStore } from '@/features/backup/backup-io';
+import type { DecodedBackup } from '@/features/backup/backup-format';
 import type { ImportPlan } from '@/features/backup/backup-merge';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -28,13 +29,22 @@ const plan: ImportPlan = {
   writes: [],
   daily: { lastActiveDay: null, streak: 0, best: 7, jokerDays: [], activeDays: [] },
   settings: { ...DEFAULT_SETTINGS },
-  summary: { createdAt: Date.UTC(2026, 10, 2), inFile: 12, added: 9, improved: 2, kept: 1, completedAfter: 5, streakAfter: 0, bestAfter: 7 },
+  summary: { createdAt: Date.UTC(2026, 10, 2), inFile: 12, skippedUnknown: 3, added: 9, improved: 2, kept: 1, completedAfter: 5, streakAfter: 0, bestAfter: 7 },
 };
+
+const backup: DecodedBackup = {
+  createdAt: plan.summary.createdAt,
+  unknownCount: 3,
+  progress: new Map(),
+  daily: plan.daily,
+  settings: plan.settings,
+};
+const pending = { backup, plan };
 
 beforeEach(() => {
   jest.clearAllMocks();
   useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS }, hydrated: true });
-  usePendingImportStore.setState({ plan });
+  usePendingImportStore.setState({ pending });
 });
 
 describe('BackupImportScreen', () => {
@@ -42,6 +52,7 @@ describe('BackupImportScreen', () => {
     await render(<BackupImportScreen />);
     for (const text of [
       '12 artworks in the file',
+      '3 artworks unknown to this version (skipped)',
       '9 artworks restored',
       '2 artworks moved further along',
       '1 artwork already further here (kept)',
@@ -55,14 +66,20 @@ describe('BackupImportScreen', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
-  it('applies the plan on confirmation', async () => {
+  it('hides the unknown line when every artwork is known', async () => {
+    usePendingImportStore.setState({ pending: { backup, plan: { ...plan, summary: { ...plan.summary, skippedUnknown: 0 } } } });
+    await render(<BackupImportScreen />);
+    expect(screen.queryByText(/unknown to this version/)).toBeNull();
+  });
+
+  it('applies the backup (re-planned) on confirmation', async () => {
     await render(<BackupImportScreen />);
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Restore this backup' }));
     });
-    expect(apply).toHaveBeenCalledWith(plan);
+    expect(apply).toHaveBeenCalledWith(backup);
     expect(screen.getByText('Backup restored!')).toBeTruthy();
-    expect(usePendingImportStore.getState().plan).toBeNull();
+    expect(usePendingImportStore.getState().pending).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Done' }));
     expect(router.back).toHaveBeenCalled();
   });
@@ -71,7 +88,7 @@ describe('BackupImportScreen', () => {
     await render(<BackupImportScreen />);
     await fireEvent.press(screen.getByRole('button', { name: 'Cancel the import' }));
     expect(apply).not.toHaveBeenCalled();
-    expect(usePendingImportStore.getState().plan).toBeNull();
+    expect(usePendingImportStore.getState().pending).toBeNull();
     expect(router.back).toHaveBeenCalled();
   });
 
@@ -82,11 +99,11 @@ describe('BackupImportScreen', () => {
       fireEvent.press(screen.getByRole('button', { name: 'Restore this backup' }));
     });
     expect(screen.getByText('The backup could not be restored. Please try again.')).toBeTruthy();
-    expect(usePendingImportStore.getState().plan).toBe(plan);
+    expect(usePendingImportStore.getState().pending).toBe(pending);
   });
 
   it('handles a missing plan', async () => {
-    usePendingImportStore.setState({ plan: null });
+    usePendingImportStore.setState({ pending: null });
     await render(<BackupImportScreen />);
     expect(screen.getByText('No backup to restore. Pick a file from the Settings.')).toBeTruthy();
   });

@@ -1,6 +1,6 @@
 import type { Progress, ProgressSummary } from '@/features/progress/progress-schema';
 import { isProgressSummary } from '@/features/progress/progress-schema';
-import { isSettings, type Settings } from '@/features/settings/settings-schema';
+import { isSettings, withNewerSettingsDefaults, type Settings } from '@/features/settings/settings-schema';
 import { bitsetFromBase64, bitsetToBase64, countBits } from '@/lib/bitset';
 import { canonicalJson, fnv1a64 } from '@/lib/checksum';
 import { isDailyState, type DailyState } from '@/lib/daily';
@@ -39,6 +39,8 @@ export interface BackupData {
 
 export interface DecodedBackup extends BackupData {
   createdAt: number;
+  /** Progress entries of artworks this version does not know (skipped, not imported). */
+  unknownCount: number;
 }
 
 export interface BackupPayload {
@@ -61,8 +63,7 @@ export type BackupError =
   | 'not-a-backup'
   | 'unsupported-version'
   | 'checksum'
-  | 'invalid'
-  | 'unknown-artwork';
+  | 'invalid';
 
 export type ParseResult = { ok: true; backup: DecodedBackup } | { ok: false; error: BackupError };
 
@@ -119,10 +120,10 @@ export function serializeBackup(data: BackupData, createdAt: number): string {
   return `${JSON.stringify(file, null, 2)}\n`;
 }
 
-/** Validates one progress entry against the catalog. */
-function decodeEntry(id: string, raw: unknown, catalog: CatalogLookup): BackupArtwork | BackupError {
+/** Validates one progress entry against the catalog ('unknown' when the id is not in it). */
+function decodeEntry(id: string, raw: unknown, catalog: CatalogLookup): BackupArtwork | BackupError | 'unknown' {
   const total = catalog(id);
-  if (total === undefined) return 'unknown-artwork';
+  if (total === undefined) return 'unknown';
   if (!isRecord(raw) || typeof raw.filled !== 'string') return 'invalid';
   const { filled, ...rest } = raw;
   if (!isProgressSummary(rest) || rest.artworkId !== id) return 'invalid';
@@ -141,8 +142,9 @@ function decodeEntry(id: string, raw: unknown, catalog: CatalogLookup): BackupAr
 
 /**
  * Parses and strictly validates a backup: size, JSON, format marker, version, checksum, then
- * every field (artwork ids must exist in the catalog, bitsets must match their artwork's size
- * and filled count). Unknown members (e.g. an injected `entitlements`) are ignored. Never throws.
+ * every field (bitsets must match their artwork's size and filled count). Artworks unknown to
+ * this version (e.g. a backup from a newer one) are skipped and counted, not fatal. Unknown
+ * members (e.g. an injected `entitlements`) are ignored. Never throws.
  */
 export function parseBackup(text: string, catalog: CatalogLookup): ParseResult {
   // UTF-16 length is a lower bound of the byte size; the file size is also checked on read.
@@ -167,24 +169,32 @@ export function parseBackup(text: string, catalog: CatalogLookup): ParseResult {
   if (typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt < 0) {
     return { ok: false, error: 'invalid' };
   }
-  if (!isRecord(payload.progress) || !isDailyState(payload.daily) || !isSettings(payload.settings)) {
+  // Backups written before a setting existed get its default.
+  const settings = withNewerSettingsDefaults(payload.settings);
+  if (!isRecord(payload.progress) || !isDailyState(payload.daily) || !isSettings(settings)) {
     return { ok: false, error: 'invalid' };
   }
   const ids = Object.keys(payload.progress);
   if (ids.length > MAX_BACKUP_ENTRIES) return { ok: false, error: 'invalid' };
   const progress = new Map<string, BackupArtwork>();
+  let unknownCount = 0;
   for (const id of ids) {
     const entry = decodeEntry(id, payload.progress[id], catalog);
+    if (entry === 'unknown') {
+      unknownCount++;
+      continue;
+    }
     if (typeof entry === 'string') return { ok: false, error: entry };
     progress.set(id, entry);
   }
   const daily = payload.daily;
-  const s = payload.settings;
+  const s = settings;
   return {
     ok: true,
     backup: {
       createdAt,
       progress,
+      unknownCount,
       daily: {
         lastActiveDay: daily.lastActiveDay,
         streak: daily.streak,
@@ -203,6 +213,8 @@ export function parseBackup(text: string, catalog: CatalogLookup): ParseResult {
         highContrast: s.highContrast,
         leftHanded: s.leftHanded,
         sessionTimerMin: s.sessionTimerMin,
+        neonTheme: s.neonTheme,
+        goldConfetti: s.goldConfetti,
       },
     },
   };

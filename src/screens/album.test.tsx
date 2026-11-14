@@ -8,7 +8,6 @@ import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
 import { AlbumScreen } from './album';
-import { ShopScreen } from './shop';
 
 jest.mock('expo-localization', () => ({ useLocales: () => [{ languageCode: 'en', languageTag: 'en-US' }] }));
 jest.mock('expo-haptics', () => ({
@@ -64,20 +63,5 @@ describe('AlbumScreen', () => {
     expect(screen.getByRole('header', { name: 'Album not found' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Back to the library' }));
     expect(router.back).toHaveBeenCalled();
-  });
-});
-
-describe('ShopScreen (placeholder)', () => {
-  it('is an honest "coming soon" with the lock reason and a way back', async () => {
-    await render(<ShopScreen reason="pro" />);
-    expect(screen.getByRole('header', { name: 'Coming soon' })).toBeTruthy();
-    expect(screen.getByText('This artwork will be included with Pro.')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Close the shop' }));
-    expect(router.back).toHaveBeenCalled();
-  });
-
-  it('ignores an invalid reason', async () => {
-    await render(<ShopScreen reason="<script>" />);
-    expect(screen.queryByText(/included with Pro|illustration pack/)).toBeNull();
   });
 });
