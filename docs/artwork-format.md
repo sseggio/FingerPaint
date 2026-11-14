@@ -60,8 +60,12 @@ Au runtime, `src/features/artwork/registry.ts` revalide le contenu : une œuvre 
 
 ## Ajouter une œuvre
 
-1. Créer le JSON (à la main, via `scripts/generate-starter-art.mjs` pour les cartes ASCII, ou plus tard via `scripts/png-to-artwork.mjs`).
-2. L'ajouter au manifeste `src/content/index.ts`.
+1. Créer le JSON par l'une de ces voies :
+   - à la main ;
+   - dans `scripts/art/` : carte ASCII (`starter.mjs`) ou dessin procédural avec `scripts/art/engine.mjs` (formes, contours, ombrage, dégradés quantifiés), puis `node scripts/generate-art.mjs` (`--only <ids>` pour en régénérer quelques-unes, `--preview <dossier>` pour des aperçus PNG et une planche-contact) ;
+   - depuis un PNG (indexé, RGB ou RGBA, un pixel par case, transparence = case vide) : `node scripts/png-to-artwork.mjs art.png --id <id> --album <album> --title-fr "…" --title-en "…" [--access free|pro|pack:<id>] [--difficulty 1|2|3] [--max-colors 24]`. Le script fusionne les couleurs trop proches (ΔE76 < 10) ou en surnombre, puis trie la palette par luminance.
+2. L'ajouter au manifeste `src/content/index.ts`. `node scripts/generate-art.mjs` le régénère dans l'ordre du catalogue (album, gratuit → Pro → pack, facile → difficile), en conservant les fichiers importés.
 3. `npm run validate:art`.
+4. Créditer l'œuvre dans `docs/content-credits.md`.
 
 Les créations doivent être 100 % originales (aucune marque ni personnage protégé).

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "id": "flying-saucer",
+  "album": "space",
+  "title": {
+    "fr": "Soucoupe volante",
+    "en": "Flying saucer"
+  },
+  "w": 32,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#4A3F8A",
+    "#8E86C8",
+    "#FF5FA2",
+    "#C9C4F0",
+    "#5BE36A",
+    "#FFD23F",
+    "#7FE7FF",
+    "#FFF3B0",
+    "#D6F8FF"
+  ],
+  "rows": [
+    "32.",
+    "32.",
+    "13.6B13.",
+    "12.B6JB12.",
+    "10.2B8J2B10.",
+    "10.B3J4F3HB10.",
+    "9.B4J4F4HB9.",
+    "9.B3J2FAFAF3HB9.",
+    "7.18B7.",
+    "4.3B18E3B4.",
+    "2.2B5E18CE2B2.",
+    ".B4E24CB.",
+    ".B2E2C2D3C2G3C2D3C2G3C2D2CB.",
+    "2.2B2C2D3C2G3C2D3C2G3C2D2B2.",
+    "4.3B18C3B4.",
+    "7.18B7.",
+    "9.14I9.",
+    "8.16I8.",
+    "8.16G8.",
+    "7.18I7.",
+    "7.18I7.",
+    "6.20G6.",
+    "6.20I6.",
+    "32."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

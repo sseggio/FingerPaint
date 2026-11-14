@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
+import { listArtworks, listByAlbum } from '@/features/artwork/registry';
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import { useProgressStore } from '@/features/progress/progress-store';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
@@ -48,11 +49,12 @@ describe('LibraryScreen', () => {
     expect(screen.getByRole('header', { name: 'Albums' })).toBeTruthy();
     // No "Continue" section without artworks in progress.
     expect(screen.queryByRole('header', { name: 'Continue' })).toBeNull();
-    // The announced pack album has no content yet: hidden.
-    expect(screen.queryByLabelText(/Album Deep ocean/)).toBeNull();
+    // The pack album has content: listed, with its "Pack" badge.
+    const deep = screen.getByRole('button', { name: 'Album Deep ocean, 0 of 8 finished' });
+    expect(within(deep).getByText('Pack')).toBeTruthy();
 
-    const garden = screen.getByRole('button', { name: 'Album Garden, 1 of 2 finished' });
-    expect(within(garden).getByText('1/2')).toBeTruthy();
+    const garden = screen.getByRole('button', { name: 'Album Garden, 1 of 8 finished' });
+    expect(within(garden).getByText('1/8')).toBeTruthy();
     await fireEvent.press(garden);
     expect(push).toHaveBeenCalledWith({ pathname: '/album/[albumId]', params: { albumId: 'garden' } });
   });
@@ -78,12 +80,17 @@ describe('LibraryScreen', () => {
 
   it('updates the progress when it changes (back from coloring)', async () => {
     await render(<LibraryScreen />);
-    expect(screen.getByRole('button', { name: 'Album Animals, 0 of 1 finished' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Album Animals, 0 of 8 finished' })).toBeTruthy();
     await act(async () => {
       useProgressStore.setState({ index: { 'tabby-cat': entry('tabby-cat', 'completed', 40) } });
     });
-    expect(screen.getByRole('button', { name: 'Album Animals, complete! All 1 artworks finished' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Album Animals, 1 of 8 finished' })).toBeTruthy();
     expect(screen.getByText('1 finished · 0 in progress')).toBeTruthy();
+    const animals = listByAlbum('animals');
+    await act(async () => {
+      useProgressStore.setState({ index: Object.fromEntries(animals.map((a, i) => [a.id, entry(a.id, 'completed', 50 + i)])) });
+    });
+    expect(screen.getByRole('button', { name: 'Album Animals, complete! All 8 artworks finished' })).toBeTruthy();
   });
 
   it('filters artworks by difficulty and status', async () => {
@@ -91,10 +98,14 @@ describe('LibraryScreen', () => {
     await render(<LibraryScreen />);
 
     await fireEvent.press(screen.getByRole('radio', { name: 'Hard' }));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Finished' }));
     expect(screen.getByText('Nothing here yet. Try another filter!')).toBeTruthy();
 
+    const [, allStatuses] = screen.getAllByRole('radio', { name: 'All' });
+    await fireEvent.press(allStatuses);
     await fireEvent.press(screen.getByRole('radio', { name: 'Medium' }));
-    expect(screen.getByRole('header', { name: '1 artwork' })).toBeTruthy();
+    const medium = listArtworks().filter((a) => a.difficulty === 2).length;
+    expect(screen.getByRole('header', { name: `${medium} artworks` })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open “Little rocket”, not started' })).toBeTruthy();
 
     const [allDifficulties] = screen.getAllByRole('radio', { name: 'All' });

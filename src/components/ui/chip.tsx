@@ -36,7 +36,8 @@ export function Chip({ label, selected, onPress, accessibilityLabel }: ChipProps
 
 const styles = StyleSheet.create({
   chip: {
-    minHeight: 36,
+    /** 44 pt: minimum touch target (Apple HIG / WCAG 2.5.5). */
+    minHeight: 44,
     paddingHorizontal: spacing.md + spacing.xs,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth * 2,

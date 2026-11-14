@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "id": "friendly-alien",
+  "album": "space",
+  "title": {
+    "fr": "Petit extraterrestre",
+    "en": "Friendly alien"
+  },
+  "w": 24,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#4B2385",
+    "#1E7A3C",
+    "#9B6BFF",
+    "#FF7FB0",
+    "#5BE36A",
+    "#FFD23F",
+    "#C2F7A0",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "5.2B10.2B5.",
+    "4.B2GB8.B2GB4.",
+    "4.B2GB8.B2GB4.",
+    "5.2BC.6C.C2B5.",
+    "7.2C6H2C7.",
+    "5.2C4H6F2C5.",
+    "5.C3H9FC5.",
+    "4.C2H3A4F3A2FC4.",
+    "4.C2HAI2A2FAI2A2FC4.",
+    "3.C2HF4A2F4A3FC3.",
+    "3.C2HF4A2F4A3FC3.",
+    "4.C2F3A4F3A2FC4.",
+    "4.CE12FEC4.",
+    "5.C4F4A4FC5.",
+    "5.2C10F2C5.",
+    "4.2C.2C6F2C.2C4.",
+    "4.CFCBD6CDBCFC4.",
+    "4.CFCB3D2G3DBCFC4.",
+    "4.CFCB3D2G3DBCFC4.",
+    "5.2CB3D2G3DB2C5.",
+    "7.B8DB7.",
+    "7.3C4D3C7.",
+    "7.CFC4BCFC7.",
+    "7.3C4.3C7."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

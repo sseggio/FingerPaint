@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/features/settings/settings-store';
 import type { AlbumSource, ArtworkSource } from '@/lib/artwork/types';
 import { palette } from '@/theme';
 
-import { AlbumCard } from './album-card';
+import { AlbumCard, albumCardPropsEqual, type AlbumCardProps } from './album-card';
 import { ArtworkTile } from './artwork-tile';
 import { gridLayout } from './grid';
 import { artworkRoute, parseLockReason } from './open-artwork';
@@ -52,7 +52,6 @@ describe('AlbumCard', () => {
         album={garden}
         artworks={[source('a'), source('b'), source('c')]}
         progress={{ completed: 1, inProgress: 1, total: 3, complete: false }}
-        index={{}}
         accent={palette.mint}
         onPress={onPress}
       />,
@@ -71,7 +70,6 @@ describe('AlbumCard', () => {
         album={{ ...garden, pack: 'ocean' }}
         artworks={[source('a')]}
         progress={{ completed: 1, inProgress: 0, total: 1, complete: true }}
-        index={{}}
         accent={palette.violet}
         onPress={() => undefined}
       />,
@@ -79,6 +77,23 @@ describe('AlbumCard', () => {
     expect(screen.getByRole('button', { name: /Album Jardin, complet/ })).toBeTruthy();
     expect(screen.getByText('Complet !')).toBeTruthy();
     expect(screen.getByText('Pack')).toBeTruthy();
+  });
+});
+
+describe('AlbumCard memoization', () => {
+  it('only re-renders when its own album progress changes', () => {
+    const artworks = [source('a'), source('b')];
+    const base: AlbumCardProps = {
+      album: garden,
+      artworks,
+      progress: { completed: 1, inProgress: 0, total: 2, complete: false },
+      accent: palette.mint,
+      onPress: () => undefined,
+    };
+    // Another album changed: a new but equal progress object for this one.
+    expect(albumCardPropsEqual(base, { ...base, progress: { ...base.progress } })).toBe(true);
+    expect(albumCardPropsEqual(base, { ...base, progress: { ...base.progress, inProgress: 1 } })).toBe(false);
+    expect(albumCardPropsEqual(base, { ...base, artworks: [...artworks] })).toBe(false);
   });
 });
 

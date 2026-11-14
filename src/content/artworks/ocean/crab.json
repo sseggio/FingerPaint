@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "id": "crab",
+  "album": "ocean",
+  "title": {
+    "fr": "Crabe rigolo",
+    "en": "Cheerful crab"
+  },
+  "w": 24,
+  "h": 20,
+  "palette": [
+    "#1B1A2E",
+    "#B3260E",
+    "#FF5A36",
+    "#FFA27A",
+    "#E8B060",
+    "#FFE3A8",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "24.",
+    "24.",
+    "2.B5.3B2.3B5.B2.",
+    ".BDB2.2B3G2B3G2B2.BDB.",
+    ".BDB.3B2GA2BA2G3B.BDB.",
+    ".BDCBCB.BGA2.AGB.BDB2DB.",
+    ".BD3CB2.B4.B2.BD2CDB.",
+    "2.4B3.6B3.4B2.",
+    "4.BC4B2D2C4BCB4.",
+    "5.2B5D5C2B5.",
+    "5.B5D6C2B5.",
+    "5.B3D8C2B5.",
+    "4.B11C4B4.",
+    "3.3B3CA4CA6B3.",
+    "2.2B.B4C4A5B.2B2.",
+    "2.B.3B3C10B.B2.",
+    "3.2B.12B.2B3.",
+    "3.B2.B3.4B3.B2.B3.",
+    "3.2EB12EB2E3.",
+    "3E2FB12FB2F3E"
+  ],
+  "access": "free",
+  "difficulty": 1
+}

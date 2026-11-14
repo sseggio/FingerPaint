@@ -300,7 +300,9 @@ describe('progress store removeAll', () => {
     seed.getState().save(summary('fish', 1), bits);
     await seed.getState().flush();
     multiSet.mockClear();
-    const multiRemove = jest.spyOn(AsyncStorage, 'multiRemove');
+    // The AsyncStorage mock is already a jest.fn: a spyOn + mockRestore would strip its implementation.
+    const multiRemove = AsyncStorage.multiRemove as jest.Mock;
+    multiRemove.mockClear();
 
     // A cold store that never hydrated: its in-memory index is empty.
     const cold = createProgressStore(createProgressRepo());
@@ -316,7 +318,26 @@ describe('progress store removeAll', () => {
     const fresh = createProgressStore(createProgressRepo());
     await fresh.getState().hydrate();
     expect(fresh.getState().index).toEqual({});
-    multiRemove.mockRestore();
+  });
+
+  it('a reset during hydration wins: the stale stored index is not brought back', async () => {
+    const seed = createProgressRepo();
+    const bits = createBitset(BITS);
+    seed.save(summary('cat', 1), bits);
+    seed.save(summary('fish', 1), bits);
+    await seed.flush();
+
+    const store = createProgressStore(createProgressRepo());
+    const hydrating = store.getState().hydrate();
+    const resetting = store.getState().removeAll();
+    await Promise.all([hydrating, resetting]);
+    expect(store.getState().hydrated).toBe(true);
+    expect(store.getState().index).toEqual({});
+    expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
+
+    const fresh = createProgressStore(createProgressRepo());
+    await fresh.getState().hydrate();
+    expect(fresh.getState().index).toEqual({});
   });
 
   it('drops pending saves so they cannot be written after the reset', async () => {

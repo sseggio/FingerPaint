@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "id": "comet",
+  "album": "space",
+  "title": {
+    "fr": "Comète filante",
+    "en": "Shooting comet"
+  },
+  "w": 32,
+  "h": 24,
+  "palette": [
+    "#1E1A4A",
+    "#2E2A6E",
+    "#9B6BFF",
+    "#FF5FA2",
+    "#FF9A3D",
+    "#8FD8FF",
+    "#FFE14D",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "9A23B",
+    "8A24B",
+    "8ABF22B",
+    "8A13B4G7B",
+    "4AF2A13B4GH2G5B",
+    "7A11B4G5HG4B",
+    "7AH6BF2B5G5HG4B",
+    "6A3H7BE5G5HG4B",
+    "7AH7B2E5G5HG4B",
+    "7A7B3E7GH2G5B",
+    "7A6B5E8G6B",
+    "7A5BD6E6G7B",
+    "6AFA3B2D7E3G9B",
+    "8A2B4D7E11B",
+    "8AB6D4E13B",
+    "8AC7DE15B",
+    "7A3C5D13BF3B",
+    "6A5C2D19B",
+    "5A6C16BG4B",
+    "4A5C3A14B3G3B",
+    "3A3C8A6BF6BG2B2A",
+    "2A2C11A14B3A",
+    "16AFA8B3AF2A",
+    "32A"
+  ],
+  "access": "free",
+  "difficulty": 1
+}

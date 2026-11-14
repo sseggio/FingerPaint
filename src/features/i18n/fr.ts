@@ -47,7 +47,7 @@ export const fr: Dictionary = {
   'library.badge.proLong': 'inclus dans Pro',
   'library.badge.packLong': 'fait partie d’un pack',
 
-  'album.metaLabel': 'Image de l’album : chaque morceau s’illumine quand son illustration est terminée',
+  'album.metaLabel': 'Image de l’album : elle s’illumine en couleur quand toutes ses illustrations sont terminées',
   'album.empty': 'De nouvelles illustrations arrivent bientôt.',
   'album.notFound.title': 'Album introuvable',
   'album.notFound.body': "Cet album n'existe pas ou n'est plus disponible.",

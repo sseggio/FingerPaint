@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "jellyfish",
+  "album": "deep-ocean",
+  "title": {
+    "fr": "Méduse lumineuse",
+    "en": "Glowing jellyfish"
+  },
+  "w": 24,
+  "h": 32,
+  "palette": [
+    "#120A1E",
+    "#0B1745",
+    "#15287A",
+    "#22409E",
+    "#8E2A9E",
+    "#E85FD8",
+    "#FF7FB0",
+    "#FFB8F4",
+    "#6FF0FF"
+  ],
+  "rows": [
+    "10DI13D",
+    "24D",
+    "5DH3D6E9D",
+    "7D2E6H2EDI5D",
+    "5D2E10H2E5D",
+    "4DE7H6FHE4D",
+    "4DE5H9FE4D",
+    "3DE4HA6FA4FE3D",
+    "3DE3HFA6FA4FE3D",
+    "3DE2H2G8F2G2FE3D",
+    "2DE3H5F2A8FEID",
+    "2CE2H2E2F2E2F2E2F2E2FE2C",
+    "3C2E2C2E2C2ECH2E2C2E3C",
+    "7CF3CF2CHC2F6C",
+    "7CF3CF2CHCF7C",
+    "8CFCF3CH2F6CI",
+    "5CI2CFCF3CHF8C",
+    "8C2FCHC2HF8C",
+    "8C2F3CHCF8C",
+    "7CFCF2C2HC2F7C",
+    "7CFCF2CH3CF7C",
+    "6B2FBF2BH3BF7B",
+    "6BF2BF2BHBI2BF6B",
+    "6BF2B2FBH4BF6B",
+    "5BFI3BFBH5BF5B",
+    "5BF2BHB2FH5BF5B",
+    "5BF5BFBH4BF5B",
+    "5B2F4BFBH4BF5B",
+    "6BF4BF2BH2BF6B",
+    "6BF4BF2BH2BF6B",
+    "24B",
+    "BH22B"
+  ],
+  "access": {
+    "pack": "ocean"
+  },
+  "difficulty": 1
+}

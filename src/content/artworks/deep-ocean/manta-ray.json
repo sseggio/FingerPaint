@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "id": "manta-ray",
+  "album": "deep-ocean",
+  "title": {
+    "fr": "Raie manta",
+    "en": "Manta ray"
+  },
+  "w": 48,
+  "h": 32,
+  "palette": [
+    "#120A1E",
+    "#0B1745",
+    "#15287A",
+    "#22409E",
+    "#7A5CE0",
+    "#B9A6FF",
+    "#6FF0FF",
+    "#FFE14D",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "12DH18DG16D",
+    "48D",
+    "11DG36D",
+    "13DG34D",
+    "31DG16D",
+    "48D",
+    "21DA4DA11DG9D",
+    "19D10A14DH4D",
+    "15D4AF8AF4A15D",
+    "12D3A6FA4FA4E2F3A7DG4D",
+    "10D2A5F3EA3F3EA7EF2A2DG7D",
+    "7C3A4F6EA2F4EA10E3A7C",
+    "5C2A5F4E3I2AF5E2A3I8EF2A5C",
+    "4CA4F7E3IA2F6EA3I11EA4C",
+    "3CA3F12EAF7EA15EA3C",
+    "2CA3F13EAF2EF4EA16EA2C",
+    "CA3F14EAF7EA17EAC",
+    "2C3A14EAF4EF2EA14E3A2C",
+    "4CG3A11EAF7EA11E3A5C",
+    "8C4A8EA2EF3EA8E4A8C",
+    "12C3A5EA6EA5E3A12C",
+    "15B4A2EA4EA2E4A15B",
+    "19B10A19B",
+    "22B4A10B2G10B",
+    "24BA8BG14B",
+    "24BA23B",
+    "24BA23B",
+    "10BG13BA23B",
+    "24B2A8BH13B",
+    "25BA22B",
+    "25BA22B",
+    "19BH2BH2B2A21B"
+  ],
+  "access": {
+    "pack": "ocean"
+  },
+  "difficulty": 2
+}

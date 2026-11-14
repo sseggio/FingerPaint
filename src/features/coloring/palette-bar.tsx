@@ -208,6 +208,6 @@ const styles = StyleSheet.create({
   },
   swatch: { flex: 1, borderRadius: SWATCH_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
   swatchText: { fontWeight: '800' },
-  track: { width: SWATCH_SIZE - spacing.sm, height: 4, borderRadius: 2, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 2 },
+  track: { width: SWATCH_SIZE - spacing.sm, height: 4, borderRadius: radius.xs, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: radius.xs },
 });

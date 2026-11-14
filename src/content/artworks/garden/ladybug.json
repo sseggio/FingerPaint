@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "id": "ladybug",
+  "album": "garden",
+  "title": {
+    "fr": "Coccinelle sur sa feuille",
+    "en": "Ladybug on a leaf"
+  },
+  "w": 20,
+  "h": 20,
+  "palette": [
+    "#1B1A2E",
+    "#A3122E",
+    "#167A44",
+    "#F0263F",
+    "#FF8C8C",
+    "#3CCB6E",
+    "#A8EE90",
+    "#FFFFFF"
+  ],
+  "rows": [
+    "20.",
+    "5.2A7.2A4.",
+    "7.A4.CAC5.",
+    "8.A3CA2G2C3.",
+    "7.C5AGFCFC2.",
+    "6.CG5AFC2FC2.",
+    "5.CG2AHAH2A4FC.",
+    "4.C2G7A4FC.",
+    "3.C3GA2EA2DA3FC2.",
+    "3.C2GA3EA3DA2FC2.",
+    "2.C2GAEAEDA2DABAFC2.",
+    "2.C2G4ADAD4AC3.",
+    "2.CGFADA2DADBABAC3.",
+    ".C2GFA4DA4BA4.",
+    ".C2GFAD2ADAB2ABA4.",
+    "2.CFCF3ABAB3A5.",
+    "2.2C3FA2BA2BA6.",
+    "3.2C3F5A7.",
+    "5.3C12.",
+    "20."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "id": "donut",
+  "album": "kitchen",
+  "title": {
+    "fr": "Beignet glacé",
+    "en": "Glazed donut"
+  },
+  "w": 24,
+  "h": 24,
+  "palette": [
+    "#8A4A1A",
+    "#C2185B",
+    "#7B5CFF",
+    "#FF5FA2",
+    "#E09A52",
+    "#3DB8FF",
+    "#FFB0D0",
+    "#F7C98A",
+    "#FFD23F"
+  ],
+  "rows": [
+    "24.",
+    "24.",
+    "9.2B13.",
+    "7.AB2G2B4A7.",
+    "5.2AB3G2D5BA5.",
+    "4.A2HB2G5D3G2B4.",
+    "3.A2HB2G3DC6DBA3.",
+    "2.AH2B3GD4B5DB2A2.",
+    "2.AB4GDB4AB4DB2A2.",
+    "2.B3G2DB6.B3DB2A2.",
+    ".AB2G2DBA6.AB2DB3A.",
+    ".AHB3DBA6.ABI2DB2A.",
+    ".AEB3DBA6.ABG2DB2A.",
+    ".A2EB3DB6.B2G3DBA.",
+    ".A3EB3DB4AB3G3DBA.",
+    "2.A2EB4D4B3G3DBA2.",
+    "2.AEB2G5D4GFD2B2A2.",
+    "2.AEB2G10DB4A2.",
+    "3.2AB2D2B6DB4A3.",
+    "4.2A2B2A2B3DB4A4.",
+    "5.7A4B3A5.",
+    "7.10A7.",
+    "24.",
+    "24."
+  ],
+  "access": "free",
+  "difficulty": 1
+}

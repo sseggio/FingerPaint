@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "id": "avocado",
+  "album": "kitchen",
+  "title": {
+    "fr": "Avocat souriant",
+    "en": "Smiling avocado"
+  },
+  "w": 20,
+  "h": 24,
+  "palette": [
+    "#1B1A2E",
+    "#5A2E12",
+    "#1F4D1A",
+    "#9A5A2A",
+    "#3F8A2E",
+    "#D08A4E",
+    "#FF8FA8",
+    "#C8EB6A",
+    "#F2FAB0"
+  ],
+  "rows": [
+    "20.",
+    "7.6C7.",
+    "6.C2E2I2EC6.",
+    "5.CE3I2HIEC5.",
+    "5.CEI5HEC5.",
+    "5.C2I6HC5.",
+    "4.CEI7HEC4.",
+    "4.CEI7HEC4.",
+    "4.CEIHA2HA2HEC4.",
+    "4.CEIHA2HA2HEC4.",
+    "3.CE2IG4HG2HEC3.",
+    "3.C2I3H2A5HC3.",
+    "2.CEI4H2B5HEC2.",
+    "2.C2I2H2BFD2B4HC2.",
+    ".CEI3HBF3DB4HEC.",
+    ".CEI2HB5D2B3HEC.",
+    ".CEI2HB4D3B3HEC.",
+    "2.CI3HBD4B4HC2.",
+    "2.CE3H6B3HEC2.",
+    "3.CI4H2B5HC3.",
+    "3.CE10HEC3.",
+    "4.2CE6HE2C4.",
+    "6.8C6.",
+    "20."
+  ],
+  "access": "free",
+  "difficulty": 1
+}
