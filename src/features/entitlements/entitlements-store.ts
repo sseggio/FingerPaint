@@ -88,17 +88,33 @@ export function createEntitlementsStore(options: EntitlementsStoreOptions = {}) 
   let connecting: Promise<void> | null = null;
 
   return create<EntitlementsState>()((set, get) => {
+    /**
+     * Sequence number of each grant. A store answer requested at `since` must not revoke what
+     * was granted after its request began (a purchase or an Ask to Buy approval racing the
+     * launch-time silent restore): those grants are merged into the answer.
+     */
+    let grantSeq = 0;
+    const grantedAt = new Map<Sku, number>();
+
     /** Replaces (store answer) or extends (grant) what is owned; persists only real changes. */
-    const apply = async (skus: readonly unknown[], mode: 'replace' | 'grant') => {
+    const apply = async (skus: readonly unknown[], change: { mode: 'grant' } | { mode: 'replace'; since: number }) => {
       const current = get().owned;
-      const next = normalizeSkus(mode === 'grant' ? [...current, ...skus] : skus);
-      if (mode === 'replace') authoritative = true;
+      let next: Sku[];
+      if (change.mode === 'grant') {
+        const granted = normalizeSkus(skus);
+        for (const sku of granted) grantedAt.set(sku, ++grantSeq);
+        next = normalizeSkus([...current, ...granted]);
+      } else {
+        authoritative = true;
+        const grantedSince = [...grantedAt].filter(([, seq]) => seq > change.since).map(([sku]) => sku);
+        next = normalizeSkus([...skus, ...grantedSince]);
+      }
       if (sameSkus(next, current)) return;
       set({ owned: next, entitlements: entitlementsFromSkus(next, provider.kind) });
       await persist(next);
     };
 
-    provider.subscribe((granted) => apply(granted, 'grant'));
+    provider.subscribe((granted) => apply(granted, { mode: 'grant' }));
 
     return {
       entitlements: DEFAULT_ENTITLEMENTS,
@@ -136,8 +152,9 @@ export function createEntitlementsStore(options: EntitlementsStoreOptions = {}) 
             set({ storeStatus: 'offline' });
             return;
           }
+          const since = grantSeq;
           try {
-            await apply(await provider.restore({ silent: true }), 'replace');
+            await apply(await provider.restore({ silent: true }), { mode: 'replace', since });
           } catch (e) {
             // Offline: the cache stays the truth until the store answers.
             warn(`refresh failed: ${String(e)}`);
@@ -153,7 +170,7 @@ export function createEntitlementsStore(options: EntitlementsStoreOptions = {}) 
         set({ busy: sku });
         try {
           const result = await provider.purchase(sku);
-          if (result.status === 'purchased') await apply([sku], 'grant');
+          if (result.status === 'purchased') await apply([sku], { mode: 'grant' });
           return result;
         } catch (e) {
           warn(`purchase failed: ${String(e)}`);
@@ -167,9 +184,10 @@ export function createEntitlementsStore(options: EntitlementsStoreOptions = {}) 
         if (!provider.available) return { status: 'unavailable' };
         if (get().busy) return { status: 'error' };
         set({ busy: 'restore' });
+        const since = grantSeq;
         try {
           const owned = await provider.restore();
-          await apply(owned, 'replace');
+          await apply(owned, { mode: 'replace', since });
           if (get().storeStatus !== 'ready') void get().connect();
           return { status: 'restored', count: get().owned.length };
         } catch (e) {
@@ -181,7 +199,7 @@ export function createEntitlementsStore(options: EntitlementsStoreOptions = {}) 
       },
 
       async clear() {
-        await apply([], 'replace');
+        await apply([], { mode: 'replace', since: grantSeq });
       },
     };
   });

@@ -124,6 +124,20 @@ function ShopSection() {
   );
 }
 
+function AboutSection() {
+  const t = useT();
+  return (
+    <SettingsSection title={t('settings.about.title')} accent={palette.sky}>
+      <View style={styles.block}>
+        <AppText tone="secondary" variant="caption">
+          {t('settings.about.hint')}
+        </AppText>
+        <Button variant="secondary" label={t('settings.about.open')} onPress={() => router.push('/about')} />
+      </View>
+    </SettingsSection>
+  );
+}
+
 type Notice = { message: string; accent: string };
 
 function DataSection({ onNotice }: { onNotice(notice: Notice): void }) {
@@ -256,6 +270,7 @@ export function SettingsScreen() {
         <WellbeingSection />
         <ShopSection />
         <DataSection onNotice={setNotice} />
+        <AboutSection />
         <AppText variant="caption" color={colors.inkSecondary} style={styles.footer}>
           {t('settings.privacy')}
         </AppText>

@@ -24,7 +24,8 @@ export interface StoreProduct {
   description?: string;
 }
 
-export type PurchaseErrorKind = 'unavailable' | 'network' | 'not-allowed' | 'failed';
+/** `timeout`: the store did not answer in time; a purchase completed later is still granted. */
+export type PurchaseErrorKind = 'unavailable' | 'network' | 'not-allowed' | 'failed' | 'timeout';
 
 export type PurchaseResult =
   | { status: 'purchased'; sku: Sku }

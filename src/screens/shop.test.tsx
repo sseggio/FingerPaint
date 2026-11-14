@@ -150,8 +150,10 @@ describe('ShopScreen with the mock store', () => {
     });
     expect(useEntitlementsStore.getState().entitlements.pro).toBe(true);
     expect(screen.getByRole('header', { name: 'Mock store (development only)' })).toBeTruthy();
+    expect(screen.getByLabelText('Outcome of the next simulated purchase')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve every pending simulated purchase' })).toBeTruthy();
     await act(async () => {
-      fireEvent.press(screen.getByRole('button', { name: 'Reset mock purchases' }));
+      fireEvent.press(screen.getByRole('button', { name: 'Erase every simulated purchase and the local cache' }));
     });
     await flush();
     expect(screen.getByText('Mock purchases reset.')).toBeTruthy();
