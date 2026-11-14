@@ -6,6 +6,8 @@
  * world → screen with `screen = world * scale + t` (scale = points per cell).
  */
 
+import { MAX_SIZE } from '@/lib/artwork/types';
+
 export interface Size {
   width: number;
   height: number;
@@ -181,8 +183,16 @@ export function doubleTapViewport(
   return clampViewport(zoomAt(v, readable, fx, fy), grid, view, bounds);
 }
 
-/** Base for packing range bounds (0..128 each) into one number. */
-const RANGE_KEY_BASE = 129;
+/**
+ * Base for packing range bounds into one number. Bounds go from 0 to the grid size, and the
+ * artwork validator caps grids at MAX_SIZE (128), so each bound takes MAX_SIZE + 1 values.
+ * Raising MAX_SIZE raises the base with it; the packed key (< base⁴ ≈ 2.8e8 for 128) must stay
+ * a safe integer, which holds for any grid up to ~9 000 cells wide.
+ */
+export const RANGE_KEY_BASE = MAX_SIZE + 1;
+if (RANGE_KEY_BASE ** 4 > Number.MAX_SAFE_INTEGER) {
+  throw new Error('geometry: MAX_SIZE too large for rangeKey packing');
+}
 
 /** An empty range. */
 export const EMPTY_RANGE: CellRange = { x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -207,4 +217,35 @@ export function rangeFromKey(key: number): CellRange {
   const x1 = Math.floor(key / (b * b)) % b;
   const y1 = Math.floor(key / (b * b * b));
   return { x0, y0, x1, y1 };
+}
+
+/**
+ * Cells crossed by the segment between two cells (both included), in order, without gaps
+ * (Bresenham). Used by drag-to-fill so a fast swipe does not skip cells between two events.
+ */
+export function cellsOnLine(c0: number, r0: number, c1: number, r1: number): Cell[] {
+  'worklet';
+  const out: Cell[] = [];
+  const dc = Math.abs(c1 - c0);
+  const dr = -Math.abs(r1 - r0);
+  const sc = c0 < c1 ? 1 : -1;
+  const sr = r0 < r1 ? 1 : -1;
+  let err = dc + dr;
+  let c = c0;
+  let r = r0;
+  // Bounded loop: at most dc + |dr| + 1 cells.
+  for (let guard = dc - dr + 1; guard > 0; guard--) {
+    out.push({ col: c, row: r });
+    if (c === c1 && r === r1) break;
+    const e2 = 2 * err;
+    if (e2 >= dr) {
+      err += dr;
+      c += sc;
+    }
+    if (e2 <= dc) {
+      err += dc;
+      r += sr;
+    }
+  }
+  return out;
 }

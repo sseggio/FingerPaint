@@ -1,6 +1,6 @@
 import type { Transforms3d } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
-import { usePanGesture, usePinchGesture, useSimultaneousGestures, useTapGesture } from 'react-native-gesture-handler';
+import { usePanGesture, usePinchGesture, useTapGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
   Easing,
@@ -43,12 +43,13 @@ export interface ViewportOptions {
   view: Size | null;
   /** Cell size (points) from which numbers are drawn. */
   numberThreshold: number;
-  /** Fingers needed to pan: 2 while one-finger drags color cells (F06), 1 otherwise. */
+  /** Fingers needed to pan: 2 while one-finger drags color cells, 1 otherwise. */
   panMinPointers: 1 | 2;
 }
 
 export interface ViewportState {
-  gesture: ReturnType<typeof useSimultaneousGestures>;
+  /** Navigation gestures (pinch, pan, double tap), composed by the canvas with the fill ones. */
+  gestures: readonly [ReturnType<typeof usePinchGesture>, ReturnType<typeof usePanGesture>, ReturnType<typeof useTapGesture>];
   scale: SharedValue<number>;
   tx: SharedValue<number>;
   ty: SharedValue<number>;
@@ -153,7 +154,6 @@ export function useViewport({ grid, view, numberThreshold, panMinPointers }: Vie
     },
   });
 
-  const gesture = useSimultaneousGestures(pinch, pan, doubleTap);
 
   const transform = useDerivedValue<Transforms3d>(() => [
     { translateX: tx.get() },
@@ -176,5 +176,5 @@ export function useViewport({ grid, view, numberThreshold, panMinPointers }: Vie
     },
   );
 
-  return { gesture, scale, tx, ty, transform, gridOpacity, glyphRange };
+  return { gestures: [pinch, pan, doubleTap], scale, tx, ty, transform, gridOpacity, glyphRange };
 }

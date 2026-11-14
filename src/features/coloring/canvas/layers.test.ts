@@ -3,10 +3,25 @@ import { toArtwork } from '@/lib/artwork/codec';
 import type { ArtworkSource } from '@/lib/artwork/types';
 import { validateArtwork } from '@/lib/artwork/validate';
 import { createBitset, setBit } from '@/lib/bitset';
+import { contrastRatio } from '@/lib/color';
 
 import { createPerfArtworkSource, PERF_ARTWORK_ID } from './__fixtures__/perf-artwork';
-import { glyphAtlasSize, glyphSpriteRect } from './glyph-layout';
-import { buildBackgroundPixels, buildColorPixels, BYTES_PER_PIXEL, createColorPixels, paintCells } from './layers';
+import { glyphAtlasSize, glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
+import {
+  AA_CONTRAST,
+  buildBackgroundPixels,
+  buildColorPixels,
+  buildHighlightPixels,
+  BYTES_PER_PIXEL,
+  createColorPixels,
+  highlightedGrayHex,
+  HIGHLIGHT_ALPHA,
+  NUMBER_INK_DARK,
+  NUMBER_INK_LIGHT,
+  numberInkIsLight,
+  numberInks,
+  paintCells,
+} from './layers';
 
 const source: ArtworkSource = {
   v: 1,
@@ -67,6 +82,48 @@ describe('color layer', () => {
     expect(pixel(pixels, 0, 0)).toEqual([0x1b, 0x1a, 0x2e, 255]);
     expect(pixel(pixels, 4, 3)).toEqual([0xff, 0xc9, 0x3c, 255]);
     expect(pixel(pixels, 1, 0)).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe('highlight mask', () => {
+  it('tints only the cells of the chosen color', () => {
+    const mask = buildHighlightPixels(artwork, 2); // C
+    const alpha = Math.round(HIGHLIGHT_ALPHA * 255);
+    expect(pixel(mask, 3, 3)[3]).toBe(alpha);
+    expect(pixel(mask, 0, 0)).toEqual([0, 0, 0, 0]);
+    expect(pixel(mask, 3, 7)).toEqual([0, 0, 0, 0]);
+    const tinted = Array.from({ length: 64 }, (_, i) => mask[i * 4 + 3]).filter((a) => a > 0);
+    expect(tinted).toHaveLength(artwork.colorCounts[2]);
+  });
+});
+
+describe('number contrast', () => {
+  const hex = (g: number) => `#${g.toString(16).padStart(2, '0').repeat(3)}`;
+  const inkFor = (g: number) => (numberInkIsLight(g) ? NUMBER_INK_LIGHT : NUMBER_INK_DARK);
+
+  it('meets AA on every background gray the layer can produce, highlighted or not', () => {
+    for (const color of ['#000000', '#1B1A2E', '#7B5CFF', '#FF3D7F', '#2ED3A0', '#FFC93C', '#FFFFFF']) {
+      const g = backgroundGray(color);
+      const ink = inkFor(g);
+      expect(contrastRatio(ink, hex(g))).toBeGreaterThanOrEqual(AA_CONTRAST);
+      expect(contrastRatio(ink, highlightedGrayHex(g))).toBeGreaterThanOrEqual(AA_CONTRAST);
+    }
+    for (let g = 150; g <= 245; g++) {
+      expect(contrastRatio(inkFor(g), hex(g))).toBeGreaterThanOrEqual(AA_CONTRAST);
+    }
+  });
+
+  it('switches to the light ink on dark grays', () => {
+    expect(numberInkIsLight(245)).toBe(false);
+    expect(numberInkIsLight(30)).toBe(true);
+    expect(contrastRatio(inkFor(30), hex(30))).toBeGreaterThanOrEqual(AA_CONTRAST);
+    expect(numberInks(artwork)).toEqual([0, 0, 0]);
+  });
+
+  it('stores both inks in the atlas', () => {
+    expect(glyphSpriteIndex(1, 12, false)).toBe(0);
+    expect(glyphSpriteIndex(12, 12, false)).toBe(11);
+    expect(glyphSpriteIndex(1, 12, true)).toBe(12);
   });
 });
 

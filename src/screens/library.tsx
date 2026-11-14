@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText, Card, PressableScale, Screen } from '@/components/ui';
 import { listArtworks } from '@/features/artwork/registry';
-import { PERF_ARTWORK_ID } from '@/features/coloring/canvas/__fixtures__/perf-artwork';
+import { PERF_ARTWORK_ID } from '@/features/coloring/perf-artwork-id';
 import { localizedTitle, useLocale, useT } from '@/features/i18n';
 import { funAccents, radius, spacing, useTheme } from '@/theme';
 

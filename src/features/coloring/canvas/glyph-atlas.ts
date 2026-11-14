@@ -1,9 +1,8 @@
 import { matchFont, Skia, type SkImage } from '@shopify/react-native-skia';
 import { Platform } from 'react-native';
 
-import { colors } from '@/theme';
-
-import { GLYPH_COLUMNS, GLYPH_SPRITE_PX, glyphAtlasSize, glyphSpriteRect } from './glyph-layout';
+import { GLYPH_COLUMNS, GLYPH_SPRITE_PX, glyphAtlasSize, glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
+import { NUMBER_INK_DARK, NUMBER_INK_LIGHT } from './layers';
 
 /**
  * Pre-rendered texture of the cell numbers (1..n), drawn with Skia's `Atlas`: one draw call for
@@ -15,7 +14,7 @@ const FONT_RATIO = 0.5;
 
 export interface GlyphAtlas {
   image: SkImage;
-  /** Number of sprites; sprite i shows the number i + 1. */
+  /** Numbers in the texture (1..count), each in both inks (see `glyphSpriteIndex`). */
   count: number;
   spritePx: number;
   columns: number;
@@ -32,28 +31,30 @@ function numberFont(size: number) {
 }
 
 /**
- * Renders numbers 1..count into a CPU raster image (safe to share with the UI thread).
+ * Renders numbers 1..count, in the dark then the light ink, into a CPU raster image (safe to share with the UI thread).
  * Returns null when Skia cannot allocate the surface or find a font (numbers are then skipped).
  */
 export function createNumberAtlas(count: number, spritePx = GLYPH_SPRITE_PX, columns = GLYPH_COLUMNS): GlyphAtlas | null {
   if (count <= 0) return null;
-  const { width, height } = glyphAtlasSize(count, spritePx, columns);
+  const { width, height } = glyphAtlasSize(count * 2, spritePx, columns);
   const surface = Skia.Surface.Make(width, height);
   const font = numberFont(spritePx * FONT_RATIO);
   if (!surface || !font) return null;
   const canvas = surface.getCanvas();
-  const paint = Skia.Paint();
-  paint.setAntiAlias(true);
-  // Cells under numbers are always light grays (see layers.ts), in both themes.
-  paint.setColor(Skia.Color(colors.light.ink));
   const metrics = font.getMetrics();
   // Vertical center: baseline offset by half the cap height (ascent is negative).
   const baseline = spritePx / 2 - (metrics.ascent + metrics.descent) / 2;
-  for (let i = 0; i < count; i++) {
-    const text = String(i + 1);
-    const { x, y } = glyphSpriteRect(i, spritePx, columns);
-    const textWidth = font.measureText(text).width;
-    canvas.drawText(text, x + (spritePx - textWidth) / 2, y + baseline, paint, font);
+  // The ink of each palette color is picked for AA contrast on its gray (see numberInkIsLight).
+  for (const light of [false, true]) {
+    const paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    paint.setColor(Skia.Color(light ? NUMBER_INK_LIGHT : NUMBER_INK_DARK));
+    for (let n = 1; n <= count; n++) {
+      const text = String(n);
+      const { x, y } = glyphSpriteRect(glyphSpriteIndex(n, count, light), spritePx, columns);
+      const textWidth = font.measureText(text).width;
+      canvas.drawText(text, x + (spritePx - textWidth) / 2, y + baseline, paint, font);
+    }
   }
   surface.flush();
   const image = surface.makeImageSnapshot();

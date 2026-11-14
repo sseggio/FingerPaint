@@ -1,4 +1,7 @@
+import { MAX_SIZE } from '@/lib/artwork/types';
+
 import {
+  cellsOnLine,
   cellToScreen,
   clamp,
   clampTranslation,
@@ -12,6 +15,7 @@ import {
   rangeFromKey,
   rangeKey,
   rangeSize,
+  RANGE_KEY_BASE,
   scaleBounds,
   screenToCell,
   screenToWorld,
@@ -115,6 +119,11 @@ describe('visibleRange', () => {
       expect(rangeFromKey(rangeKey(r))).toEqual(r);
     }
     expect(rangeKey({ x0: 4, y0: 4, x1: 4, y1: 9 })).toBe(-1);
+    // The base is tied to the validator's largest grid: every bound 0..MAX_SIZE round-trips.
+    expect(RANGE_KEY_BASE).toBe(MAX_SIZE + 1);
+    const max = { x0: MAX_SIZE - 1, y0: MAX_SIZE - 1, x1: MAX_SIZE, y1: MAX_SIZE };
+    expect(rangeFromKey(rangeKey(max))).toEqual(max);
+    expect(Number.isSafeInteger(rangeKey(max))).toBe(true);
     expect(rangeSize(rangeFromKey(-1))).toBe(0);
   });
 
@@ -162,5 +171,19 @@ describe('zoom', () => {
     const cell = screenToCell(192, 350, fitted, big);
     expect(screenToCell(192, 350, zoomed, big)).toEqual(cell);
     expect(doubleTapViewport(zoomed, 10, 10, big, phone, bounds)).toEqual(fitted);
+  });
+});
+
+describe('cellsOnLine', () => {
+  it('returns every cell between two cells, both included, without gaps', () => {
+    expect(cellsOnLine(2, 3, 2, 3)).toEqual([{ col: 2, row: 3 }]);
+    expect(cellsOnLine(0, 0, 3, 0).map((c) => c.col)).toEqual([0, 1, 2, 3]);
+    const diag = cellsOnLine(5, 5, 0, 2);
+    expect(diag[0]).toEqual({ col: 5, row: 5 });
+    expect(diag[diag.length - 1]).toEqual({ col: 0, row: 2 });
+    for (let i = 1; i < diag.length; i++) {
+      expect(Math.abs(diag[i].col - diag[i - 1].col)).toBeLessThanOrEqual(1);
+      expect(Math.abs(diag[i].row - diag[i - 1].row)).toBeLessThanOrEqual(1);
+    }
   });
 });
