@@ -99,6 +99,8 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     // stored index with only the in-memory entries and lose every other artwork's progress.
     if (!indexLoaded) await mergeStoredIndex();
     const batch = new Map(pending);
+    // Ids already dropped from the index being written: once it is stored they cannot come back.
+    const removedInBatch = [...removed];
     pending.clear();
     indexDirty = false;
     const time = now();
@@ -112,6 +114,7 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     try {
       await backend.multiSet(pairs);
       failures = 0;
+      for (const id of removedInBatch) removed.delete(id);
     } catch (e) {
       failures += 1;
       const retryIn = Math.min(retryDelayMs * 2 ** (failures - 1), PROGRESS_RETRY_MAX_DELAY_MS);

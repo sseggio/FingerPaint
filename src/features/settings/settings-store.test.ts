@@ -152,6 +152,46 @@ describe('useSettingsStore', () => {
       expect(store.getState().settings).toEqual(DEFAULT_SETTINGS);
     });
 
+    it('defers an update made before hydration even started', async () => {
+      await AsyncStorage.setItem(StorageKeys.settings, JSON.stringify(createEnvelope(stored, 1)));
+      const store = createSettingsStore();
+      await store.getState().update({ largeNumbers: true });
+      // Nothing written yet: the stored settings must survive until they have been read.
+      expect(JSON.parse((await AsyncStorage.getItem(StorageKeys.settings)) ?? '{}').data).toEqual(stored);
+      await store.getState().hydrate();
+      const expected = { ...stored, largeNumbers: true };
+      expect(store.getState().settings).toEqual(expected);
+      expect(JSON.parse((await AsyncStorage.getItem(StorageKeys.settings)) ?? '{}').data).toEqual(expected);
+    });
+
+    it('serializes writes so the last update always wins in storage', async () => {
+      const releases: (() => void)[] = [];
+      const backend = {
+        getItem: jest.fn(() => Promise.resolve(null)),
+        multiSet: jest.fn(
+          (pairs: [string, string][]) =>
+            new Promise<void>((resolve) => {
+              releases.push(() => AsyncStorage.multiSet(pairs).then(resolve));
+            }),
+        ),
+        removeItem: jest.fn(() => Promise.resolve()),
+      };
+      const store = createSettingsStore(backend);
+      await store.getState().hydrate();
+      const first = store.getState().update({ haptics: false });
+      const second = store.getState().update({ theme: 'dark' });
+      await Promise.resolve();
+      // The second write waits for the first one to finish.
+      expect(backend.multiSet).toHaveBeenCalledTimes(1);
+      releases[0]();
+      await first;
+      expect(backend.multiSet).toHaveBeenCalledTimes(2);
+      releases[1]();
+      await second;
+      const data = JSON.parse((await AsyncStorage.getItem(StorageKeys.settings)) ?? '{}').data;
+      expect(data).toMatchObject({ haptics: false, theme: 'dark' });
+    });
+
     it('writes immediately once hydrated', async () => {
       const store = createSettingsStore();
       await store.getState().hydrate();

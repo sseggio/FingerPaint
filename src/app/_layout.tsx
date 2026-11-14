@@ -44,6 +44,17 @@ export default function RootLayout() {
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <Stack screenOptions={{ contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="color/[artworkId]"
+            options={{
+              headerBackButtonDisplayMode: 'minimal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.ink,
+              // Horizontal swipes pan the canvas; back stays on the header button.
+              gestureEnabled: false,
+            }}
+          />
         </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>

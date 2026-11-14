@@ -206,6 +206,21 @@ describe('progress repo', () => {
     await expect(createProgressRepo().loadIndex()).resolves.toEqual({ fish: summary('fish', 1) });
   });
 
+  it('forgets removed ids once the index without them has been written', async () => {
+    const seed = createProgressRepo();
+    seed.save(summary('cat', 1), createBitset(BITS));
+    await seed.flush();
+
+    const repo = createProgressRepo();
+    await repo.remove('cat');
+    // The artwork is colored again later and stored by another writer (e.g. a backup restore).
+    const other = createProgressRepo();
+    other.save(summary('cat', 2), createBitset(BITS));
+    await other.flush();
+    // The stale tombstone must not hide the new entry.
+    expect((await repo.loadIndex()).cat?.filledCount).toBe(2);
+  });
+
   it('a save before the index is loaded keeps the other stored entries', async () => {
     const seed = createProgressRepo();
     seed.save(summary('fish', 4), createBitset(BITS));
