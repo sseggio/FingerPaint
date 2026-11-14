@@ -24,7 +24,7 @@ Chaque œuvre est un fichier JSON `src/content/artworks/<albumId>/<artworkId>.js
 - `.` désigne une case vide, non coloriable.
 - Une ligne est une suite de `<n?><clé>` : `"4.3A2B"` → `....AAABB`. Sans nombre, le run vaut 1. L'alphabet ne contient aucun chiffre, donc le décodage n'est pas ambigu. Un run ne commence jamais par `0`.
 - Encodage canonique (`encodeRow`) : un run de 1 s'écrit sans nombre.
-- Le numéro affiché d'une couleur est `index + 1` ; son symbole (mode daltonien) est `SYMBOLS[index]` (`src/lib/artwork/palette.ts`).
+- Le numéro affiché d'une couleur est `index + 1` ; son symbole (mode daltonien) est `SYMBOLS[index]` (`src/lib/artwork/palette.ts`), une forme vectorielle définie dans `src/lib/symbols.ts`.
 - Les illustrations générées trient leur palette par luminance (la couleur 1 est la plus sombre).
 
 ## Album (`albums.json`)

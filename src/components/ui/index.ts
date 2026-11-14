@@ -4,3 +4,6 @@ export * from './card';
 export * from './pressable-scale';
 export * from './screen';
 export * from './segmented-control';
+export * from './settings-section';
+export * from './switch-row';
+export * from './toast';

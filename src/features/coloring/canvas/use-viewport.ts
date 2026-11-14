@@ -1,5 +1,5 @@
 import type { Transforms3d } from '@shopify/react-native-skia';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { usePanGesture, usePinchGesture, useTapGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
@@ -20,10 +20,12 @@ import {
   doubleTapViewport,
   EMPTY_RANGE,
   fitViewport,
+  focusCellViewport,
   GRID_MIN_CELL_PT,
   rangeFromKey,
   rangeKey,
   scaleBounds,
+  viewCenter,
   visibleRange,
   zoomAt,
   type CellRange,
@@ -35,7 +37,11 @@ export const VIEWPORT_PADDING = 12;
 /** Strong ease-out (expo-animation skill) for the double-tap zoom. */
 const ZOOM_TIMING = { duration: 280, easing: Easing.bezier(0.23, 1, 0.32, 1) };
 /** Grid line opacity at full strength. */
-const GRID_MAX_OPACITY = 0.22;
+export const GRID_MAX_OPACITY = 0.22;
+/** Same in high-contrast mode: clearly marked lines. */
+export const GRID_MAX_OPACITY_HIGH = 0.6;
+/** "Find" hint: a slightly longer, gentle travel to the target cell. */
+export const FOCUS_TIMING = { duration: 420, easing: Easing.bezier(0.23, 1, 0.32, 1) };
 
 export interface ViewportOptions {
   grid: Size;
@@ -45,6 +51,8 @@ export interface ViewportOptions {
   numberThreshold: number;
   /** Fingers needed to pan: 2 while one-finger drags color cells, 1 otherwise. */
   panMinPointers: 1 | 2;
+  /** High-contrast mode: stronger grid lines. */
+  highContrast?: boolean;
 }
 
 export interface ViewportState {
@@ -58,6 +66,13 @@ export interface ViewportState {
   gridOpacity: DerivedValue<number>;
   /** Cells whose numbers are drawn: visible cells once zoomed past the threshold, else empty. */
   glyphRange: SharedValue<CellRange>;
+  /** World point (cells) at the center of the view, or null before the view is measured. */
+  getViewCenter(): { x: number; y: number } | null;
+  /**
+   * Moves the view to a cell (centered, zoomed in to a readable size). Animated unless
+   * `animate` is false (reduce motion). Returns false before the view is measured.
+   */
+  focusCell(col: number, row: number, animate: boolean): boolean;
 }
 
 /**
@@ -65,7 +80,13 @@ export interface ViewportState {
  * double tap to zoom in / back out). Everything runs on the UI thread: no React state is touched
  * while a gesture is active.
  */
-export function useViewport({ grid, view, numberThreshold, panMinPointers }: ViewportOptions): ViewportState {
+export function useViewport({
+  grid,
+  view,
+  numberThreshold,
+  panMinPointers,
+  highContrast = false,
+}: ViewportOptions): ViewportState {
   const scale = useSharedValue(1);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
@@ -161,9 +182,8 @@ export function useViewport({ grid, view, numberThreshold, panMinPointers }: Vie
     { scale: scale.get() },
   ]);
 
-  const gridOpacity = useDerivedValue(
-    () => clamp((scale.get() - GRID_MIN_CELL_PT) / 6, 0, 1) * GRID_MAX_OPACITY,
-  );
+  const gridMax = highContrast ? GRID_MAX_OPACITY_HIGH : GRID_MAX_OPACITY;
+  const gridOpacity = useDerivedValue(() => clamp((scale.get() - GRID_MIN_CELL_PT) / 6, 0, 1) * gridMax);
 
   // The glyph buffers are rebuilt only when the set of visible cells changes, not every frame.
   useAnimatedReaction(
@@ -176,5 +196,42 @@ export function useViewport({ grid, view, numberThreshold, panMinPointers }: Vie
     },
   );
 
-  return { gestures: [pinch, pan, doubleTap], scale, tx, ty, transform, gridOpacity, glyphRange };
+  const getViewCenter = useCallback(() => {
+    if (!measured) return null;
+    return viewCenter({ scale: scale.get(), tx: tx.get(), ty: ty.get() }, geometry.view);
+  }, [geometry, measured, scale, tx, ty]);
+
+  const focusCell = useCallback(
+    (col: number, row: number, animate: boolean) => {
+      if (!measured) return false;
+      const { grid: g, view: v, bounds } = geometry;
+      cancelAnimation(scale);
+      cancelAnimation(tx);
+      cancelAnimation(ty);
+      const target = focusCellViewport({ scale: scale.get(), tx: tx.get(), ty: ty.get() }, col, row, g, v, bounds);
+      if (animate) {
+        scale.set(withTiming(target.scale, FOCUS_TIMING));
+        tx.set(withTiming(target.tx, FOCUS_TIMING));
+        ty.set(withTiming(target.ty, FOCUS_TIMING));
+      } else {
+        scale.set(target.scale);
+        tx.set(target.tx);
+        ty.set(target.ty);
+      }
+      return true;
+    },
+    [geometry, measured, scale, tx, ty],
+  );
+
+  return {
+    gestures: [pinch, pan, doubleTap],
+    scale,
+    tx,
+    ty,
+    transform,
+    gridOpacity,
+    glyphRange,
+    getViewCenter,
+    focusCell,
+  };
 }

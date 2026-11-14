@@ -9,6 +9,8 @@ import {
   doubleTapViewport,
   fitScale,
   fitViewport,
+  focusCellViewport,
+  FOCUS_CELL_PT,
   maxVisibleCells,
   MAX_CELL_PT,
   numberThreshold,
@@ -22,6 +24,7 @@ import {
   visibleRange,
   worldToScreen,
   zoomAt,
+  viewCenter,
   type Viewport,
 } from './geometry';
 
@@ -185,5 +188,39 @@ describe('cellsOnLine', () => {
       expect(Math.abs(diag[i].col - diag[i - 1].col)).toBeLessThanOrEqual(1);
       expect(Math.abs(diag[i].row - diag[i - 1].row)).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('focusCellViewport (Find hint)', () => {
+  const bounds = scaleBounds(grid, view);
+
+  it.each([
+    ['fully zoomed out', fitViewport(grid, view)],
+    ['mid zoom elsewhere', { scale: 20, tx: -300, ty: -100 }],
+    ['max zoom', { scale: MAX_CELL_PT, tx: 0, ty: 0 }],
+  ])('brings the cell into view, readable, from %s', (_name, start: Viewport) => {
+    const target = focusCellViewport(start, 20, 9, grid, view, bounds);
+    expect(target.scale).toBeGreaterThanOrEqual(Math.min(FOCUS_CELL_PT, bounds.max));
+    expect(target.scale).toBeGreaterThanOrEqual(start.scale);
+    // The cell is entirely on screen.
+    const topLeft = cellToScreen(20, 9, target);
+    expect(topLeft.x).toBeGreaterThanOrEqual(0);
+    expect(topLeft.y).toBeGreaterThanOrEqual(0);
+    expect(topLeft.x + target.scale).toBeLessThanOrEqual(view.width);
+    expect(topLeft.y + target.scale).toBeLessThanOrEqual(view.height);
+    expect(clampViewport(target, grid, view, bounds)).toEqual(target);
+  });
+
+  it('centers the cell when the pan bounds allow it', () => {
+    const target = focusCellViewport(fitViewport(grid, view), 16, 8, grid, view, bounds);
+    // Horizontally centered on the cell; vertically the grid (448 pt) is shorter than the view,
+    // so it stays centered as a whole.
+    expect(viewCenter(target, view)).toEqual({ x: 16.5, y: 8 });
+  });
+
+  it('keeps corner cells inside the pan bounds', () => {
+    const target = focusCellViewport(fitViewport(grid, view), 0, 0, grid, view, bounds);
+    expect(target.tx).toBeLessThanOrEqual(0);
+    expect(screenToCell(1, view.height / 2, target, grid)?.col).toBe(0);
   });
 });

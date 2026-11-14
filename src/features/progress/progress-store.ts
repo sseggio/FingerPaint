@@ -14,6 +14,8 @@ export interface ProgressState {
   save(summary: ProgressSummary, bits: Uint8Array): void;
   flush(): Promise<void>;
   remove(artworkId: string): Promise<void>;
+  /** Erases the progress of every artwork (index and bitsets). */
+  removeAll(): Promise<void>;
 }
 
 export function createProgressStore(repo: ProgressRepo = createProgressRepo()) {
@@ -36,6 +38,12 @@ export function createProgressStore(repo: ProgressRepo = createProgressRepo()) {
         return { index: rest };
       });
       await repo.remove(artworkId);
+    },
+    async removeAll() {
+      const ids = Object.keys(get().index);
+      set({ index: {} });
+      // Sequential: each removal flushes the index once.
+      for (const id of ids) await repo.remove(id);
     },
   }));
 }

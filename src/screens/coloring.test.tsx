@@ -2,7 +2,8 @@
  * @jest-environment ./jest/skia-environment.js
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { getArtwork } from '@/features/artwork/registry';
@@ -24,6 +25,7 @@ jest.mock('@/features/coloring/canvas/glyph-atlas', () => ({
 jest.mock('expo-localization', () => ({ useLocales: () => [{ languageCode: 'en', languageTag: 'en-US' }] }));
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
+  selectionAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: 'light' },
 }));
 jest.mock('expo-router', () => ({
@@ -74,5 +76,20 @@ describe('ColoringScreen', () => {
     expect(screen.queryByLabelText('Palette')).toBeNull();
     expect(screen.getByRole('button', { name: 'Color the next artwork' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Back to the library' })).toBeTruthy();
+  });
+
+  it('Find locates a cell of the active color and announces it', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    await renderScreen('tabby-cat');
+    await fireEvent.press(screen.getByRole('button', { name: 'Find a cell of color 1' }));
+    expect(announce).toHaveBeenCalledWith(expect.stringMatching(/^Cell found: row \d+, column \d+\.$/));
+    announce.mockRestore();
+  });
+
+  it('shows color names and symbols in colorblind mode', async () => {
+    useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS, colorblindSymbols: true } });
+    await renderScreen('tabby-cat');
+    const first = screen.getByRole('button', { name: /^Color 1, [a-z ]+, 0 of \d+ cells$/ });
+    expect(first).toBeSelected();
   });
 });

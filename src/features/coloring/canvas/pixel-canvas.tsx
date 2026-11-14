@@ -6,6 +6,7 @@ import {
   Image,
   MipmapMode,
   Path,
+  Rect,
   Skia,
   useRectBuffer,
   useRSXformBuffer,
@@ -13,22 +14,31 @@ import {
   type SkImage,
   type SkPath,
 } from '@shopify/react-native-skia';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useSimultaneousGestures } from 'react-native-gesture-handler';
-import { useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import {
+  cancelAnimation,
+  useDerivedValue,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import type { Artwork } from '@/lib/artwork/types';
-import type { StrokeState } from '@/lib/fill-stroke';
+import { previewStart, type StrokeState } from '@/lib/fill-stroke';
 import { maxVisibleCells, numberThreshold as thresholdFor, type CellRange, type Size } from '@/lib/geometry';
-import { colors } from '@/theme';
+import { colors, palette } from '@/theme';
 
 import { createNumberAtlas, type GlyphAtlas } from './glyph-atlas';
 import { glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
 import { makeLayerImage } from './layer-image';
 import { buildBackgroundPixels, buildHighlightPixels, numberInks } from './layers';
 import { useFillGestures, type FillHandler } from './use-fill-gestures';
-import { useViewport } from './use-viewport';
+import { FOCUS_TIMING, useViewport } from './use-viewport';
 
 /** Cells are magnified: never blur them. */
 const NEAREST: SamplingOptions = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
@@ -49,7 +59,23 @@ export interface PixelCanvasProps {
   onFill?: FillHandler;
   /** One-finger drags color cells (then two fingers pan); otherwise one finger pans. */
   dragToFill?: boolean;
+  /** Colorblind mode: symbols instead of numbers. */
+  colorblindSymbols?: boolean;
+  /** High-contrast mode: stronger grid lines, glyphs with a halo. */
+  highContrast?: boolean;
   accessibilityLabel: string;
+  ref?: Ref<PixelCanvasHandle>;
+}
+
+/** Imperative API used by the "Find" hint. */
+export interface PixelCanvasHandle {
+  /** World point (cells) at the center of the view; null before the canvas is measured. */
+  getViewCenter(): { x: number; y: number } | null;
+  /**
+   * Moves the view to the cell (row-major index) and makes it pulse. Without motion (`animate`
+   * false, reduce motion) the view jumps there and the marker only fades. False if not measured.
+   */
+  focusCell(index: number, animate: boolean): boolean;
 }
 
 /** Grid lines in world units (1 unit = 1 cell), drawn as hairlines whatever the zoom. */
@@ -110,12 +136,17 @@ const NumberGlyphs = memo(function NumberGlyphs({ atlas, cells, inks, gridWidth,
   return <Atlas image={image} sprites={sprites} transforms={transforms} sampling={SMOOTH} />;
 });
 
-/** Live drag-to-fill preview: the cells collected by the running stroke, as unit squares. */
+/**
+ * Live drag-to-fill preview: the cells collected by the running stroke, as unit squares. Only
+ * the cells not yet painted in the color layer are drawn (see `previewStart`), so each update
+ * costs at most ~2 × DRAG_BATCH_MAX rects however long the drag.
+ */
 function useStrokePath(stroke: SharedValue<StrokeState>, gridWidth: number) {
   return useDerivedValue(() => {
     const builder = Skia.PathBuilder.Make();
-    const { cells } = stroke.get();
-    for (let k = 0; k < cells.length; k++) {
+    const state = stroke.get();
+    const { cells } = state;
+    for (let k = previewStart(state); k < cells.length; k++) {
       const i = cells[k];
       builder.addRect(Skia.XYWHRect(i % gridWidth, Math.floor(i / gridWidth), 1, 1));
     }
@@ -126,7 +157,7 @@ function useStrokePath(stroke: SharedValue<StrokeState>, gridWidth: number) {
 /**
  * The coloring canvas: one Skia `<Canvas>` whose world group is transformed by shared values.
  * Layers (back to front): grayscale background, active-color highlight, numbers, color layer
- * (opaque over filled cells, so their numbers and highlight disappear), drag preview, grid.
+ * (opaque over filled cells, so their numbers and highlight disappear), drag preview, grid, "Find" marker.
  */
 export function PixelCanvas({
   artwork,
@@ -136,7 +167,10 @@ export function PixelCanvas({
   activeColor = null,
   onFill,
   dragToFill = true,
+  colorblindSymbols = false,
+  highContrast = false,
   accessibilityLabel,
+  ref,
 }: PixelCanvasProps) {
   const { width, height } = artwork;
   const [view, setView] = useState<Size | null>(null);
@@ -170,17 +204,69 @@ export function PixelCanvas({
   const inks = useMemo(() => numberInks(artwork), [artwork]);
   const gridPath = useMemo(() => buildGridPath(width, height), [width, height]);
   const paletteSize = artwork.palette.colors.length;
-  const atlas = useMemo(() => createNumberAtlas(paletteSize), [paletteSize]);
+  const symbolKey = colorblindSymbols ? artwork.palette.colors.map((c) => c.symbol).join(',') : '';
+  const atlas = useMemo(
+    () =>
+      createNumberAtlas(paletteSize, {
+        symbols: symbolKey ? symbolKey.split(',') : null,
+        large: largeNumbers,
+        highContrast,
+      }),
+    [paletteSize, symbolKey, largeNumbers, highContrast],
+  );
   const cells = useMemo(() => Array.from(artwork.cells), [artwork.cells]);
   const capacity = view ? maxVisibleCells(view, threshold, grid) : 0;
 
   const canFill = !!onFill && activeColor !== null;
-  const { gestures, scale, tx, ty, transform, gridOpacity, glyphRange } = useViewport({
+  const { gestures, scale, tx, ty, transform, gridOpacity, glyphRange, getViewCenter, focusCell } = useViewport({
     grid,
     view,
     numberThreshold: threshold,
     panMinPointers: canFill && dragToFill ? 2 : 1,
+    highContrast,
   });
+
+  // "Find" marker: a ring around the target cell that pulses three times, then fades.
+  const pulse = useSharedValue(0);
+  const pulseCell = useSharedValue(-1);
+  const pulseGrow = useSharedValue(0);
+  useImperativeHandle(
+    ref,
+    () => ({
+      getViewCenter,
+      focusCell(index, animate) {
+        if (!Number.isInteger(index) || index < 0 || index >= width * height) return false;
+        if (!focusCell(index % width, Math.floor(index / width), animate)) return false;
+        cancelAnimation(pulse);
+        pulseCell.set(index);
+        pulseGrow.set(animate ? 1 : 0);
+        pulse.set(
+          animate
+            ? withSequence(
+                withTiming(0, { duration: 0 }),
+                withDelay(
+                  FOCUS_TIMING.duration,
+                  withRepeat(withSequence(withTiming(1, { duration: 220 }), withTiming(0.35, { duration: 320 })), 3),
+                ),
+                withTiming(0, { duration: 400 }),
+              )
+            : withSequence(withTiming(1, { duration: 0 }), withDelay(1800, withTiming(0, { duration: 400 }))),
+        );
+        return true;
+      },
+    }),
+    [focusCell, getViewCenter, height, pulse, pulseCell, pulseGrow, width],
+  );
+  const pulseRect = useDerivedValue(() => {
+    const i = pulseCell.get();
+    // Grows a little with the pulse (motion only when allowed: pulseGrow is 0 otherwise).
+    const pad = 0.15 + 0.2 * pulse.get() * pulseGrow.get();
+    if (i < 0) return Skia.XYWHRect(-10, -10, 0, 0);
+    return Skia.XYWHRect((i % width) - pad, Math.floor(i / width) - pad, 1 + pad * 2, 1 + pad * 2);
+  });
+  // Ring thickness in cells: ~3 pt whatever the zoom.
+  const pulseStroke = useDerivedValue(() => 3 / Math.max(1, scale.get()));
+  const pulseHalo = useDerivedValue(() => 6 / Math.max(1, scale.get()));
 
   const activeValue = useSharedValue(0);
   useEffect(() => {
@@ -241,6 +327,8 @@ export function PixelCanvas({
                 color={colors.light.ink}
                 opacity={gridOpacity}
               />
+              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={palette.white} opacity={pulse} />
+              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={palette.pink} opacity={pulse} />
             </Group>
           </Canvas>
         ) : null}

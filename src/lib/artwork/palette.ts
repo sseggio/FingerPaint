@@ -1,14 +1,11 @@
+import { SYMBOL_SPECS } from '@/lib/symbols';
+
 import { hexToRgb } from './color';
 import type { HexColor, Palette } from './types';
 import { MAX_COLORS } from './types';
 
-/** Colorblind-mode symbols, one per palette slot (MAX_COLORS entries). */
-export const SYMBOLS: readonly string[] = [
-  '●', '▲', '■', '◆', '★', '♥', '♣', '♠', '✚', '✖',
-  '▼', '◀', '▶', '◐', '◑', '◒', '◓', '☀', '☾', '♪',
-  '✦', '✿', '❖', '⬟', '⬢', '○', '△', '□', '◇', '☆',
-  '♡', '♧', '♤', '✕', '▽', '◁', '▷', '◎', '◉', '✧',
-];
+/** Colorblind-mode symbol ids (see `src/lib/symbols.ts`), one per palette slot (MAX_COLORS entries). */
+export const SYMBOLS: readonly string[] = SYMBOL_SPECS.map((s) => s.id);
 
 if (SYMBOLS.length < MAX_COLORS || new Set(SYMBOLS).size !== SYMBOLS.length) {
   throw new Error('SYMBOLS must hold MAX_COLORS unique entries');
