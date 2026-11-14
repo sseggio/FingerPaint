@@ -43,6 +43,11 @@ export interface ProgressRepo {
   /** Writes pending saves now (app going to background, leaving the screen). */
   flush(): Promise<void>;
   remove(artworkId: string): Promise<void>;
+  /**
+   * Erases every artwork's progress, including entries only present in storage (works before
+   * hydration). The empty index is written once, then all bitsets are removed in one batch.
+   */
+  removeAll(): Promise<void>;
   hasPending(): boolean;
 }
 
@@ -70,6 +75,8 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
   let indexLoaded = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let queue: Promise<void> = Promise.resolve();
+  /** Bumped by `removeAll`: a stored index read that started before it is stale. */
+  let generation = 0;
 
   const cancelTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -86,8 +93,10 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
 
   /** Merges the stored index under in-memory entries (saved/removed before loading). */
   const mergeStoredIndex = async () => {
+    const startedAt = generation;
     const { data } = await readValue(StorageKeys.progressIndex, progressIndexSchema, backend);
-    const stored = sanitizeIndex(data).entries;
+    // Everything stored before a `removeAll` is gone, even if this read returned it.
+    const stored = startedAt === generation ? sanitizeIndex(data).entries : {};
     for (const id of removed) delete stored[id];
     index = { ...stored, ...index };
     indexLoaded = true;
@@ -135,6 +144,38 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     return queue;
   };
 
+  const removeKeys = async (keys: string[]) => {
+    if (keys.length === 0) return;
+    if (backend.multiRemove) await backend.multiRemove(keys);
+    else for (const key of keys) await backend.removeItem(key);
+  };
+
+  const eraseAll = async () => {
+    // Ids only known to storage (not hydrated yet) must be erased too.
+    if (!indexLoaded) await mergeStoredIndex();
+    generation += 1;
+    const ids = new Set([...Object.keys(index), ...pending.keys()]);
+    for (const id of ids) removed.add(id);
+    index = {};
+    pending.clear();
+    indexDirty = false;
+    try {
+      await backend.multiSet([[StorageKeys.progressIndex, serializeValue({ entries: {} }, progressIndexSchema, now())]]);
+      failures = 0;
+    } catch (e) {
+      failures += 1;
+      const retryIn = Math.min(retryDelayMs * 2 ** (failures - 1), PROGRESS_RETRY_MAX_DELAY_MS);
+      warn(`reset failed, retrying in ${retryIn} ms (${String(e)})`);
+      indexDirty = true;
+      if (timer === undefined) schedule(retryIn);
+    }
+    try {
+      await removeKeys([...ids].map((id) => StorageKeys.progress(id)));
+    } catch (e) {
+      warn(`remove all failed (${String(e)})`);
+    }
+  };
+
   return {
     async loadIndex() {
       // Keep entries saved (or removed) before hydration finished.
@@ -174,6 +215,12 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
       } catch (e) {
         warn(`${artworkId}: remove failed (${String(e)})`);
       }
+    },
+    removeAll() {
+      cancelTimer();
+      // Queued behind in-flight writes so none of them can bring an entry back.
+      queue = queue.then(eraseAll);
+      return queue;
     },
     hasPending: () => indexDirty || pending.size > 0,
   };

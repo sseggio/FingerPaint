@@ -17,8 +17,9 @@ jest.mock('@shopify/react-native-skia', () =>
   require('@shopify/react-native-skia/lib/commonjs/mock').Mock((globalThis as { CanvasKit?: unknown }).CanvasKit),
 );
 // CanvasKit has no system fonts: stand in for the pre-rendered number texture.
+const mockAtlasDispose = jest.fn();
 jest.mock('./glyph-atlas', () => ({
-  createNumberAtlas: (count: number) => ({ image: {}, count, spritePx: 96, columns: 8 }),
+  createNumberAtlas: (count: number) => ({ image: { dispose: mockAtlasDispose }, count, spritePx: 96, columns: 8 }),
 }));
 
 const artwork = toArtwork(createPerfArtworkSource());
@@ -37,7 +38,15 @@ function hostTypes(): string[] {
   return types;
 }
 
-function Subject({ revision = 0, activeColor = null }: { revision?: number; activeColor?: number | null }) {
+function Subject({
+  revision = 0,
+  activeColor = null,
+  largeNumbers = false,
+}: {
+  revision?: number;
+  activeColor?: number | null;
+  largeNumbers?: boolean;
+}) {
   return (
     <GestureHandlerRootView>
       <PixelCanvas
@@ -45,6 +54,7 @@ function Subject({ revision = 0, activeColor = null }: { revision?: number; acti
         colorPixels={createColorPixels(artwork.width, artwork.height)}
         colorRevision={revision}
         activeColor={activeColor}
+        largeNumbers={largeNumbers}
         onFill={activeColor === null ? undefined : () => undefined}
         accessibilityLabel="Artwork"
       />
@@ -68,6 +78,17 @@ describe('PixelCanvas (Skia mock)', () => {
 
     await rerender(<Subject revision={1} />);
     expect(screen.getByLabelText('Artwork')).toBeTruthy();
+  });
+
+  it('disposes the previous glyph atlas when it is rebuilt, and the last one on unmount', async () => {
+    mockAtlasDispose.mockClear();
+    const { rerender, unmount } = await render(<Subject />);
+    await rerender(<Subject revision={1} />);
+    expect(mockAtlasDispose).not.toHaveBeenCalled();
+    await rerender(<Subject largeNumbers />);
+    expect(mockAtlasDispose).toHaveBeenCalledTimes(1);
+    await unmount();
+    expect(mockAtlasDispose).toHaveBeenCalledTimes(2);
   });
 
   it('adds the active-color highlight and the drag preview when coloring', async () => {

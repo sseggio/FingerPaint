@@ -45,6 +45,24 @@ export default function RootLayout() {
         <Stack screenOptions={{ contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen
+            name="album/[albumId]"
+            options={{
+              headerBackButtonDisplayMode: 'minimal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.ink,
+            }}
+          />
+          <Stack.Screen
+            name="shop"
+            options={{
+              presentation: 'modal',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.ink,
+            }}
+          />
+          <Stack.Screen
             name="color/[artworkId]"
             options={{
               headerBackButtonDisplayMode: 'minimal',

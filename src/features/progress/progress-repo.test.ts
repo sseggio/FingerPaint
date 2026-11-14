@@ -290,5 +290,47 @@ describe('progress store removeAll', () => {
     await fresh.getState().hydrate();
     expect(fresh.getState().index).toEqual({});
   });
-});
 
+  it('erases entries only known to storage when called before hydration, in one index write', async () => {
+    const seed = createProgressStore(createProgressRepo());
+    await seed.getState().hydrate();
+    const bits = createBitset(BITS);
+    setBit(bits, 3);
+    seed.getState().save(summary('cat', 1), bits);
+    seed.getState().save(summary('fish', 1), bits);
+    await seed.getState().flush();
+    multiSet.mockClear();
+    const multiRemove = jest.spyOn(AsyncStorage, 'multiRemove');
+
+    // A cold store that never hydrated: its in-memory index is empty.
+    const cold = createProgressStore(createProgressRepo());
+    await cold.getState().removeAll();
+    expect(multiSet).toHaveBeenCalledTimes(1);
+    expect(multiSet.mock.calls[0][0].map(([key]: [string, string]) => key)).toEqual([StorageKeys.progressIndex]);
+    expect(multiRemove).toHaveBeenCalledTimes(1);
+    expect(multiRemove.mock.calls[0][0]).toEqual(
+      expect.arrayContaining([StorageKeys.progress('cat'), StorageKeys.progress('fish')]),
+    );
+    expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
+
+    const fresh = createProgressStore(createProgressRepo());
+    await fresh.getState().hydrate();
+    expect(fresh.getState().index).toEqual({});
+    multiRemove.mockRestore();
+  });
+
+  it('drops pending saves so they cannot be written after the reset', async () => {
+    jest.useFakeTimers();
+    const repo = createProgressRepo();
+    await repo.loadIndex();
+    const bits = createBitset(BITS);
+    repo.save(summary('cat', 1), bits);
+    await repo.removeAll();
+    jest.advanceTimersByTime(PROGRESS_SAVE_DELAY_MS * 2);
+    await repo.flush();
+    expect(repo.hasPending()).toBe(false);
+    expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
+    const fresh = createProgressRepo();
+    expect(await fresh.loadIndex()).toEqual({});
+  });
+});

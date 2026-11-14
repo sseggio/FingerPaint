@@ -17,6 +17,8 @@ export interface StorageBackend {
   getItem(key: string): Promise<string | null>;
   multiSet(pairs: [string, string][]): Promise<unknown>;
   removeItem(key: string): Promise<unknown>;
+  /** Batched removal (AsyncStorage has it); falls back to `removeItem` per key when absent. */
+  multiRemove?(keys: string[]): Promise<unknown>;
 }
 
 export const defaultBackend: StorageBackend = AsyncStorage;

@@ -214,6 +214,9 @@ export function PixelCanvas({
       }),
     [paletteSize, symbolKey, largeNumbers, highContrast],
   );
+  // A settings change rebuilds the atlas: release the previous texture's native memory once
+  // the new one is committed (and the last one on unmount).
+  useEffect(() => () => atlas?.image.dispose(), [atlas]);
   const cells = useMemo(() => Array.from(artwork.cells), [artwork.cells]);
   const capacity = view ? maxVisibleCells(view, threshold, grid) : 0;
 
