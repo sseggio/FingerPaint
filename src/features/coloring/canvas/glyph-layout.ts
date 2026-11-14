@@ -24,3 +24,12 @@ export function glyphAtlasSize(count: number, spritePx = GLYPH_SPRITE_PX, column
   const cols = Math.max(1, Math.min(columns, count));
   return { width: cols * spritePx, height: Math.max(1, Math.ceil(count / columns)) * spritePx };
 }
+
+/**
+ * Sprite of number `value` (1-based palette number). The texture holds every number twice:
+ * sprites 0..count-1 in the dark ink, then count..2·count-1 in the light ink.
+ */
+export function glyphSpriteIndex(value: number, count: number, light: boolean): number {
+  'worklet';
+  return (light ? count : 0) + value - 1;
+}

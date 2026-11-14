@@ -1,4 +1,4 @@
-import { PERF_ARTWORK_ID } from './canvas/__fixtures__/perf-artwork';
+import { PERF_ARTWORK_ID } from './perf-artwork-id';
 import { parseArtworkIdParam, resolveColoringArtwork } from './resolve-artwork';
 
 describe('coloring route params', () => {

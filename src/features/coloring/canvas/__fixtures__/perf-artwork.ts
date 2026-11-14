@@ -1,11 +1,15 @@
 import { encode } from '@/lib/artwork/codec';
 import type { ArtworkSource, HexColor } from '@/lib/artwork/types';
 
+import { PERF_ARTWORK_ID } from '../../perf-artwork-id';
+
+export { PERF_ARTWORK_ID };
+
 /**
  * Generated 128×128 artwork for performance checks (worst case: largest grid, many colors,
- * numbers everywhere). Not part of the public content; reachable from a dev-only entry.
+ * numbers everywhere). Not part of the public content; loaded through a `__DEV__`-guarded
+ * require (see resolve-artwork.ts) so release bundles do not embed it.
  */
-export const PERF_ARTWORK_ID = 'dev-perf-128';
 
 const PERF_PALETTE: HexColor[] = [
   '#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6',

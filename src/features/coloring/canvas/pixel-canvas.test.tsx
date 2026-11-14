@@ -35,13 +35,15 @@ function hostTypes(): string[] {
   return types;
 }
 
-function Subject({ revision = 0 }: { revision?: number }) {
+function Subject({ revision = 0, activeColor = null }: { revision?: number; activeColor?: number | null }) {
   return (
     <GestureHandlerRootView>
       <PixelCanvas
         artwork={artwork}
         colorPixels={createColorPixels(artwork.width, artwork.height)}
         colorRevision={revision}
+        activeColor={activeColor}
+        onFill={activeColor === null ? undefined : () => undefined}
         accessibilityLabel="Artwork"
       />
     </GestureHandlerRootView>
@@ -64,5 +66,19 @@ describe('PixelCanvas (Skia mock)', () => {
 
     await rerender(<Subject revision={1} />);
     expect(screen.getByLabelText('Artwork')).toBeTruthy();
+  });
+
+  it('adds the active-color highlight and the drag preview when coloring', async () => {
+    await render(<Subject activeColor={3} />);
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
+      });
+    });
+    const types = hostTypes();
+    // Background, highlight mask, color layer.
+    expect(types.filter((t) => t === 'skImage')).toHaveLength(3);
+    // Drag preview + grid.
+    expect(types.filter((t) => t === 'skPath')).toHaveLength(2);
   });
 });

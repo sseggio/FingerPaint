@@ -1,8 +1,8 @@
 import { getArtwork } from '@/features/artwork/registry';
 import { toArtwork } from '@/lib/artwork/codec';
-import type { Artwork } from '@/lib/artwork/types';
+import type { Artwork, ArtworkSource } from '@/lib/artwork/types';
 
-import { createPerfArtworkSource, PERF_ARTWORK_ID } from './canvas/__fixtures__/perf-artwork';
+import { PERF_ARTWORK_ID } from './perf-artwork-id';
 
 /** Artwork ids are kebab-case (see validate.ts); anything else is rejected before any lookup. */
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -17,6 +17,21 @@ export function parseArtworkIdParam(param: unknown): string | null {
 
 let perfArtwork: Artwork | undefined;
 
+/**
+ * Generates the perf fixture. The require sits behind `__DEV__`, which Metro inlines as
+ * `false` in release builds: the branch is folded away before dependencies are collected, so
+ * the generator never reaches a production bundle.
+ */
+function loadPerfArtworkSource(): ArtworkSource | undefined {
+  // The require must sit inside the `if` block: constant folding drops the whole block.
+  if (__DEV__) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dev-only conditional import
+    const fixture = require('./canvas/__fixtures__/perf-artwork') as typeof import('./canvas/__fixtures__/perf-artwork');
+    return fixture.createPerfArtworkSource();
+  }
+  return undefined;
+}
+
 export interface ResolveOptions {
   /** Allows the generated perf fixture (development builds only). */
   allowDev?: boolean;
@@ -30,7 +45,11 @@ export function resolveColoringArtwork(param: unknown, options: ResolveOptions =
   if (!id) return undefined;
   if (id === PERF_ARTWORK_ID) {
     if (!allowDev) return undefined;
-    perfArtwork ??= toArtwork(createPerfArtworkSource());
+    if (!perfArtwork) {
+      const source = loadPerfArtworkSource();
+      if (!source) return undefined;
+      perfArtwork = toArtwork(source);
+    }
     return perfArtwork;
   }
   return lookup(id);

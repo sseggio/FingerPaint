@@ -2,10 +2,13 @@ import * as Haptics from 'expo-haptics';
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { useSettingsStore } from '@/features/settings/settings-store';
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type PressableScaleProps = Omit<PressableProps, 'style'> & {
   style?: StyleProp<ViewStyle>;
+  /** Light haptic on press (only when the user's `haptics` setting is on). */
   haptic?: boolean;
   scaleTo?: number;
 };
@@ -37,7 +40,7 @@ export function PressableScale({
         onPressOut?.(e);
       }}
       onPress={(e) => {
-        if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+        if (haptic && useSettingsStore.getState().settings.haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
         onPress?.(e);
       }}
       style={[style, animated]}
