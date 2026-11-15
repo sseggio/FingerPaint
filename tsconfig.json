@@ -23,6 +23,7 @@
   ],
   "exclude": [
     "node_modules",
-    ".claude"
+    ".claude",
+    "backoffice"
   ]
 }
