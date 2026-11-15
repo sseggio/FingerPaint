@@ -101,8 +101,8 @@ describe('PixelCanvas (Skia mock)', () => {
     const types = hostTypes();
     // Background, highlight mask, color layer.
     expect(types.filter((t) => t === 'skImage')).toHaveLength(3);
-    // Drag preview + grid.
-    expect(types.filter((t) => t === 'skPath')).toHaveLength(2);
+    // Fill preview (one path per palette color) + grid.
+    expect(types.filter((t) => t === 'skPath')).toHaveLength(artwork.palette.colors.length + 1);
   });
 
   it('moves the view to a cell for the Find hint, at any zoom, with or without motion', async () => {
