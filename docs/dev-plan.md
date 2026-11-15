@@ -125,9 +125,9 @@ Une mauvaise couleur ne se pose pas : on joue une haptique légère, sans pénal
   - `StoreKitProvider` s'appuie sur `expo-iap`, importé dynamiquement pour que Jest et Expo Go fonctionnent ;
   - `NoopProvider` affiche une boutique « bientôt disponible ».
 - **SKU non consommables :**
-  - `com.fingerpaint.app.pro` ;
-  - `com.fingerpaint.app.pack.ocean` (contenu) ;
-  - `com.fingerpaint.app.pack.neon` (cosmétique : thème de canvas et confettis).
+  - `com.krafting.pixeljoy.pro` ;
+  - `com.krafting.pixeljoy.pack.ocean` (contenu) ;
+  - `com.krafting.pixeljoy.pack.neon` (cosmétique : thème de canvas et confettis).
 - **Gating :** il passe par la fonction pure `canAccess(access, entitlements)`. Environ 75 % des œuvres sont gratuites. Les outils et les indices sont toujours gratuits.
 
 ---
@@ -326,7 +326,7 @@ F01 (foundation) est en cours. La liste commence à F02.
 - **Périmètre :**
   - `app.json` :
     - `name` FingerPaint, `slug` et `scheme` fingerpaint ;
-    - `ios.bundleIdentifier` `com.fingerpaint.app` (placeholder) ;
+    - `ios.bundleIdentifier` `com.krafting.pixeljoy` (placeholder) ;
     - `ITSAppUsesNonExemptEncryption: false` ;
     - `ios.privacyManifests` : pas de tracking, aucune donnée collectée, API déclarées (UserDefaults `CA92.1`, file timestamp `C617.1`) ;
   - `scripts/generate-icons.mjs` : icône 1024 sans alpha, splash et icônes Android générés depuis une œuvre maison ; suppression des assets du template ;

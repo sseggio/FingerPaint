@@ -23,8 +23,8 @@ describe('app.json', () => {
   it('has the FingerPaint identity', () => {
     expect(expo).toMatchObject({ name: 'FingerPaint', slug: 'fingerpaint', scheme: 'fingerpaint' });
     expect(expo.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(expo.ios.bundleIdentifier).toBe('com.fingerpaint.app');
-    expect(expo.android.package).toBe('com.fingerpaint.app');
+    expect(expo.ios.bundleIdentifier).toBe('com.krafting.pixeljoy');
+    expect(expo.android.package).toBe('com.krafting.pixeljoy');
     // The build number is managed remotely by EAS, never hard-coded.
     expect(expo.ios.buildNumber).toBeUndefined();
     expect(expo.android.versionCode).toBeUndefined();

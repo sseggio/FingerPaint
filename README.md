@@ -36,7 +36,7 @@ Régénérer les assets : `node scripts/generate-art.mjs` (illustrations), `node
 
 ## Builder pour TestFlight
 
-1. Remplacer les placeholders (`eas.json` : `ascAppId`, `appleTeamId` ; adresse de contact) et créer l'app dans App Store Connect avec le bundle id `com.fingerpaint.app`.
+1. Remplacer les placeholders (`eas.json` : `ascAppId`, `appleTeamId` ; adresse de contact) et créer l'app dans App Store Connect avec le bundle id `com.krafting.pixeljoy`.
 2. `npx eas-cli@latest login` puis `npx eas-cli@latest init`.
 3. `npx eas-cli@latest build -p ios --profile production` (build number incrémenté par EAS).
 4. `npx eas-cli@latest submit -p ios --latest`.

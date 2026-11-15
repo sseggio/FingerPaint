@@ -9,9 +9,9 @@ import { ALL_SKUS, isSku, SKUS } from './types';
 describe('catalog', () => {
   it('sells exactly the three V1 non-consumables, in order', () => {
     expect(CATALOG.map((i) => i.sku)).toEqual([
-      'com.fingerpaint.app.pro',
-      'com.fingerpaint.app.pack.ocean',
-      'com.fingerpaint.app.pack.neon',
+      'com.krafting.pixeljoy.pro',
+      'com.krafting.pixeljoy.pack.ocean',
+      'com.krafting.pixeljoy.pack.neon',
     ]);
     expect(ALL_SKUS).toEqual(CATALOG.map((i) => i.sku));
     expect(CATALOG.map((i) => i.kind)).toEqual(['pro', 'content', 'cosmetic']);
@@ -40,8 +40,8 @@ describe('catalog', () => {
   });
 
   it('recognizes SKUs strictly', () => {
-    expect(isSku('com.fingerpaint.app.pro')).toBe(true);
-    expect(isSku('com.fingerpaint.app.PRO')).toBe(false);
+    expect(isSku('com.krafting.pixeljoy.pro')).toBe(true);
+    expect(isSku('com.krafting.pixeljoy.PRO')).toBe(false);
     expect(isSku(42)).toBe(false);
     expect(normalizeSkus([SKUS.neonPack, 'junk', SKUS.pro, SKUS.pro, null])).toEqual([SKUS.pro, SKUS.neonPack]);
   });

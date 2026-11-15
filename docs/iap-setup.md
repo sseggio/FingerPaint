@@ -4,9 +4,9 @@ FingerPaint vend trois **achats uniques non consommables**. Il n'y a ni abonneme
 
 | Product ID (SKU) | Type | Contenu |
 | --- | --- | --- |
-| `com.fingerpaint.app.pro` | Non-Consumable | Toutes les œuvres `access: "pro"` + bonus cosmétique (confettis dorés). Aucun outil. |
-| `com.fingerpaint.app.pack.ocean` | Non-Consumable | L'album « Océan profond » (`access: { "pack": "ocean" }`). |
-| `com.fingerpaint.app.pack.neon` | Non-Consumable | Cosmétique : thème de toile néon + confettis néon. Désactivable dans Réglages › Apparence. |
+| `com.krafting.pixeljoy.pro` | Non-Consumable | Toutes les œuvres `access: "pro"` + bonus cosmétique (confettis dorés). Aucun outil. |
+| `com.krafting.pixeljoy.pack.ocean` | Non-Consumable | L'album « Océan profond » (`access: { "pack": "ocean" }`). |
+| `com.krafting.pixeljoy.pack.neon` | Non-Consumable | Cosmétique : thème de toile néon + confettis néon. Désactivable dans Réglages › Apparence. |
 
 Pro n'inclut **pas** les packs : chaque pack est un achat de contenu distinct (voir `canAccess`).
 

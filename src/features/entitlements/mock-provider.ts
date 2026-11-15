@@ -10,9 +10,9 @@ export const MOCK_OUTCOMES: readonly MockOutcome[] = ['success', 'cancel', 'erro
 
 /** Fake prices, clearly marked as such: real prices always come from the store. */
 const MOCK_PRICES: Readonly<Record<Sku, string>> = {
-  'com.fingerpaint.app.pro': '4,99 € (mock)',
-  'com.fingerpaint.app.pack.ocean': '2,99 € (mock)',
-  'com.fingerpaint.app.pack.neon': '1,99 € (mock)',
+  'com.krafting.pixeljoy.pro': '4,99 € (mock)',
+  'com.krafting.pixeljoy.pack.ocean': '2,99 € (mock)',
+  'com.krafting.pixeljoy.pack.neon': '1,99 € (mock)',
 };
 
 interface MockLedger {

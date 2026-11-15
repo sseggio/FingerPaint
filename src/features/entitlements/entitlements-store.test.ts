@@ -212,7 +212,7 @@ describe('entitlements store (store-backed, offline-first)', () => {
   it('drops unknown SKUs found in the cache', async () => {
     await AsyncStorage.setItem(
       StorageKeys.entitlements,
-      JSON.stringify(createEnvelope({ owned: ['com.fingerpaint.app.everything', SKUS.oceanPack], source: 'storekit' }, 1)),
+      JSON.stringify(createEnvelope({ owned: ['com.krafting.pixeljoy.everything', SKUS.oceanPack], source: 'storekit' }, 1)),
     );
     const provider = fakeStore();
     provider.state.offline = true;

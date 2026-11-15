@@ -28,7 +28,7 @@ Elles viennent des tokens de `src/theme/tokens.ts` : fond du splash `colors.ligh
 
 | Où | Clé | Valeur actuelle | À faire |
 | --- | --- | --- | --- |
-| `app.json` | `ios.bundleIdentifier`, `android.package` | `com.fingerpaint.app` | Garder si l'identifiant est libre sur le compte Apple, sinon choisir un id unique (et mettre à jour les SKU de `src/features/entitlements/types.ts` + `docs/iap-setup.md`). |
+| `app.json` | `ios.bundleIdentifier`, `android.package` | `com.krafting.pixeljoy` | Garder si l'identifiant est libre sur le compte Apple, sinon choisir un id unique (et mettre à jour les SKU de `src/features/entitlements/types.ts` + `docs/iap-setup.md`). |
 | `eas.json` | `submit.production.ios.ascAppId` | `REPLACE_ME` | *Apple ID* numérique de l'app (App Store Connect › App › Informations générales). |
 | `eas.json` | `submit.production.ios.appleTeamId` | `REPLACE_ME` | Team ID Apple (10 caractères). |
 | `src/features/about/app-info.ts` | `CONTACT_EMAIL` | `hello@fingerpaint.app` | Adresse de support réelle (aussi dans `docs/privacy-policy.md`). |
@@ -36,8 +36,8 @@ Elles viennent des tokens de `src/theme/tokens.ts` : fond du splash `colors.ligh
 
 ## 3. Créer l'app
 
-1. developer.apple.com › *Identifiers* : l'identifiant `com.fingerpaint.app` peut être créé à la main, ou laissé à EAS (il le crée et active la capacité *In-App Purchase* lors de la synchronisation des capacités).
-2. App Store Connect › *Apps* › **+ Nouvelle app** : plateforme iOS, nom **FingerPaint** (ou variante si pris), langue principale Français, bundle id `com.fingerpaint.app`, SKU interne libre (ex. `fingerpaint-ios`).
+1. developer.apple.com › *Identifiers* : l'identifiant `com.krafting.pixeljoy` peut être créé à la main, ou laissé à EAS (il le crée et active la capacité *In-App Purchase* lors de la synchronisation des capacités).
+2. App Store Connect › *Apps* › **+ Nouvelle app** : plateforme iOS, nom **FingerPaint** (ou variante si pris), langue principale Français, bundle id `com.krafting.pixeljoy`, SKU interne libre (ex. `fingerpaint-ios`).
 3. Reporter l'*Apple ID* de l'app dans `eas.json` (`ascAppId`).
 
 ## 4. EAS
@@ -57,7 +57,7 @@ npx eas-cli@latest submit -p ios --profile production --latest
 
 ## 5. Achats intégrés
 
-Suivre `docs/iap-setup.md` : créer les 3 produits **Non-Consumable** (`com.fingerpaint.app.pro`, `com.fingerpaint.app.pack.ocean`, `com.fingerpaint.app.pack.neon`), prix, localisations FR/EN, capture de revue (la boutique), partage familial. Les soumettre avec la première version.
+Suivre `docs/iap-setup.md` : créer les 3 produits **Non-Consumable** (`com.krafting.pixeljoy.pro`, `com.krafting.pixeljoy.pack.ocean`, `com.krafting.pixeljoy.pack.neon`), prix, localisations FR/EN, capture de revue (la boutique), partage familial. Les soumettre avec la première version.
 
 ## 6. App Privacy (étiquette de confidentialité)
 

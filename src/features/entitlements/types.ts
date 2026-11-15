@@ -2,9 +2,9 @@ import type { EntitlementsSource } from './can-access';
 
 /** Non-consumable products sold in V1 (App Store Connect product ids). */
 export const SKUS = {
-  pro: 'com.fingerpaint.app.pro',
-  oceanPack: 'com.fingerpaint.app.pack.ocean',
-  neonPack: 'com.fingerpaint.app.pack.neon',
+  pro: 'com.krafting.pixeljoy.pro',
+  oceanPack: 'com.krafting.pixeljoy.pack.ocean',
+  neonPack: 'com.krafting.pixeljoy.pack.neon',
 } as const;
 
 export type Sku = (typeof SKUS)[keyof typeof SKUS];
