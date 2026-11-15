@@ -1,4 +1,5 @@
 import { bitsetFromBase64, bitsetToBase64 } from '@/lib/bitset';
+import { decodeFillOrder, encodeFillOrder, journalCells, type FillOrderView } from '@/lib/fill-order';
 import {
   defaultBackend,
   readValue,
@@ -12,6 +13,7 @@ import {
   progressCellsSchema,
   progressIndexSchema,
   sanitizeIndex,
+  type ProgressCells,
   type ProgressSummary,
 } from './progress-schema';
 
@@ -29,6 +31,18 @@ export interface ProgressRepoOptions {
   now?: () => number;
 }
 
+/** Cells of one artwork as stored: the bitset and, when known, the fill order journal (F18). */
+export interface StoredCells {
+  bits: Uint8Array;
+  /** Fill order (validated against `bits`); null when absent or invalid. */
+  order: Uint16Array | null;
+}
+
+interface PendingCells {
+  bits: Uint8Array;
+  order?: FillOrderView;
+}
+
 export interface ProgressRepo {
   /** Loads the lightweight index (invalid entries dropped). Never rejects. */
   loadIndex(): Promise<Record<string, ProgressSummary>>;
@@ -38,10 +52,16 @@ export interface ProgressRepo {
    */
   loadFilled(artworkId: string, bitCount: number): Promise<Uint8Array | undefined>;
   /**
-   * Queues a save; all saves within `delayMs` of each other are coalesced into one storage
-   * write. `bits` is read at flush time (pass the live session buffer, it is not copied).
+   * Same as `loadFilled`, with the fill order journal. A journal that does not match the bitset
+   * (index outside the grid, duplicate, cell not filled) is dropped: `order` is null.
    */
-  save(summary: ProgressSummary, bits: Uint8Array): void;
+  loadCells(artworkId: string, bitCount: number): Promise<StoredCells | undefined>;
+  /**
+   * Queues a save; all saves within `delayMs` of each other are coalesced into one storage
+   * write. `bits` and `order` are read at flush time (pass the live session buffers, they are
+   * not copied). Without `order`, no journal is stored.
+   */
+  save(summary: ProgressSummary, bits: Uint8Array, order?: FillOrderView): void;
   /** Writes pending saves now (app going to background, leaving the screen). */
   flush(): Promise<void>;
   remove(artworkId: string): Promise<void>;
@@ -67,9 +87,9 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
 
   let index: Record<string, ProgressSummary> = {};
   let indexDirty = false;
-  const pending = new Map<string, Uint8Array>();
+  const pending = new Map<string, PendingCells>();
   /** Batch handed to `multiSet` and not yet acknowledged (readable by `loadFilled`). */
-  let inFlight = new Map<string, Uint8Array>();
+  let inFlight = new Map<string, PendingCells>();
   /** Artworks removed before the index was loaded (must not come back from storage). */
   const removed = new Set<string>();
   let failures = 0;
@@ -118,8 +138,10 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     const pairs: [string, string][] = [
       [StorageKeys.progressIndex, serializeValue({ entries: index }, progressIndexSchema, time)],
     ];
-    for (const [id, bits] of batch) {
-      pairs.push([StorageKeys.progress(id), serializeValue({ filled: bitsetToBase64(bits) }, progressCellsSchema, time)]);
+    for (const [id, { bits, order }] of batch) {
+      const cells: ProgressCells = { filled: bitsetToBase64(bits) };
+      if (order && order.length > 0) cells.order = encodeFillOrder(order);
+      pairs.push([StorageKeys.progress(id), serializeValue(cells, progressCellsSchema, time)]);
     }
     inFlight = batch;
     try {
@@ -132,7 +154,7 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
       warn(`write failed, retrying in ${retryIn} ms (${String(e)})`);
       indexDirty = true;
       // Skip artworks removed while the write was in flight.
-      for (const [id, bits] of batch) if (!pending.has(id) && inFlight.has(id)) pending.set(id, bits);
+      for (const [id, cells] of batch) if (!pending.has(id) && inFlight.has(id)) pending.set(id, cells);
       // Do not rely on a future save or app backgrounding to retry.
       if (timer === undefined) schedule(retryIn);
     } finally {
@@ -178,6 +200,23 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
     }
   };
 
+  async function loadCells(artworkId: string, bitCount: number): Promise<StoredCells | undefined> {
+    const live = pending.get(artworkId) ?? inFlight.get(artworkId);
+    if (live) return { bits: live.bits, order: live.order ? journalCells(live.order).slice() : null };
+    const { data, status } = await readValue(StorageKeys.progress(artworkId), progressCellsSchema, backend);
+    if (status !== 'ok' && status !== 'migrated') return undefined;
+    let bits: Uint8Array;
+    try {
+      bits = bitsetFromBase64(data.filled, bitCount);
+    } catch (e) {
+      warn(`${artworkId}: ${String(e)}`);
+      return undefined;
+    }
+    const order = data.order === undefined ? null : decodeFillOrder(data.order, bits, bitCount);
+    if (data.order !== undefined && !order) warn(`${artworkId}: invalid fill order, ignored`);
+    return { bits, order };
+  }
+
   return {
     async loadIndex() {
       // Keep entries saved (or removed) before hydration finished.
@@ -196,22 +235,12 @@ export function createProgressRepo(options: ProgressRepoOptions = {}): ProgressR
       }
       return { ...index };
     },
-    async loadFilled(artworkId, bitCount) {
-      const live = pending.get(artworkId) ?? inFlight.get(artworkId);
-      if (live) return live;
-      const { data, status } = await readValue(StorageKeys.progress(artworkId), progressCellsSchema, backend);
-      if (status !== 'ok' && status !== 'migrated') return undefined;
-      try {
-        return bitsetFromBase64(data.filled, bitCount);
-      } catch (e) {
-        warn(`${artworkId}: ${String(e)}`);
-        return undefined;
-      }
-    },
-    save(summary, bits) {
+    loadFilled: async (artworkId, bitCount) => (await loadCells(artworkId, bitCount))?.bits,
+    loadCells,
+    save(summary, bits, order) {
       index = { ...index, [summary.artworkId]: summary };
       indexDirty = true;
-      pending.set(summary.artworkId, bits);
+      pending.set(summary.artworkId, { bits, order });
       removed.delete(summary.artworkId);
       schedule(delayMs);
     },

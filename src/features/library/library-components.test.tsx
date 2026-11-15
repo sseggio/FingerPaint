@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { DEFAULT_ENTITLEMENTS } from '@/features/entitlements/can-access';
@@ -126,7 +126,7 @@ describe('navigation guard on locked artworks', () => {
     await fireEvent.press(screen.getByRole('button', { name: /fait partie d’un pack/ }));
     expect(push).toHaveBeenLastCalledWith({ pathname: '/shop', params: { reason: 'pack' } });
 
-    useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['ocean'], source: 'mock' } });
+    await act(() => useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['ocean'], source: 'mock' } }));
     await rerender(<ArtworkTile artwork={pack} width={120} accent={palette.pink} />);
     expect(screen.queryByText('Pack')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Ouvrir « Titre k », pas encore commencé' }));

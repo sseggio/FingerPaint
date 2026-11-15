@@ -25,10 +25,10 @@ export function staleExport(action: PngAction, artworkId: string, latest: string
   return (name) => name !== safeLatest && name.startsWith(prefix) && /^\d+x\d+\.png$/.test(name.slice(prefix.length));
 }
 
-async function fillFor(artworkId: string, totalCells: number, entry: ProgressEntry | undefined): Promise<ThumbnailFill> {
+async function fillFor(artworkId: string, cellCount: number, entry: ProgressEntry | undefined): Promise<ThumbnailFill> {
   if (entry?.status === 'completed') return 'all';
   if (!entry || entry.filledCount === 0) return 'none';
-  return (await useProgressStore.getState().loadFilled(artworkId, totalCells)) ?? 'none';
+  return (await useProgressStore.getState().loadFilled(artworkId, cellCount)) ?? 'none';
 }
 
 export async function exportArtworkPng(
@@ -40,7 +40,7 @@ export async function exportArtworkPng(
 ): Promise<PngOutcome> {
   const artwork = getArtwork(artworkId);
   if (!artwork) return 'missing';
-  const png = renderArtworkPng(artwork, await fillFor(artworkId, artwork.totalCells, entry), background);
+  const png = renderArtworkPng(artwork, await fillFor(artworkId, artwork.cells.length, entry), background);
   const name = `pixeljoy-${artworkId}-${png.width}x${png.height}.png`;
   const location = action === 'export' ? 'documents' : 'cache';
   const folder = action === 'export' ? 'exports' : 'share';

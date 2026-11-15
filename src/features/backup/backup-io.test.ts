@@ -55,10 +55,18 @@ function artwork(id: string) {
   return a;
 }
 
-function colored(id: string, count: number): { summary: ProgressSummary; bits: Uint8Array } {
+/** Progress with the first `count` cells to color filled (bitset over the whole grid). */
+function colored(id: string, count: number): { summary: ProgressSummary; bits: Uint8Array; order: Uint16Array } {
   const a = artwork(id);
-  const bits = createBitset(a.totalCells);
-  for (let i = 0; i < count; i++) setBit(bits, i);
+  const bits = createBitset(a.cells.length);
+  const filled: number[] = [];
+  for (let i = 0; i < a.cells.length && filled.length < count; i++) {
+    if (a.cells[i] === 0) continue;
+    setBit(bits, i);
+    filled.push(i);
+  }
+  // Journal in reverse order (any permutation of the filled cells is a valid journal).
+  const order = Uint16Array.from(filled.reverse());
   const done = count === a.totalCells;
   const summary: ProgressSummary = {
     artworkId: id,
@@ -69,7 +77,7 @@ function colored(id: string, count: number): { summary: ProgressSummary; bits: U
     activeMs: 60_000,
   };
   if (done) summary.completedAt = 3000;
-  return { summary, bits };
+  return { summary, bits, order };
 }
 
 async function wipeDevice() {
@@ -94,8 +102,11 @@ beforeEach(async () => {
 describe('backup export → reinstall → import', () => {
   it('restores progress, bitsets, streak and settings, and never purchases', async () => {
     const partial = colored('tabby-cat', 17);
-    const done = colored('frog', artwork('frog').totalCells);
-    await useProgressStore.getState().importEntries([partial, done]);
+    // An artwork with empty cells: its bitset is larger than its cells to color.
+    const done = colored('happy-mushroom', artwork('happy-mushroom').totalCells);
+    expect(artwork('happy-mushroom').totalCells).toBeLessThan(artwork('happy-mushroom').cells.length);
+    // The finished one comes from an older version: no journal.
+    await useProgressStore.getState().importEntries([partial, { summary: done.summary, bits: done.bits }]);
     const streak = { lastActiveDay: '2026-11-14', streak: 6, best: 11, jokerDays: ['2026-11-12'], activeDays: ['2026-11-13', '2026-11-14'] };
     await useDailyStore.getState().replace(streak);
     await useSettingsStore.getState().update({ colorblindSymbols: true, sessionTimerMin: 20 });
@@ -126,10 +137,14 @@ describe('backup export → reinstall → import', () => {
     // Everything is back, in memory and in storage (fresh stores hydrate it).
     const fresh = createProgressStore(createProgressRepo());
     await fresh.getState().hydrate();
-    expect(fresh.getState().index).toEqual({ 'tabby-cat': partial.summary, frog: done.summary });
-    await expect(fresh.getState().loadFilled('tabby-cat', artwork('tabby-cat').totalCells)).resolves.toEqual(partial.bits);
-    const frogBits = await fresh.getState().loadFilled('frog', artwork('frog').totalCells);
-    expect(frogBits && countBits(frogBits)).toBe(artwork('frog').totalCells);
+    expect(fresh.getState().index).toEqual({ 'tabby-cat': partial.summary, 'happy-mushroom': done.summary });
+    await expect(fresh.getState().loadCells('tabby-cat', artwork('tabby-cat').cells.length)).resolves.toEqual({
+      bits: partial.bits,
+      order: partial.order,
+    });
+    const mushroom = await fresh.getState().loadCells('happy-mushroom', artwork('happy-mushroom').cells.length);
+    expect(mushroom?.bits && countBits(mushroom.bits)).toBe(artwork('happy-mushroom').totalCells);
+    expect(mushroom?.order).toBeNull();
     expect(useDailyStore.getState().daily).toEqual(streak);
     expect(JSON.parse((await AsyncStorage.getItem(StorageKeys.daily)) ?? 'null').data).toEqual(streak);
     const settings = createSettingsStore();

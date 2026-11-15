@@ -55,6 +55,11 @@ export function GalleryScreen() {
     openArtwork(artwork);
   }, []);
 
+  const onReplay = useCallback((artwork: ArtworkSource) => {
+    setSelected(null);
+    openArtwork(artwork, { replay: true });
+  }, []);
+
   const onPng = useCallback(
     async (artwork: ArtworkSource, action: PngAction, background: string | null) => {
       setBusy(action);
@@ -148,6 +153,7 @@ export function GalleryScreen() {
         busy={busy}
         onClose={close}
         onContinue={onContinue}
+        onReplay={onReplay}
         onPng={(artwork, action, background) => {
           void onPng(artwork, action, background);
         }}

@@ -21,10 +21,14 @@ import {
 import { planImport, type ImportPlan } from './backup-merge';
 
 /** Catalog lookup over the bundled content. */
-export const catalogLookup: CatalogLookup = (id) => getArtwork(id)?.totalCells;
+export const catalogLookup: CatalogLookup = (id) => {
+  const artwork = getArtwork(id);
+  return artwork ? { cellCount: artwork.cells.length, totalCells: artwork.totalCells } : undefined;
+};
 
 /**
- * Snapshot of everything a backup carries: progress (index + bitsets), streak and settings.
+ * Snapshot of everything a backup carries: progress (index + bitsets + fill order journals),
+ * streak and settings.
  * Purchases are deliberately not read. Artworks no longer in the catalog, or whose bitset is
  * missing or corrupt, are skipped.
  */
@@ -33,11 +37,14 @@ export async function collectBackupData(): Promise<BackupData> {
   await progressStore.flush();
   const progress = new Map<string, BackupArtwork>();
   for (const [id, summary] of Object.entries(progressStore.index)) {
-    const total = catalogLookup(id);
-    if (total === undefined) continue;
-    const bits = await progressStore.loadFilled(id, total);
-    if (!bits) continue;
-    progress.set(id, { summary, bits: bits.slice() });
+    const size = catalogLookup(id);
+    if (size === undefined) continue;
+    // Bitsets cover the whole grid (empty cells included), not only the cells to color.
+    const cells = await progressStore.loadCells(id, size.cellCount);
+    if (!cells) continue;
+    const entry: BackupArtwork = { summary, bits: cells.bits.slice() };
+    if (cells.order && cells.order.length > 0) entry.order = cells.order.slice();
+    progress.set(id, entry);
   }
   return {
     progress,

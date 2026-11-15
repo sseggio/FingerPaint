@@ -121,6 +121,21 @@ describe('GalleryScreen', () => {
     expect(push).toHaveBeenCalledWith({ pathname: '/color/[artworkId]', params: { artworkId: 'tabby-cat' } });
   });
 
+  it('"Watch again" opens a finished artwork and replays its coloring (F18)', async () => {
+    useProgressStore.setState({
+      index: { 'tabby-cat': entry('tabby-cat', 'completed', base), frog: entry('frog', 'in_progress', base) },
+    });
+    await render(<GalleryScreen />);
+    await fireEvent.press(screen.getByLabelText(/Tabby/));
+    await fireEvent.press(screen.getByRole('button', { name: /^Watch the coloring of .* again$/ }));
+    expect(push).toHaveBeenCalledWith({ pathname: '/color/[artworkId]', params: { artworkId: 'tabby-cat', replay: '1' } });
+
+    // Only finished artworks can be watched again.
+    await fireEvent.press(screen.getByRole('radio', { name: 'In progress (1)' }));
+    await fireEvent.press(screen.getByLabelText(/Frog/));
+    expect(screen.queryByRole('button', { name: /^Watch the coloring/ })).toBeNull();
+  });
+
   it('reports a failed export', async () => {
     exportPng.mockRejectedValueOnce(new Error('boom'));
     useProgressStore.setState({ index: { frog: entry('frog', 'completed', base) } });

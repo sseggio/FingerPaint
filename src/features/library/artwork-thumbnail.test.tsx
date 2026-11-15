@@ -40,7 +40,7 @@ describe('ArtworkThumbnail', () => {
   it('loads the bitset of a partial state once and caches it', async () => {
     const artwork = getArtwork('tabby-cat');
     if (!artwork) throw new Error('fixture missing');
-    const bits = createBitset(artwork.totalCells);
+    const bits = createBitset(artwork.cells.length);
     setBit(bits, 0);
     const loadFilled = jest.fn(() => Promise.resolve(bits));
     useProgressStore.setState({ loadFilled });
@@ -50,7 +50,7 @@ describe('ArtworkThumbnail', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(loadFilled).toHaveBeenCalledWith('tabby-cat', artwork.totalCells);
+    expect(loadFilled).toHaveBeenCalledWith('tabby-cat', artwork.cells.length);
     expect(imageCount()).toBe(1);
 
     // Same state elsewhere (another list): served from the LRU cache.

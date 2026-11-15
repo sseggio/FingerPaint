@@ -13,8 +13,9 @@ import {
   type SamplingOptions,
   type SkImage,
   type SkPath,
+  type Transforms3d,
 } from '@shopify/react-native-skia';
-import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
+import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useSimultaneousGestures } from 'react-native-gesture-handler';
 import {
@@ -27,16 +28,19 @@ import {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnUI } from 'react-native-worklets';
 
 import type { Artwork } from '@/lib/artwork/types';
 import { groupByValue, previewCells } from '@/lib/fill-preview';
 import { maxVisibleCells, type CellRange, type Size } from '@/lib/geometry';
+import { REPLAY_POP_MS, REPLAY_POP_SCALE } from '@/lib/replay';
 import { canvasThemes, type CanvasThemeColors } from '@/theme';
 
 import { createNumberAtlas, type GlyphAtlas } from './glyph-atlas';
 import { glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
 import { makeLayerImage } from './layer-image';
 import { buildBackgroundPixels, buildHighlightPixels, numberInks } from './layers';
+import { createReplayPlayer, type ReplayPlayer } from './replay-player';
 import { useFillGestures, type FillHandler } from './use-fill-gestures';
 import { useFillPreview } from './use-fill-preview';
 import { FOCUS_TIMING, useViewport } from './use-viewport';
@@ -47,6 +51,15 @@ const NEAREST: SamplingOptions = { filter: FilterMode.Nearest, mipmap: MipmapMod
 const SMOOTH: SamplingOptions = { filter: FilterMode.Linear, mipmap: MipmapMode.None };
 /** Gap (cells) between the cell under the finger and the continuous-fill ring. */
 const RING_PAD = 0.2;
+
+/** A completion replay to play (F18). A new `id` starts a new replay. */
+export interface ReplayRequest {
+  id: number;
+  /** Every cell to color, in replay order (see `replayOrder`). */
+  order: ArrayLike<number>;
+  /** Small "pop" of the drawing once the replay reaches its end (not when skipped). */
+  pop: boolean;
+}
 
 export interface PixelCanvasProps {
   artwork: Artwork;
@@ -73,6 +86,16 @@ export interface PixelCanvasProps {
   highContrast?: boolean;
   /** Canvas look (cosmetic): backdrop, grid and "Find" ring colors. */
   theme?: CanvasThemeColors;
+  /**
+   * Completion replay (F18): the view glides to the whole artwork, the color layer restarts
+   * from the bare grayscale drawing (no numbers, no grid) and the cells come back in `order`.
+   * Navigation gestures are off meanwhile.
+   */
+  replay?: ReplayRequest | null;
+  /** The replay `id` ended (after its pop), or was skipped. */
+  onReplayEnd?: (id: number, skipped: boolean) => void;
+  /** Canvas size changes glide to the new fit instead of jumping (see `useViewport`). */
+  smoothFit?: boolean;
   accessibilityLabel: string;
   ref?: Ref<PixelCanvasHandle>;
 }
@@ -86,6 +109,8 @@ export interface PixelCanvasHandle {
    * false, reduce motion) the view jumps there and the marker only fades. False if not measured.
    */
   focusCell(index: number, animate: boolean): boolean;
+  /** Finishes the running replay at once (all cells shown, no pop). No-op without a replay. */
+  skipReplay(): void;
 }
 
 /** Grid lines in world units (1 unit = 1 cell), drawn as hairlines whatever the zoom. */
@@ -181,6 +206,9 @@ const PreviewCells = memo(function PreviewCells({ groups, value, color, gridWidt
  * the zoom, none at the overview), color layer (opaque over filled cells, so their numbers and
  * highlight disappear), fill preview (same look as the color layer, until it shows the cells),
  * grid, "Find" marker, continuous-fill ring around the cell under the finger.
+ *
+ * During a completion replay (F18) only the grayscale background and the replayed color layer
+ * are drawn, inside a group that "pops" (scales around the artwork center) at the end.
  */
 export function PixelCanvas({
   artwork,
@@ -194,6 +222,9 @@ export function PixelCanvas({
   colorblindSymbols = false,
   highContrast = false,
   theme = canvasThemes.classic,
+  replay = null,
+  onReplayEnd,
+  smoothFit = false,
   accessibilityLabel,
   ref,
 }: PixelCanvasProps) {
@@ -259,7 +290,8 @@ export function PixelCanvas({
     glyphRange,
     getViewCenter,
     focusCell,
-  } = useViewport({ grid, view, largeNumbers, filling, highContrast });
+    fitView,
+  } = useViewport({ grid, view, largeNumbers, filling, highContrast, smoothFit, locked: replay !== null });
   // Glyphs are drawn above the start of their fade-in only (F17: none at the overview).
   const capacity = view ? maxVisibleCells(view, numberRange.start, grid) : 0;
 
@@ -267,6 +299,87 @@ export function PixelCanvas({
   const pulse = useSharedValue(0);
   const pulseCell = useSharedValue(-1);
   const pulseGrow = useSharedValue(0);
+
+  // Completion replay (F18). The player paints its own buffer on the JS thread, one batch per
+  // frame; each frame's image goes to the UI thread through a shared value (no React state).
+  const replayLayer = useSharedValue<SkImage | null>(null);
+  const pop = useSharedValue(1);
+  const playerRef = useRef<ReplayPlayer | null>(null);
+  /** Ends the replay after its pop; run early by `skipReplay`. */
+  const popEndRef = useRef<{ timer: ReturnType<typeof setTimeout>; end: () => void } | null>(null);
+  // Read at replay time: a resize (the palette leaving at completion) must not restart it.
+  const replayDeps = useRef({ onReplayEnd, fitView, artwork });
+  useEffect(() => {
+    replayDeps.current = { onReplayEnd, fitView, artwork };
+  });
+  const measured = view !== null;
+  useEffect(() => {
+    if (!replay || !measured) return;
+    const { artwork: art, fitView: fit } = replayDeps.current;
+    const end = (skipped: boolean) => replayDeps.current.onReplayEnd?.(replay.id, skipped);
+    fit(true);
+    const player = createReplayPlayer({
+      artwork: art,
+      order: replay.order,
+      onFrame: (pixels) => {
+        const image = makeLayerImage(pixels, art.width, art.height);
+        scheduleOnUI(() => {
+          'worklet';
+          replayLayer.set(image);
+        });
+      },
+      onDone: (skipped) => {
+        if (skipped || !replay.pop) {
+          end(skipped);
+          return;
+        }
+        pop.set(
+          withSequence(
+            withTiming(REPLAY_POP_SCALE, { duration: REPLAY_POP_MS * 0.4 }),
+            withTiming(1, { duration: REPLAY_POP_MS * 0.6 }),
+          ),
+        );
+        const finish = () => {
+          popEndRef.current = null;
+          end(false);
+        };
+        popEndRef.current = { timer: setTimeout(finish, REPLAY_POP_MS), end: finish };
+      },
+    });
+    playerRef.current = player;
+    player.start();
+    return () => {
+      player.cancel();
+      playerRef.current = null;
+      if (popEndRef.current) clearTimeout(popEndRef.current.timer);
+      popEndRef.current = null;
+      cancelAnimation(pop);
+      pop.set(1);
+      replayLayer.set(null);
+    };
+  }, [measured, pop, replay, replayLayer]);
+
+  const skipReplay = useCallback(() => {
+    const pending = popEndRef.current;
+    if (pending) {
+      clearTimeout(pending.timer);
+      cancelAnimation(pop);
+      pop.set(1);
+      pending.end();
+      return;
+    }
+    playerRef.current?.skip();
+  }, [pop]);
+
+  // Pop around the artwork's center on screen (scale 1 = no change).
+  const popTransform = useDerivedValue<Transforms3d>(() => {
+    const p = pop.get();
+    const s = scale.get();
+    const cx = tx.get() + (s * width) / 2;
+    const cy = ty.get() + (s * height) / 2;
+    return [{ translateX: cx }, { translateY: cy }, { scale: p }, { translateX: -cx }, { translateY: -cy }];
+  });
+
   useImperativeHandle(
     ref,
     () => ({
@@ -291,8 +404,9 @@ export function PixelCanvas({
         );
         return true;
       },
+      skipReplay,
     }),
-    [focusCell, getViewCenter, height, pulse, pulseCell, pulseGrow, width],
+    [focusCell, getViewCenter, height, pulse, pulseCell, pulseGrow, skipReplay, width],
   );
   const pulseRect = useDerivedValue(() => {
     const i = pulseCell.get();
@@ -365,48 +479,56 @@ export function PixelCanvas({
         accessibilityLabel={accessibilityLabel}>
         {view ? (
           <Canvas style={styles.root}>
-            <Group transform={transform}>
-              <Image image={background} x={0} y={0} width={width} height={height} sampling={NEAREST} />
-              {highlight ? (
-                <Image image={highlight} x={0} y={0} width={width} height={height} sampling={NEAREST} />
-              ) : null}
-              {atlas && capacity > 0 ? (
-                <Group opacity={numberOpacity}>
-                  <NumberGlyphs
-                    atlas={atlas}
-                    cells={cells}
-                    inks={inks}
-                    gridWidth={width}
-                    capacity={capacity}
-                    range={glyphRange}
-                  />
-                </Group>
-              ) : null}
-              <Image image={layer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
-              {previewValues.map((value) => (
-                <PreviewCells
-                  key={value}
-                  groups={groups}
-                  value={value}
-                  color={paletteHexes[value - 1]}
-                  gridWidth={width}
-                />
-              ))}
-              <Path
-                path={gridPath}
-                style="stroke"
-                strokeWidth={0}
-                color={theme.grid}
-                opacity={gridOpacity}
-              />
-              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={theme.halo} opacity={pulse} />
-              <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={theme.ring} opacity={pulse} />
-              {activeHex ? (
-                <Group opacity={ring}>
-                  <Rect rect={fingerRect} style="stroke" strokeWidth={fingerHalo} color={theme.halo} />
-                  <Rect rect={fingerRect} style="stroke" strokeWidth={fingerStroke} color={theme.ring} />
-                </Group>
-              ) : null}
+            <Group transform={popTransform}>
+              <Group transform={transform}>
+                <Image image={background} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                {replay ? (
+                  <Image image={replayLayer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                ) : (
+                  <>
+                    {highlight ? (
+                      <Image image={highlight} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                    ) : null}
+                    {atlas && capacity > 0 ? (
+                      <Group opacity={numberOpacity}>
+                        <NumberGlyphs
+                          atlas={atlas}
+                          cells={cells}
+                          inks={inks}
+                          gridWidth={width}
+                          capacity={capacity}
+                          range={glyphRange}
+                        />
+                      </Group>
+                    ) : null}
+                    <Image image={layer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                    {previewValues.map((value) => (
+                      <PreviewCells
+                        key={value}
+                        groups={groups}
+                        value={value}
+                        color={paletteHexes[value - 1]}
+                        gridWidth={width}
+                      />
+                    ))}
+                    <Path
+                      path={gridPath}
+                      style="stroke"
+                      strokeWidth={0}
+                      color={theme.grid}
+                      opacity={gridOpacity}
+                    />
+                  </>
+                )}
+                <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={theme.halo} opacity={pulse} />
+                <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={theme.ring} opacity={pulse} />
+                {activeHex ? (
+                  <Group opacity={ring}>
+                    <Rect rect={fingerRect} style="stroke" strokeWidth={fingerHalo} color={theme.halo} />
+                    <Rect rect={fingerRect} style="stroke" strokeWidth={fingerStroke} color={theme.ring} />
+                  </Group>
+                ) : null}
+              </Group>
             </Group>
           </Canvas>
         ) : null}

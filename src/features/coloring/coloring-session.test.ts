@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { createProgressRepo } from '@/features/progress/progress-repo';
 import { countBits, createBitset, getBit, setBit } from '@/lib/bitset';
+import { journalCells } from '@/lib/fill-order';
 
 import { cellsOf, tinyArtwork } from './__fixtures__/tiny-artwork';
 import {
@@ -9,6 +10,7 @@ import {
   fillCells,
   isColorComplete,
   nextIncompleteColor,
+  replayOrder,
   sessionSummary,
 } from './coloring-session';
 
@@ -188,5 +190,43 @@ describe('session ↔ storage round trip', () => {
     expect(Array.from(restored.colorFilled)).toEqual([7, 10, 4]);
     expect(countBits(restored.filled)).toBe(restored.filledCount);
     expect(restored.completed).toBe(false);
+  });
+});
+
+describe('fill order journal (F18)', () => {
+  it('records each newly filled cell once, in batch order', () => {
+    const s = createColoringSession(artwork);
+    fillCells(s, [A[4], A[2], B[0], A[4], EMPTY], 0);
+    fillCells(s, [B[1], B[0]], 1);
+    expect(Array.from(journalCells(s.order))).toEqual([A[4], A[2], B[1], B[0]]);
+  });
+
+  it('restores a consistent journal and keeps appending to it', () => {
+    const s = createColoringSession(artwork);
+    fillCells(s, [A[1], A[0]], 0);
+    const restored = createColoringSession(artwork, s.filled.slice(), journalCells(s.order).slice());
+    fillCells(restored, [A[2]], 0);
+    expect(Array.from(journalCells(restored.order))).toEqual([A[1], A[0], A[2]]);
+  });
+
+  it('drops a journal inconsistent with the restored bitset', () => {
+    const bits = createBitset(artwork.cells.length);
+    setBit(bits, A[0]);
+    setBit(bits, EMPTY); // cleared on restore: a journal naming it is invalid
+    expect(createColoringSession(artwork, bits, [A[0], EMPTY]).order.length).toBe(0);
+    expect(createColoringSession(artwork, bits, [A[0], A[1]]).order.length).toBe(0); // A[1] not filled
+    expect(createColoringSession(artwork, bits, [A[0], A[0]]).order.length).toBe(0);
+    expect(createColoringSession(artwork, bits, [A[0]]).order.length).toBe(1);
+  });
+
+  it('replays the journal, after the cells it misses (color then row order)', () => {
+    const bits = createBitset(artwork.cells.length);
+    for (const i of [...C, B[0]]) setBit(bits, i);
+    const s = createColoringSession(artwork, bits, [C[1]]); // journal started late
+    fillCells(s, A, 0);
+    fillCells(s, B.slice(1).reverse(), 1);
+    const order = Array.from(replayOrder(s));
+    expect(order).toEqual([B[0], C[0], C[2], C[3], C[1], ...A, ...B.slice(1).reverse()]);
+    expect(new Set(order).size).toBe(artwork.totalCells);
   });
 });

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { bitsetToBase64, createBitset, setBit } from '@/lib/bitset';
+import { createFillJournal, encodeFillOrder } from '@/lib/fill-order';
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
 import {
@@ -246,6 +247,73 @@ describe('progress repo', () => {
     await repo.remove('cat');
     expect(await AsyncStorage.getItem(StorageKeys.progress('cat'))).toBeNull();
     await expect(createProgressRepo().loadIndex()).resolves.toEqual({});
+  });
+});
+
+describe('fill order journal (F18)', () => {
+  function bitsFor(cells: number[]) {
+    const bits = createBitset(BITS);
+    for (const i of cells) setBit(bits, i);
+    return bits;
+  }
+
+  it('saves the live journal with the bitset (read at flush time) and loads it back', async () => {
+    const repo = createProgressRepo();
+    const journal = createFillJournal(BITS, [5, 3]);
+    const bits = bitsFor([5, 3, 9]);
+    repo.save(summary('cat', 3), bits, journal);
+    // Read live from the pending save, as a copy.
+    await expect(repo.loadCells('cat', BITS)).resolves.toEqual({ bits, order: Uint16Array.from([5, 3]) });
+    journal.cells[journal.length++] = 9;
+    await repo.flush();
+    const stored = JSON.parse((await AsyncStorage.getItem(StorageKeys.progress('cat'))) ?? 'null');
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.data.order).toBe(encodeFillOrder(Uint16Array.from([5, 3, 9])));
+
+    const fresh = createProgressRepo();
+    await expect(fresh.loadCells('cat', BITS)).resolves.toEqual({ bits, order: Uint16Array.from([5, 3, 9]) });
+    await expect(fresh.loadFilled('cat', BITS)).resolves.toEqual(bits);
+  });
+
+  it('stores no journal when none (or an empty one) is given', async () => {
+    const repo = createProgressRepo();
+    repo.save(summary('cat', 1), bitsFor([1]), createFillJournal(BITS));
+    repo.save(summary('dog', 1), bitsFor([2]));
+    await repo.flush();
+    for (const id of ['cat', 'dog']) {
+      const stored = JSON.parse((await AsyncStorage.getItem(StorageKeys.progress(id))) ?? 'null');
+      expect(stored.data).not.toHaveProperty('order');
+      await expect(createProgressRepo().loadCells(id, BITS)).resolves.toMatchObject({ order: null });
+    }
+  });
+
+  it('migrates v1 progress (no journal): the bitset stays valid', async () => {
+    const bits = bitsFor([0, 7]);
+    await AsyncStorage.setItem(StorageKeys.progress('cat'), JSON.stringify(createEnvelope({ filled: bitsetToBase64(bits) }, 1, 0)));
+    await expect(createProgressRepo().loadCells('cat', BITS)).resolves.toEqual({ bits, order: null });
+  });
+
+  it.each([
+    ['a cell not filled in the bitset', encodeFillOrder(Uint16Array.from([0, 8]))],
+    ['a duplicate', encodeFillOrder(Uint16Array.from([0, 0]))],
+    ['an index outside the grid', encodeFillOrder(Uint16Array.from([BITS + 1]))],
+    ['malformed base64', '@@@'],
+  ])('drops a journal with %s, keeping the progress', async (_name, order) => {
+    const bits = bitsFor([0, 7]);
+    await AsyncStorage.setItem(
+      StorageKeys.progress('cat'),
+      JSON.stringify(createEnvelope({ filled: bitsetToBase64(bits), order }, 2, 0)),
+    );
+    await expect(createProgressRepo().loadCells('cat', BITS)).resolves.toEqual({ bits, order: null });
+  });
+
+  it('drops a journal of the wrong type, keeping the progress', async () => {
+    const bits = bitsFor([0]);
+    await AsyncStorage.setItem(
+      StorageKeys.progress('cat'),
+      JSON.stringify(createEnvelope({ filled: bitsetToBase64(bits), order: [0] }, 2, 0)),
+    );
+    await expect(createProgressRepo().loadCells('cat', BITS)).resolves.toEqual({ bits, order: null });
   });
 });
 

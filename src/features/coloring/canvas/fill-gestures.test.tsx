@@ -371,6 +371,43 @@ describe('fill preview / color layer sync (F16)', () => {
     expect(previewPaths()).toBeLessThanOrEqual(2);
   });
 
+  it('unmounts the emptied preview path of a pending color as soon as its layer is drawn', async () => {
+    const pixels = createColorPixels(artwork.width, artwork.height);
+    const onFill = jest.fn((batch: number[]) => paintCells(pixels, artwork, batch));
+    const n = artwork.palette.colors.length;
+    const [second, third] = [(activeColor + 1) % n, (activeColor + 2) % n];
+    const ui = (revision: number, color: number) => (
+      <GestureHandlerRootView>
+        <PixelCanvas
+          artwork={artwork}
+          colorPixels={pixels}
+          colorRevision={revision}
+          activeColor={color}
+          onFill={onFill}
+          accessibilityLabel="Artwork"
+        />
+      </GestureHandlerRootView>
+    );
+    const { rerender } = await render(ui(0, activeColor));
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, ...VIEW } } });
+    });
+    const previewColors = () => hostProps('skPath').filter((p) => p.antiAlias === false).map((p) => p.color);
+    const hex = (c: number) => artwork.palette.colors[c].hex;
+    await tap(CENTER);
+    // Two color changes: the tapped color is neither the active nor the previous one any more,
+    // its path is only kept because its batch is pending.
+    await rerender(ui(0, second));
+    await rerender(ui(0, third));
+    await flush();
+    expect(previewColors()).toEqual(expect.arrayContaining([hex(activeColor), hex(second), hex(third)]));
+    // Its layer is drawn: the path goes right away, without waiting for another batch.
+    await rerender(ui(1, third));
+    await flush();
+    expect(previewColors()).not.toContain(hex(activeColor));
+    expect(previewColors()).toHaveLength(2);
+  });
+
   it('an unrelated layer drawn before the stroke is painted does not drop the preview', async () => {
     const { bump } = await setupSynced();
     const fill = createGestureController(getByGestureTestId('fill-long-press'));

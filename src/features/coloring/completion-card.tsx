@@ -15,10 +15,12 @@ export interface CompletionCardProps {
   /** Null when there is no other artwork to offer. */
   onNext: (() => void) | null;
   onLibrary(): void;
+  /** Replays the coloring (F18); null hides the button (e.g. reduce motion). */
+  onReplay?: (() => void) | null;
 }
 
 /** End of an artwork: congratulations and the two ways forward. */
-export function CompletionCard({ title, justFinished, onNext, onLibrary }: CompletionCardProps) {
+export function CompletionCard({ title, justFinished, onNext, onLibrary, onReplay = null }: CompletionCardProps) {
   const t = useT();
   return (
     <Animated.View entering={justFinished ? ENTERING : undefined} style={styles.wrap}>
@@ -46,6 +48,14 @@ export function CompletionCard({ title, justFinished, onNext, onLibrary }: Compl
             style={styles.action}
           />
         </View>
+        {onReplay ? (
+          <Button
+            label={t('coloring.done.replay')}
+            accessibilityLabel={t('coloring.done.replayLabel')}
+            variant="ghost"
+            onPress={onReplay}
+          />
+        ) : null}
       </Card>
     </Animated.View>
   );

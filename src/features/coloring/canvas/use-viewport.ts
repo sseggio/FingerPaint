@@ -1,5 +1,5 @@
 import type { Transforms3d } from '@shopify/react-native-skia';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { usePanGesture, usePinchGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
@@ -45,6 +45,8 @@ export const GRID_MAX_OPACITY = 0.22;
 export const GRID_MAX_OPACITY_HIGH = 0.6;
 /** "Find" hint: a slightly longer, gentle travel to the target cell. */
 export const FOCUS_TIMING = { duration: 420, easing: Easing.bezier(0.23, 1, 0.32, 1) };
+/** Gentle reframing on the whole artwork (completion replay, layout change once finished). */
+export const FIT_TIMING = { duration: 520, easing: Easing.bezier(0.23, 1, 0.32, 1) };
 
 export interface ViewportOptions {
   grid: Size;
@@ -56,6 +58,13 @@ export interface ViewportOptions {
   filling: SharedValue<boolean>;
   /** High-contrast mode: stronger grid lines. */
   highContrast?: boolean;
+  /**
+   * Canvas size changes after the first fit glide to the new fit instead of jumping (the
+   * finished artwork reframes softly when the palette makes room for the completion card).
+   */
+  smoothFit?: boolean;
+  /** Navigation gestures off (completion replay: a tap skips it, nothing pans). */
+  locked?: boolean;
 }
 
 export interface ViewportState {
@@ -82,6 +91,8 @@ export interface ViewportState {
    * `animate` is false (reduce motion). Returns false before the view is measured.
    */
   focusCell(col: number, row: number, animate: boolean): boolean;
+  /** Frames the whole artwork ("fit" zoom), gliding there when `animate`. False if not measured. */
+  fitView(animate: boolean): boolean;
 }
 
 /**
@@ -98,6 +109,8 @@ export function useViewport({
   largeNumbers = false,
   filling,
   highContrast = false,
+  smoothFit = false,
+  locked = false,
 }: ViewportOptions): ViewportState {
   const scale = useSharedValue(1);
   const tx = useSharedValue(0);
@@ -121,14 +134,46 @@ export function useViewport({
     return { grid: g, view: v, bounds, numbers: numberZoomRange(bounds.min, bounds.max, largeNumbers) };
   }, [gridW, gridH, viewW, viewH, largeNumbers]);
 
+  const smoothFitRef = useRef(smoothFit);
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    smoothFitRef.current = smoothFit;
+  }, [smoothFit]);
+
+  const applyFit = useCallback(
+    (animate: boolean) => {
+      const fit = fitViewport(geometry.grid, geometry.view, VIEWPORT_PADDING);
+      cancelAnimation(scale);
+      cancelAnimation(tx);
+      cancelAnimation(ty);
+      if (animate) {
+        scale.set(withTiming(fit.scale, FIT_TIMING));
+        tx.set(withTiming(fit.tx, FIT_TIMING));
+        ty.set(withTiming(fit.ty, FIT_TIMING));
+      } else {
+        scale.set(fit.scale);
+        tx.set(fit.tx);
+        ty.set(fit.ty);
+      }
+    },
+    [geometry, scale, tx, ty],
+  );
+
   // Fit the whole grid when the artwork or the canvas size changes (never during a gesture).
   useEffect(() => {
     if (!measured) return;
-    const fit = fitViewport(geometry.grid, geometry.view, VIEWPORT_PADDING);
-    scale.set(fit.scale);
-    tx.set(fit.tx);
-    ty.set(fit.ty);
-  }, [geometry, measured, scale, tx, ty]);
+    applyFit(smoothFitRef.current && fittedRef.current);
+    fittedRef.current = true;
+  }, [applyFit, measured]);
+
+  const fitView = useCallback(
+    (animate: boolean) => {
+      if (!measured) return false;
+      applyFit(animate);
+      return true;
+    },
+    [applyFit, measured],
+  );
 
   const stopAnimations = () => {
     'worklet';
@@ -138,7 +183,7 @@ export function useViewport({
   };
 
   const pinch = usePinchGesture({
-    enabled: measured,
+    enabled: measured && !locked,
     onBegin: () => {
       stopAnimations();
     },
@@ -158,7 +203,7 @@ export function useViewport({
   // landing during a one-finger pan simply joins it: the pinch takes over the zoom.
   const pan = usePanGesture({
     testID: 'viewport-pan',
-    enabled: measured,
+    enabled: measured && !locked,
     minPointers: VIEWPORT_PAN_GESTURE.minPointers,
     minDistance: VIEWPORT_PAN_GESTURE.minDistance,
     onBegin: () => {
@@ -261,5 +306,6 @@ export function useViewport({
     glyphRange,
     getViewCenter,
     focusCell,
+    fitView,
   };
 }

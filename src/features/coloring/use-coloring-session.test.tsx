@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 
 import { createProgressRepo } from '@/features/progress/progress-repo';
 import { createProgressStore } from '@/features/progress/progress-store';
+import { journalCells } from '@/lib/fill-order';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
 
@@ -99,7 +100,8 @@ describe('useColoringSession', () => {
     await act(async () => result.current.fill(C, 'drag'));
     expect(result.current.completion).toBe('celebrate');
     await act(async () => result.current.fill(C, 'drag'));
-    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    // The success haptic belongs to the celebration, played by the screen after the replay.
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
   });
 
   it('autosaves, flushes on unmount and restores the exact state when coming back', async () => {
@@ -137,7 +139,23 @@ describe('useColoringSession', () => {
     const again = await open(await freshStore());
     expect(again.result.current.completion).toBe('done');
     await act(async () => again.result.current.fill(A, 'tap'));
-    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(again.result.current.completion).toBe('done');
+    expect(again.result.current.session?.order.length).toBe(56);
+  });
+
+  it('journals the fill order, saves it and restores it with the progress', async () => {
+    const store = await freshStore();
+    const first = await open(store);
+    await act(async () => first.result.current.fill([A[3], A[1], A[1], B[0]], 'drag'));
+    await act(async () => first.result.current.fill([A[0]], 'tap'));
+    expect(Array.from(journalCells(first.result.current.session!.order))).toEqual([A[3], A[1], A[0]]);
+    await act(async () => first.unmount());
+    await nextFrame();
+
+    const reopened = await open(await freshStore());
+    expect(Array.from(journalCells(reopened.result.current.session!.order))).toEqual([A[3], A[1], A[0]]);
+    await act(async () => reopened.result.current.fill([A[2]], 'tap'));
+    expect(Array.from(journalCells(reopened.result.current.session!.order))).toEqual([A[3], A[1], A[0], A[2]]);
   });
 
   it('reports daily activity on the first fill of each local day only', async () => {

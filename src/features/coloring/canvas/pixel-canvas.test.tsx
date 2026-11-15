@@ -5,12 +5,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { toArtwork } from '@/lib/artwork/codec';
+import { REPLAY_DURATION_MS, REPLAY_POP_MS } from '@/lib/replay';
 
 import { createPerfArtworkSource } from './__fixtures__/perf-artwork';
 import { createColorPixels } from './layers';
 import { createRef } from 'react';
 
-import { PixelCanvas, type PixelCanvasHandle } from './pixel-canvas';
+import { PixelCanvas, type PixelCanvasHandle, type ReplayRequest } from './pixel-canvas';
 
 jest.mock('@shopify/react-native-skia', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use import
@@ -186,4 +187,93 @@ describe('PixelCanvas (Skia mock)', () => {
     expect(ref.current?.focusCell(-1, true)).toBe(false);
     expect(ref.current?.focusCell(artwork.width * artwork.height, true)).toBe(false);
   });
+
+  it('replay (F18): bare drawing only (no numbers, grid or preview), skippable once, then back to normal', async () => {
+    const ref = createRef<PixelCanvasHandle>();
+    const onReplayEnd = jest.fn();
+    const order = Array.from(artwork.cells.keys()).filter((i) => artwork.cells[i] !== 0);
+    const Replaying = ({ replay }: { replay: ReplayRequest | null }) => (
+      <GestureHandlerRootView>
+        <PixelCanvas
+          ref={ref}
+          artwork={artwork}
+          colorPixels={createColorPixels(artwork.width, artwork.height)}
+          colorRevision={0}
+          replay={replay}
+          onReplayEnd={onReplayEnd}
+          smoothFit
+          accessibilityLabel="Artwork"
+        />
+      </GestureHandlerRootView>
+    );
+    const replay: ReplayRequest = { id: 7, order, pop: true };
+    const { rerender } = await render(<Replaying replay={replay} />);
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
+      });
+    });
+    let types = hostTypes();
+    // Grayscale background + replayed color layer; no atlas, no grid, no preview path.
+    expect(types.filter((t) => t === 'skImage')).toHaveLength(2);
+    expect(types).not.toContain('skAtlas');
+    expect(types).not.toContain('skPath');
+
+    await act(async () => ref.current?.skipReplay());
+    expect(onReplayEnd).toHaveBeenCalledWith(7, true);
+    await act(async () => ref.current?.skipReplay());
+    expect(onReplayEnd).toHaveBeenCalledTimes(1);
+
+    await rerender(<Replaying replay={null} />);
+    types = hostTypes();
+    expect(types).toContain('skAtlas');
+    expect(types).toContain('skPath');
+    // Without a replay, skipping does nothing.
+    await act(async () => ref.current?.skipReplay());
+    expect(onReplayEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('replay (F18): ends after the fixed duration and its pop, even if the canvas is resized meanwhile', async () => {
+    jest.useFakeTimers();
+    try {
+      const onReplayEnd = jest.fn();
+      const order = Array.from(artwork.cells.keys()).filter((i) => artwork.cells[i] !== 0);
+      const replay: ReplayRequest = { id: 3, order, pop: true };
+      await render(
+        <GestureHandlerRootView>
+          <PixelCanvas
+            artwork={artwork}
+            colorPixels={createColorPixels(artwork.width, artwork.height)}
+            colorRevision={0}
+            replay={replay}
+            onReplayEnd={onReplayEnd}
+            smoothFit
+            accessibilityLabel="Artwork"
+          />
+        </GestureHandlerRootView>,
+      );
+      const layout = async (height: number) =>
+        act(async () => {
+          await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+            nativeEvent: { layout: { x: 0, y: 0, width: 390, height } },
+          });
+        });
+      const advance = async (ms: number) =>
+        act(async () => {
+          await jest.advanceTimersByTimeAsync(ms);
+        });
+      await layout(600);
+      await advance(REPLAY_DURATION_MS / 2);
+      // The palette leaves: the canvas grows. The replay goes on, it does not restart.
+      await layout(760);
+      await advance(REPLAY_DURATION_MS / 2 + 50);
+      expect(onReplayEnd).not.toHaveBeenCalled(); // popping
+      await advance(REPLAY_POP_MS);
+      expect(onReplayEnd).toHaveBeenCalledTimes(1);
+      expect(onReplayEnd).toHaveBeenCalledWith(3, false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
+

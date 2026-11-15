@@ -8,3 +8,5 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 jest.mock('react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings', () => ({
   installUIRuntimeBindings: () => undefined,
 }));
+
+// Unexpected console.error fails the test: see jest/fail-on-console-error.ts (setupFilesAfterEnv).

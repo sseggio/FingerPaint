@@ -14,7 +14,8 @@ JSON UTF-8 versionné, produit par `src/features/backup/backup-format.ts` :
     "progress": {
       "tabby-cat": {
         "artworkId": "tabby-cat", "filledCount": 17, "status": "in_progress",
-        "startedAt": 0, "updatedAt": 0, "activeMs": 0, "filled": "<bitset base64>"
+        "startedAt": 0, "updatedAt": 0, "activeMs": 0, "filled": "<bitset base64>",
+        "order": "<journal base64, optionnel>"
       }
     },
     "daily": { "lastActiveDay": "2026-11-14", "streak": 6, "best": 11, "jokerDays": [], "activeDays": [] },
@@ -29,12 +30,21 @@ JSON UTF-8 versionné, produit par `src/features/backup/backup-format.ts` :
 - **Jamais d'achats / entitlements** : ils ne sont ni écrits ni lus. Tout membre inconnu (par
   exemple un `entitlements` injecté) est ignoré à l'import.
 
+- `filled` : bitset de **toute la grille** (largeur × hauteur, cases vides comprises).
+- `order` (optionnel, F18) : journal d'ordre de remplissage, indices de cases en Uint16
+  little-endian encodés en base64. Champ compatible : la version du format reste 1, les fichiers
+  sans `order` s'importent comme avant (l'ordre de replay est alors complété, voir
+  `src/lib/fill-order.ts`) et les versions précédentes de l'app l'ignorent.
+
 ### Validation à l'import
 
 Refus du fichier entier si : fichier > 5 Mo, JSON invalide, `format` différent, `version` ≠ 1,
 checksum faux, `createdAt` invalide, réglages ou série invalides, bitset mal formé ou de
 mauvaise longueur, bits hors grille, `filledCount` ≠ nombre de bits, statut incohérent
 (`completed` ⇔ toutes les cases).
+
+Un `order` invalide (pas une chaîne, base64 mal formé, indice hors grille, doublon, case non
+remplie dans `filled`) est **ignoré** : la progression est importée sans journal.
 
 Les ids d'illustration absents du catalogue (sauvegarde d'une version plus récente) sont
 **ignorés et comptés** (« N illustrations inconnues de cette version (ignorées) » dans le
@@ -44,7 +54,8 @@ prennent leur valeur par défaut s'ils manquent.
 ### Fusion
 
 - Par illustration, la progression la plus avancée gagne (plus de cases ; à égalité, terminée
-  bat non terminée ; égalité parfaite : l'état local est conservé).
+  bat non terminée ; égalité parfaite : l'état local est conservé). Le journal `order` suit la
+  progression retenue (celui du fichier si le fichier gagne, sinon celui de l'appareil).
 - Série : l'état dont la série encore vivante aujourd'hui est la plus longue gagne ; les jours
   coloriés plus tard de l'autre côté sont rejoués dessus ; `best` = max.
 - Réglages : restaurés depuis la sauvegarde.

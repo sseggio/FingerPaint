@@ -93,6 +93,7 @@ Une mauvaise couleur ne se pose pas : on joue une haptique légère, sans pénal
 
 - **`lib/storage`** stocke dans AsyncStorage une enveloppe `{ schemaVersion, savedAt, data }`. Chaque lecture passe par `try/catch`, puis une garde de type, puis les migrations `n → n+1`. Une donnée corrompue revient aux valeurs par défaut, sans crash.
 - **Clés :** `fp:settings`, `fp:progress-index`, `fp:progress:<id>`, `fp:daily`, `fp:entitlements`.
+- **`fp:progress:<id>`** (schéma v2, F18) : `{ filled, order? }`. `filled` est le bitset base64 de toute la grille (cases vides comprises) ; `order`, optionnel, le journal d'ordre de remplissage (indices de cases Uint16 little-endian en base64, voir `lib/fill-order.ts`). Les enregistrements v1 (sans journal) migrent tels quels. Un journal incohérent avec le bitset (indice hors grille, doublon, case non remplie) est ignoré, la progression est gardée.
 - **Stores zustand :**
   - `useSettingsStore` ;
   - `useProgressStore`, qui tient un index léger ; le bitset ne se charge qu'à l'ouverture d'une œuvre ;
@@ -392,15 +393,26 @@ Corrections issues des premiers retours TestFlight, une feature = une branche = 
   - aucune régression d'accessibilité (la palette porte l'information).
 - **Tests :** opacité selon taille de case et zoom / fit (vue d'ensemble → 0, zoom fort → 1, plage de fondu, grands numéros, œuvre minuscule), `focusCellViewport` atteint le seuil, rendu avec le mock Skia (opacité 0 puis 1 après « Trouver »).
 
-### F18 · Animation de fin (à venir)
-**Branche :** `claude/feat-18-completion-animation`
+### F18 · Animation de fin : replay de la mise en couleur
+**Branche :** `claude/feat-18-completion-replay`
 
-- **Objectif :** une fin d'œuvre plus gratifiante.
-- **Critères d'acceptation (provisoires) :**
+- **Objectif :** une fin d'œuvre plus gratifiante (retour TestFlight) : quand la dernière case est remplie, le dessin se remplit à nouveau dans l'ordre où il a été colorié, puis les confettis.
+- **Périmètre :**
+  - `lib/fill-order.ts` : journal d'ordre de remplissage (Uint16Array dimensionné pour la grille, 128×128 = 16 384 < 65 536), encodage base64 little-endian, validation stricte (indices dans la grille, sans doublon, cohérents avec le bitset), `completeReplayOrder` ;
+  - session : chaque case juste remplie est ajoutée au journal, dans l'ordre des lots ; journal persisté avec le bitset (`fp:progress:<id>` v2, migration v1 sans journal) ;
+  - ordre de replay complété pour les journaux incomplets (anciennes progressions, sauvegardes importées) : les cases absentes du journal ont été remplies avant lui, elles passent donc **en premier**, couleur par couleur (ordre de la palette), chaque couleur balayée ligne par ligne de haut en bas ; puis le journal dans l'ordre enregistré ;
+  - `lib/replay.ts` : durée fixe 2,5 s quelle que soit la taille, nombre de cases par frame calculé, ease-in-out (sinus), fin exacte ;
+  - canvas : recadrage doux sur l'œuvre entière, couche couleur repartant du dessin en niveaux de gris (sans numéros, grille ni aperçu), une image reconstruite par frame au plus (`canvas/replay-player.ts`, image passée au thread UI par shared value, aucun setState par frame), petit « pop » (scale) à la fin ;
+  - écran : haptique de succès, confettis et carte de fin après le replay ; un tap le saute (fin instantanée) ; « Réduire les animations » : pas de replay, image finale et carte directement ;
+  - bouton « Revoir » sur la carte de fin et dans la feuille d'actions de « Mes œuvres » (sans confettis) ;
+  - sauvegarde `.pixeljoy` : champ optionnel `order` par œuvre (format v1 inchangé, compatible), validé, journal de la progression retenue à la fusion ;
+  - reports revue F17 : Jest échoue sur tout `console.error` inattendu (`jest/fail-on-console-error.ts`), chemins d'aperçu vides libérés dès la passation de couche.
+- **Critères d'acceptation :**
   - animation déclenchée une seule fois à la complétion ;
   - respect de « Réduire les animations » ;
-  - aucune régression des boutons « Suivante » et « Bibliothèque ».
-- **Tests :** déclenchement unique, variante sans mouvement.
+  - aucune régression des boutons « Suivante » et « Bibliothèque » ;
+  - les progressions et sauvegardes existantes (sans journal) restent valides.
+- **Tests :** journal (ajout, persistance, migration, rejet, complétion de l'ordre), séquençage du replay, sauvegarde avec / sans journal, saut au tap, reduce motion, déclenchement unique, « Revoir ».
 
 ---
 
