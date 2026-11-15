@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent, type ScrollViewInstance } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
@@ -94,6 +94,11 @@ const Swatch = memo(function Swatch({ color, filled, total, selected, label, sho
   );
 });
 
+/** Copy of the live counters for one `revision` (the argument ties the copy to that revision). */
+export function snapshotCounters(live: ArrayLike<number>, _revision: number): number[] {
+  return Array.from(live);
+}
+
 export interface PaletteBarProps {
   colors: readonly PaletteColor[];
   /** Cells of each color, from the artwork. */
@@ -118,7 +123,8 @@ export interface PaletteBarProps {
 export function PaletteBar({
   colors: paletteColors,
   colorCounts,
-  colorFilled,
+  colorFilled: liveFilled,
+  revision,
   activeColor,
   onSelect,
   colorblind = false,
@@ -129,6 +135,10 @@ export function PaletteBar({
   const { colors } = useTheme();
   const reduceMotion = useReducedMotion();
   const scroll = useRef<ScrollViewInstance>(null);
+  // The session mutates its counters in place: snapshot them per `revision`. Reading the live
+  // array directly lets the React Compiler reuse the previous render (same array reference), so
+  // the progress would only refresh on a color change.
+  const colorFilled = useMemo(() => snapshotCounters(liveFilled, revision), [liveFilled, revision]);
   const [barWidth, setBarWidth] = useState(0);
 
   useEffect(() => {
