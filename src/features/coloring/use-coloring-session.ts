@@ -38,6 +38,11 @@ export interface ColoringSessionOptions {
   now?: () => number;
   /** Called on the first successful fill of each local day (forgiving streak, F10). */
   onDailyActivity?: () => void;
+  /**
+   * How long a just-finished color stays active before the next one is selected (F23: time to
+   * see its progress bar full). 0 (default) moves on right away, as with reduce motion.
+   */
+  advanceDelayMs?: number;
 }
 
 const recordDailyActivity = () => {
@@ -53,6 +58,7 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
   const store = options.store ?? useProgressStore;
   const now = options.now ?? Date.now;
   const onDailyActivity = options.onDailyActivity ?? recordDailyActivity;
+  const advanceDelayMs = options.advanceDelayMs ?? 0;
 
   const [session, setSession] = useState<ColoringSession | null>(null);
   const [revision, setRevision] = useState(0);
@@ -70,10 +76,14 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
   const dailyRef = useRef(onDailyActivity);
   /** Local day already reported to the daily streak during this visit. */
   const reportedDayRef = useRef<string | null>(null);
+  const advanceDelayRef = useRef(advanceDelayMs);
+  /** Move to the next color scheduled after a color was finished (F23), if any. */
+  const pendingAdvanceRef = useRef<{ timer: ReturnType<typeof setTimeout>; next: number } | null>(null);
   useEffect(() => {
     storeRef.current = store;
     nowRef.current = now;
     dailyRef.current = onDailyActivity;
+    advanceDelayRef.current = advanceDelayMs;
   });
 
   // Several batches in one frame (taps, a long drag) rebuild the color layer only once.
@@ -96,10 +106,49 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
     void storeRef.current.getState().flush();
   }, [persist]);
 
-  const selectColor = useCallback((colorIndex: number) => {
+  const applyColor = useCallback((colorIndex: number) => {
     activeRef.current = colorIndex;
     setActiveColor(colorIndex);
   }, []);
+
+  const cancelAdvance = useCallback(() => {
+    const pending = pendingAdvanceRef.current;
+    if (pending) clearTimeout(pending.timer);
+    pendingAdvanceRef.current = null;
+    return pending;
+  }, []);
+
+  /** The scheduled move to the next color happens now (another fill arrived meanwhile). */
+  const advanceNow = useCallback(() => {
+    const pending = cancelAdvance();
+    if (pending) applyColor(pending.next);
+  }, [applyColor, cancelAdvance]);
+
+  /** A color choice of the user always wins over the scheduled move. */
+  const selectColor = useCallback(
+    (colorIndex: number) => {
+      cancelAdvance();
+      applyColor(colorIndex);
+    },
+    [applyColor, cancelAdvance],
+  );
+
+  const scheduleAdvance = useCallback(
+    (next: number) => {
+      cancelAdvance();
+      const delay = advanceDelayRef.current;
+      if (delay <= 0) {
+        applyColor(next);
+        return;
+      }
+      const timer = setTimeout(() => {
+        pendingAdvanceRef.current = null;
+        applyColor(next);
+      }, delay);
+      pendingAdvanceRef.current = { timer, next };
+    },
+    [applyColor, cancelAdvance],
+  );
 
   // Restore the saved progress (exact bitset) when the artwork opens.
   useEffect(() => {
@@ -116,23 +165,24 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
         dirtyRef.current = false;
         timeRef.current = { base: previous?.activeMs ?? 0, since: nowRef.current() };
         const first = nextIncompleteColor(restored, -1) ?? 0;
-        activeRef.current = first;
-        setActiveColor(first);
+        cancelAdvance();
+        applyColor(first);
         setCompletion(restored.completed ? 'done' : 'none');
         setSession(restored);
       });
     return () => {
       alive = false;
     };
-  }, [artwork]);
+  }, [applyColor, artwork, cancelAdvance]);
 
   // Leaving the screen: save the last state (with the time spent) and write it now.
   useEffect(
     () => () => {
       coalescer.cancel();
+      cancelAdvance();
       persistNow();
     },
-    [coalescer, persistNow],
+    [cancelAdvance, coalescer, persistNow],
   );
 
   // Background: stop counting time and write now; foreground: count again.
@@ -158,6 +208,8 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
     (batch: number[], source: FillSource) => {
       const s = sessionRef.current;
       if (!s || s.completed) return;
+      // A fill during the pause on a finished color: move on first, it is meant for the next one.
+      advanceNow();
       const color = activeRef.current;
       const result = fillCells(s, batch, color);
       if (result.filled.length === 0) {
@@ -183,10 +235,11 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
       if (result.completedColors.includes(color)) {
         coloringFeedback.colorDone();
         const next = nextIncompleteColor(s, color);
-        if (next !== null) selectColor(next);
+        // The finished color stays active for a moment (full bar, check), then the next one.
+        if (next !== null) scheduleAdvance(next);
       }
     },
-    [coalescer, persist, persistNow, selectColor],
+    [advanceNow, coalescer, persist, persistNow, scheduleAdvance],
   );
 
   return { session, revision, activeColor, completion, selectColor, fill };

@@ -9,6 +9,7 @@ import { createGestureController, fireGestureHandler, getByGestureTestId } from 
 import { useDiagnosticsStore } from '@/features/diagnostics/diagnostics-store';
 import { toArtwork } from '@/lib/artwork/codec';
 import * as geometry from '@/lib/geometry';
+import { LONG_PRESS_MS, TAP_ALONE_MAX_MS } from '@/lib/touch-intent';
 
 import { createPerfArtworkSource } from './__fixtures__/perf-artwork';
 import { createColorPixels, paintCells } from './layers';
@@ -224,6 +225,56 @@ describe('fill gestures (F15)', () => {
     await flush();
     expect(onFillStart).not.toHaveBeenCalled();
     expect(onFill).not.toHaveBeenCalled();
+  });
+});
+
+describe('delay before coloring by sliding (F23)', () => {
+  // RNGH stores the tap's `maxDuration` as `maxDurationMs` in the native config.
+  type GestureConfig = { handlerTag: number; config: Record<string, unknown> };
+  const gesture = (testID: string) => getByGestureTestId(testID) as unknown as GestureConfig;
+
+  function ui(props: { fillDelayMs?: number; dragToFill?: boolean }) {
+    return (
+      <GestureHandlerRootView>
+        <PixelCanvas
+          artwork={artwork}
+          colorPixels={createColorPixels(artwork.width, artwork.height)}
+          colorRevision={0}
+          activeColor={activeColor}
+          onFill={jest.fn()}
+          accessibilityLabel="Artwork"
+          {...props}
+        />
+      </GestureHandlerRootView>
+    );
+  }
+
+  it('uses the default delay (150 ms) for the long press and the tap', async () => {
+    await render(ui({}));
+    expect(LONG_PRESS_MS).toBe(150);
+    expect(gesture('fill-long-press').config.activateAfterLongPress).toBe(150);
+    expect(gesture('fill-tap').config.maxDurationMs).toBe(150);
+  });
+
+  it.each([120, 150, 250])('passes a %i ms delay to the long-press gesture and ends the tap there', async (ms) => {
+    await render(ui({ fillDelayMs: ms }));
+    expect(gesture('fill-long-press').config.activateAfterLongPress).toBe(ms);
+    expect(gesture('fill-tap').config.maxDurationMs).toBe(ms);
+  });
+
+  it('updates the delay of the existing handlers, without recreating them', async () => {
+    const { rerender } = await render(ui({ fillDelayMs: 250 }));
+    const before = { tap: gesture('fill-tap').handlerTag, longPress: gesture('fill-long-press').handlerTag };
+    await rerender(ui({ fillDelayMs: 120 }));
+    expect(gesture('fill-long-press').config.activateAfterLongPress).toBe(120);
+    expect(gesture('fill-tap').config.maxDurationMs).toBe(120);
+    expect(gesture('fill-tap').handlerTag).toBe(before.tap);
+    expect(gesture('fill-long-press').handlerTag).toBe(before.longPress);
+  });
+
+  it('keeps the long tap when long-press fill is off', async () => {
+    await render(ui({ fillDelayMs: 120, dragToFill: false }));
+    expect(gesture('fill-tap').config.maxDurationMs).toBe(TAP_ALONE_MAX_MS);
   });
 });
 

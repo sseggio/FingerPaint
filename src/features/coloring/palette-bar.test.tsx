@@ -87,12 +87,22 @@ describe('PaletteBar', () => {
     expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the progress bar of the active color on top of the swatches (F23)', async () => {
+    await render(<Subject active={1} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar.props.accessibilityLabel).toBe('Color 2 progress, 3 of 32 cells');
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 32, now: 3 });
+    expect(screen.getByText('Color 2')).toBeTruthy();
+    expect(screen.getByText('3 / 32 · 9%')).toBeTruthy();
+  });
+
   it('names the colors in colorblind mode (labels and active color caption)', async () => {
     await render(<Subject colorblind active={1} />);
     expect(screen.getByRole('button', { name: 'Color 1, dark blue, done' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Color 2, pink, 3 of 32 cells' })).toBeSelected();
     expect(screen.getByRole('button', { name: 'Color 3, yellow, 0 of 4 cells' })).toBeTruthy();
-    expect(screen.getByText('Color 2: pink', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByText('Color 2 · pink')).toBeTruthy();
+    expect(screen.getByRole('progressbar').props.accessibilityLabel).toBe('Color 2 progress, pink, 3 of 32 cells');
     // Symbols replace the numbers.
     expect(screen.queryByText('2')).toBeNull();
   });

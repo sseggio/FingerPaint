@@ -1,9 +1,12 @@
 import type { LocalePreference } from '@/features/i18n/types';
 import type { Schema } from '@/lib/storage';
+import { isLongPressMs, LONG_PRESS_MS, type LongPressMs } from '@/lib/touch-intent';
 
 export type { LocalePreference };
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type SessionTimerMin = 0 | 10 | 20 | 30;
+/** "Delay before coloring by sliding" (ms): short, normal, long (F23). */
+export type FillDelayMs = LongPressMs;
 
 export interface Settings {
   locale: LocalePreference;
@@ -14,6 +17,8 @@ export interface Settings {
    * reused as-is, without a schema migration.
    */
   dragToFill: boolean;
+  /** Hold time (ms) before a still finger starts continuous fill (F23, settings v3). */
+  fillDelayMs: FillDelayMs;
   haptics: boolean;
   colorblindSymbols: boolean;
   largeNumbers: boolean;
@@ -30,6 +35,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   locale: 'system',
   theme: 'system',
   dragToFill: true,
+  fillDelayMs: LONG_PRESS_MS,
   haptics: true,
   colorblindSymbols: false,
   largeNumbers: false,
@@ -57,8 +63,15 @@ const BOOLEAN_KEYS = [
 /** v0 keys copied as-is into v1 (the others are renamed, derived or newer). */
 const V0_CARRIED_KEYS = ['dragToFill', 'haptics', 'largeNumbers', 'highContrast', 'leftHanded'] as const;
 
-/** Keys added after v1, with their defaults (filled in by the v1 → v2 migration and on backup import). */
+/** Keys added in v2 (cosmetic toggles, F12). */
 const V2_KEYS = ['neonTheme', 'goldConfetti'] as const;
+/** Keys added in v3 (long-press delay, F23). */
+const V3_KEYS = ['fillDelayMs'] as const;
+/**
+ * Keys added after v1, with their defaults (filled in by the migrations and on backup import of
+ * files written before they existed).
+ */
+const NEWER_KEYS = [...V2_KEYS, ...V3_KEYS] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -70,6 +83,7 @@ export function isSettings(value: unknown): value is Settings {
     LOCALES.includes(value.locale) &&
     THEMES.includes(value.theme) &&
     TIMERS.includes(value.sessionTimerMin) &&
+    isLongPressMs(value.fillDelayMs) &&
     BOOLEAN_KEYS.every((k) => typeof value[k] === 'boolean')
   );
 }
@@ -99,7 +113,23 @@ export function migrateSettingsV0toV1(data: unknown): unknown {
 
 /** v2 adds the cosmetic toggles (F12); everything else is unchanged. */
 export function migrateSettingsV1toV2(data: unknown): unknown {
-  return withNewerSettingsDefaults(data);
+  return withDefaults(data, V2_KEYS);
+}
+
+/**
+ * v3 adds the long-press delay (F23), at its default (normal, 150 ms); every other setting is
+ * kept as it is.
+ */
+export function migrateSettingsV2toV3(data: unknown): unknown {
+  if (!isRecord(data)) throw new Error('settings v2: not an object');
+  return withDefaults(data, V3_KEYS);
+}
+
+function withDefaults(data: unknown, keys: readonly (keyof Settings)[]): unknown {
+  if (!isRecord(data)) return data;
+  const out: Record<string, unknown> = { ...data };
+  for (const key of keys) if (!Object.prototype.hasOwnProperty.call(out, key)) out[key] = DEFAULT_SETTINGS[key];
+  return out;
 }
 
 /**
@@ -107,15 +137,12 @@ export function migrateSettingsV1toV2(data: unknown): unknown {
  * backups written before v2). Returns the input unchanged when it is not an object.
  */
 export function withNewerSettingsDefaults(data: unknown): unknown {
-  if (!isRecord(data)) return data;
-  const out: Record<string, unknown> = { ...data };
-  for (const key of V2_KEYS) if (!Object.prototype.hasOwnProperty.call(out, key)) out[key] = DEFAULT_SETTINGS[key];
-  return out;
+  return withDefaults(data, NEWER_KEYS);
 }
 
 export const settingsSchema: Schema<Settings> = {
-  version: 2,
-  migrations: { 0: migrateSettingsV0toV1, 1: migrateSettingsV1toV2 },
+  version: 3,
+  migrations: { 0: migrateSettingsV0toV1, 1: migrateSettingsV1toV2, 2: migrateSettingsV2toV3 },
   guard: isSettings,
   defaults: () => ({ ...DEFAULT_SETTINGS }),
 };

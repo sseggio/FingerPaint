@@ -215,6 +215,24 @@ describe('parseBackup rejections', () => {
     expect(result.backup.settings).toMatchObject({ neonTheme: true, goldConfetti: true });
   });
 
+  it('accepts backups written before the long-press delay existed, and restores it when present (F23)', () => {
+    const old = base();
+    delete (old.payload.settings as Record<string, unknown>).fillDelayMs;
+    const result = parseBackup(resign(old), catalog);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.backup.settings.fillDelayMs).toBe(150);
+
+    const custom = base();
+    (custom.payload.settings as Record<string, unknown>).fillDelayMs = 250;
+    const restored = parseBackup(resign(custom), catalog);
+    if (!restored.ok) throw new Error(restored.error);
+    expect(restored.backup.settings.fillDelayMs).toBe(250);
+
+    const invalid = base();
+    (invalid.payload.settings as Record<string, unknown>).fillDelayMs = 999;
+    expectError(resign(invalid), 'invalid');
+  });
+
   it('rejects bitsets of the wrong length, bits beyond the grid and mismatched counts', () => {
     const wrongLength = base();
     (wrongLength.payload.progress as Record<string, { filled: string }>).cat.filled = bitsetToBase64(bitsWith(9, 3));

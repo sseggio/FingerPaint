@@ -9,8 +9,9 @@ import { ownsGold, ownsNeon } from '@/features/entitlements/cosmetics';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useLocale, useT, type LocalePreference } from '@/features/i18n';
 import { useProgressStore } from '@/features/progress/progress-store';
-import type { SessionTimerMin, Settings } from '@/features/settings/settings-schema';
+import type { FillDelayMs, SessionTimerMin, Settings } from '@/features/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { LONG_PRESS_OPTIONS_MS } from '@/lib/touch-intent';
 import { palette, spacing, useTheme } from '@/theme';
 
 const TIMER_OPTIONS: readonly SessionTimerMin[] = [0, 10, 20, 30];
@@ -63,6 +64,36 @@ function LanguageSection() {
         </AppText>
       </View>
     </SettingsSection>
+  );
+}
+
+const FILL_DELAY_LABELS: Readonly<Record<FillDelayMs, 'settings.fillDelay.short' | 'settings.fillDelay.normal' | 'settings.fillDelay.long'>> = {
+  120: 'settings.fillDelay.short',
+  150: 'settings.fillDelay.normal',
+  250: 'settings.fillDelay.long',
+};
+
+/** "Delay before coloring by sliding" (F23): how long a still finger waits before continuous fill. */
+function FillDelaySetting() {
+  const t = useT();
+  const delay = useSettingsStore((s) => s.settings.fillDelayMs);
+  const update = useSettingsStore((s) => s.update);
+  return (
+    <View style={styles.block}>
+      <AppText variant="label">{t('settings.fillDelay.label')}</AppText>
+      <SegmentedControl<string>
+        accessibilityLabel={t('settings.fillDelay.label')}
+        value={String(delay)}
+        onChange={(value) => {
+          const next = LONG_PRESS_OPTIONS_MS.find((ms) => String(ms) === value);
+          if (next !== undefined) void update({ fillDelayMs: next });
+        }}
+        options={LONG_PRESS_OPTIONS_MS.map((ms) => ({ value: String(ms), label: t(FILL_DELAY_LABELS[ms]) }))}
+      />
+      <AppText tone="secondary" variant="caption">
+        {t('settings.fillDelay.hint')}
+      </AppText>
+    </View>
   );
 }
 
@@ -242,6 +273,7 @@ export function SettingsScreen() {
             label={t('settings.dragToFill.label')}
             description={t('settings.dragToFill.hint')}
           />
+          <FillDelaySetting />
           <SettingSwitch name="haptics" label={t('settings.haptics.label')} description={t('settings.haptics.hint')} />
         </SettingsSection>
         <SettingsSection title={t('settings.a11y.title')} accent={palette.violet}>

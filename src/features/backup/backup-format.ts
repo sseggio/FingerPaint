@@ -237,6 +237,7 @@ export function parseBackup(text: string, catalog: CatalogLookup): ParseResult {
         locale: s.locale,
         theme: s.theme,
         dragToFill: s.dragToFill,
+        fillDelayMs: s.fillDelayMs,
         haptics: s.haptics,
         colorblindSymbols: s.colorblindSymbols,
         largeNumbers: s.largeNumbers,

@@ -10,6 +10,7 @@ import { readableTextOn } from '@/lib/color';
 import { colorName } from '@/lib/color-name';
 import { radius, spacing, useTheme } from '@/theme';
 
+import { ColorProgress } from './color-progress';
 import { coloringFeedback } from './feedback';
 import { SymbolIcon } from './symbol-icon';
 
@@ -110,9 +111,9 @@ export interface PaletteBarProps {
 }
 
 /**
- * Palette of the artwork: one swatch per color with its number, its progress and a check once
- * finished. The active swatch is ringed and kept in view (the session moves on to the next
- * color by itself when one is done).
+ * Palette of the artwork: the progress bar of the active color on top (F23), then one swatch per
+ * color with its number, a mini progress bar and a check once finished. The active swatch is
+ * ringed and kept in view (the session moves on to the next color by itself when one is done).
  */
 export function PaletteBar({
   colors: paletteColors,
@@ -147,13 +148,14 @@ export function PaletteBar({
       style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}
       accessibilityLabel={t('coloring.palette.label')}
       onLayout={onLayout}>
-      {names && active ? (
-        <View style={[styles.nameRow, leftHanded && styles.nameRowReversed]}>
-          <SymbolIcon symbol={active.symbol} size={16} color={colors.ink} />
-          <AppText variant="caption" importantForAccessibility="no" accessibilityElementsHidden>
-            {t('coloring.palette.activeName', { number: active.number, name: names[activeColor] })}
-          </AppText>
-        </View>
+      {active ? (
+        <ColorProgress
+          color={active}
+          filled={colorFilled[activeColor]}
+          total={colorCounts[activeColor]}
+          name={names?.[activeColor]}
+          leftHanded={leftHanded}
+        />
       ) : null}
       <ScrollView
         ref={scroll}
@@ -190,14 +192,6 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, gap: SWATCH_GAP },
   // Left-handed: short palettes hug the right edge.
   contentReversed: { flexGrow: 1, justifyContent: 'flex-end' },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  nameRowReversed: { flexDirection: 'row-reverse' },
   swatchSlot: { alignItems: 'center', gap: spacing.sm, width: SWATCH_SIZE },
   ring: {
     width: SWATCH_SIZE,
