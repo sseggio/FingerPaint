@@ -28,7 +28,7 @@
     "production": {
       "ios": {
         "ascAppId": "com.krafting.pixeljoy",
-        "appleTeamId": "6835033152"
+        "appleTeamId": 6835033152
       }
     }
   }
