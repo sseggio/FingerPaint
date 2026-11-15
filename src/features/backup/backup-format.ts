@@ -3,6 +3,7 @@ import { isProgressSummary } from '@/features/progress/progress-schema';
 import { isSettings, withNewerSettingsDefaults, type Settings } from '@/features/settings/settings-schema';
 import { bitsetFromBase64, bitsetToBase64, countBits } from '@/lib/bitset';
 import { canonicalJson, fnv1a64 } from '@/lib/checksum';
+import { decodeFillOrder, encodeFillOrder } from '@/lib/fill-order';
 import { isDailyState, type DailyState } from '@/lib/daily';
 
 /**
@@ -15,6 +16,12 @@ import { isDailyState, type DailyState } from '@/lib/daily';
  * `checksum` is the FNV-1a 64 of the canonical JSON of `payload`. Purchases / entitlements are
  * NEVER written, and anything that is not progress, streak or settings is ignored on import:
  * a backup can never unlock paid content.
+ *
+ * Since F18 a progress entry may carry `order`, its fill order journal (base64 little-endian
+ * Uint16 cell indices). The field is optional and compatible: the format version stays 1, files
+ * without it import as before (their replay order is completed on the fly), and older app
+ * versions ignore it. An `order` that does not match its bitset is dropped on import (the
+ * progress itself is kept, the checksum already guards against tampering).
  */
 export const BACKUP_FORMAT = 'pixeljoy-backup';
 export const BACKUP_VERSION = 1;
@@ -28,7 +35,12 @@ export const MAX_BACKUP_ENTRIES = 10_000;
 export interface BackupArtwork {
   summary: ProgressSummary;
   bits: Uint8Array;
+  /** Fill order journal (F18), when known; validated against `bits`. */
+  order?: Uint16Array;
 }
+
+/** A progress entry as written in the file. */
+export type BackupProgress = Progress & { order?: string };
 
 /** What a backup carries once decoded. */
 export interface BackupData {
@@ -44,7 +56,7 @@ export interface DecodedBackup extends BackupData {
 }
 
 export interface BackupPayload {
-  progress: Record<string, Progress>;
+  progress: Record<string, BackupProgress>;
   daily: DailyState;
   settings: Settings;
 }
@@ -67,8 +79,18 @@ export type BackupError =
 
 export type ParseResult = { ok: true; backup: DecodedBackup } | { ok: false; error: BackupError };
 
-/** Total cell count of a catalog artwork, undefined when the id is unknown. */
-export type CatalogLookup = (artworkId: string) => number | undefined;
+/**
+ * Size of a catalog artwork: `cellCount` = grid cells (w×h, the bitset size), `totalCells` =
+ * cells to color (non-empty). Both are needed: bitsets cover the whole grid, while completion is
+ * counted on the cells to color.
+ */
+export interface CatalogSize {
+  cellCount: number;
+  totalCells: number;
+}
+
+/** Size of a catalog artwork, undefined when the id is unknown. */
+export type CatalogLookup = (artworkId: string) => CatalogSize | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -94,10 +116,13 @@ export function checksumOf(payload: unknown): string {
 
 /** Serializes a backup (pretty-printed JSON, newline-terminated). */
 export function serializeBackup(data: BackupData, createdAt: number): string {
-  const progress: Record<string, Progress> = {};
+  const progress: Record<string, BackupProgress> = {};
   for (const id of [...data.progress.keys()].sort()) {
     const entry = data.progress.get(id);
-    if (entry) progress[id] = { ...summaryOf(entry.summary), filled: bitsetToBase64(entry.bits) };
+    if (!entry) continue;
+    const out: BackupProgress = { ...summaryOf(entry.summary), filled: bitsetToBase64(entry.bits) };
+    if (entry.order && entry.order.length > 0) out.order = encodeFillOrder(entry.order);
+    progress[id] = out;
   }
   const payload: BackupPayload = {
     progress,
@@ -122,14 +147,15 @@ export function serializeBackup(data: BackupData, createdAt: number): string {
 
 /** Validates one progress entry against the catalog ('unknown' when the id is not in it). */
 function decodeEntry(id: string, raw: unknown, catalog: CatalogLookup): BackupArtwork | BackupError | 'unknown' {
-  const total = catalog(id);
-  if (total === undefined) return 'unknown';
+  const size = catalog(id);
+  if (size === undefined) return 'unknown';
+  const { cellCount, totalCells: total } = size;
   if (!isRecord(raw) || typeof raw.filled !== 'string') return 'invalid';
-  const { filled, ...rest } = raw;
+  const { filled, order: rawOrder, ...rest } = raw;
   if (!isProgressSummary(rest) || rest.artworkId !== id) return 'invalid';
   let bits: Uint8Array;
   try {
-    bits = bitsetFromBase64(filled as string, total);
+    bits = bitsetFromBase64(filled as string, cellCount);
   } catch {
     return 'invalid';
   }
@@ -137,7 +163,11 @@ function decodeEntry(id: string, raw: unknown, catalog: CatalogLookup): BackupAr
   if (count !== rest.filledCount) return 'invalid';
   const expected = count === total ? 'completed' : count > 0 ? 'in_progress' : 'new';
   if (rest.status !== expected) return 'invalid';
-  return { summary: summaryOf(rest), bits };
+  const entry: BackupArtwork = { summary: summaryOf(rest), bits };
+  // Optional journal: kept only when it matches the bitset, otherwise dropped (not fatal).
+  const order = rawOrder === undefined ? null : decodeFillOrder(rawOrder, bits, cellCount);
+  if (order && order.length > 0) entry.order = order;
+  return entry;
 }
 
 /**

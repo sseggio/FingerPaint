@@ -21,9 +21,20 @@ export interface ProgressIndex {
   entries: Record<string, ProgressSummary>;
 }
 
-/** Payload stored under `fp:progress:<id>`. */
+/**
+ * Payload stored under `fp:progress:<id>`.
+ * - v1: `{ filled }` (bitset only).
+ * - v2 (F18): optional `order`, the fill order journal (base64 little-endian Uint16 cell
+ *   indices, see `@/lib/fill-order`). v1 payloads migrate as they are: progress without a
+ *   journal stays valid, its replay order is completed when needed.
+ */
 export interface ProgressCells {
   filled: string;
+  /**
+   * Written as a string; read back as `unknown` on purpose: it is validated against the bitset
+   * by `decodeFillOrder`, and a bad journal only drops the journal, never the progress.
+   */
+  order?: unknown;
 }
 
 const STATUSES: readonly unknown[] = ['new', 'in_progress', 'completed'];
@@ -69,6 +80,12 @@ export function isProgressCells(value: unknown): value is ProgressCells {
   return isRecord(value) && typeof value.filled === 'string';
 }
 
+/** v1 → v2: same payload, without journal (only the bitset is carried over). */
+function migrateCellsV1(data: unknown): ProgressCells {
+  if (!isRecord(data) || typeof data.filled !== 'string') throw new Error('progress cells v1: invalid');
+  return { filled: data.filled };
+}
+
 export const progressIndexSchema: Schema<ProgressIndex> = {
   version: 1,
   migrations: {},
@@ -77,8 +94,8 @@ export const progressIndexSchema: Schema<ProgressIndex> = {
 };
 
 export const progressCellsSchema: Schema<ProgressCells> = {
-  version: 1,
-  migrations: {},
+  version: 2,
+  migrations: { 1: migrateCellsV1 },
   guard: isProgressCells,
   defaults: () => ({ filled: '' }),
 };

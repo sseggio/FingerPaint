@@ -1,6 +1,14 @@
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import type { Artwork } from '@/lib/artwork/types';
 import { byteLengthFor, clearBit, getBit, setBit } from '@/lib/bitset';
+import {
+  appendFillJournal,
+  completeReplayOrder,
+  createFillJournal,
+  isFillOrderConsistent,
+  journalCells,
+  type FillJournal,
+} from '@/lib/fill-order';
 
 import { buildColorPixels, paintCells } from './canvas/layers';
 
@@ -19,6 +27,11 @@ export interface ColoringSession {
   readonly colorPixels: Uint8Array;
   /** colorFilled[i] = filled cells of palette color i. */
   readonly colorFilled: Uint32Array;
+  /**
+   * Fill order journal (F18): every newly filled cell, in batch order. Saved with the bitset so
+   * the completion replay can follow the actual coloring.
+   */
+  readonly order: FillJournal;
   filledCount: number;
   revision: number;
   /** True once every cell is filled (set once, by the batch that fills the last cell). */
@@ -39,10 +52,16 @@ export interface FillResult {
 }
 
 /**
- * Starts a session, optionally from a stored bitset. A bitset of the wrong size is ignored and
- * bits on empty cells are cleared, so counters always match the artwork.
+ * Starts a session, optionally from a stored bitset and fill order journal. A bitset of the
+ * wrong size is ignored and bits on empty cells are cleared, so counters always match the
+ * artwork. A journal that does not match the resulting bitset is dropped (the replay then
+ * completes the order by itself, see `replayOrder`).
  */
-export function createColoringSession(artwork: Artwork, restored?: Uint8Array): ColoringSession {
+export function createColoringSession(
+  artwork: Artwork,
+  restored?: Uint8Array,
+  restoredOrder?: ArrayLike<number> | null,
+): ColoringSession {
   const total = artwork.cells.length;
   const filled = new Uint8Array(byteLengthFor(total));
   if (restored && restored.length === filled.length) filled.set(restored);
@@ -60,11 +79,13 @@ export function createColoringSession(artwork: Artwork, restored?: Uint8Array): 
   }
   // Clear padding bits beyond the last cell (they would be counted by a naive reader).
   for (let i = total; i < filled.length * 8; i++) clearBit(filled, i);
+  const journalOk = !!restoredOrder && isFillOrderConsistent(restoredOrder, artwork.cells, filled);
   return {
     artwork,
     filled,
     colorPixels: buildColorPixels(artwork, filled),
     colorFilled,
+    order: createFillJournal(total, journalOk ? restoredOrder : undefined),
     filledCount,
     revision: 0,
     completed: artwork.totalCells > 0 && filledCount >= artwork.totalCells,
@@ -103,6 +124,7 @@ export function fillCells(session: ColoringSession, batch: ArrayLike<number>, co
 
   if (result.filled.length === 0) return result;
   paintCells(session.colorPixels, artwork, result.filled);
+  appendFillJournal(session.order, result.filled);
   session.colorFilled[colorIndex] += result.filled.length;
   session.filledCount += result.filled.length;
   session.revision++;
@@ -125,6 +147,14 @@ export function nextIncompleteColor(session: ColoringSession, from: number): num
     if (!isColorComplete(session, i)) return i;
   }
   return null;
+}
+
+/**
+ * Order in which the completion replay draws the cells: the journal, preceded by the cells it
+ * misses (filled before it existed) in palette then row order (see `completeReplayOrder`).
+ */
+export function replayOrder(session: ColoringSession): Uint32Array {
+  return completeReplayOrder(session.artwork.cells, journalCells(session.order));
 }
 
 /** Index entry describing the session (the bitset is saved alongside, by reference). */

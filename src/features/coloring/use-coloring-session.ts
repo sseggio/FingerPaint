@@ -88,7 +88,7 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
     const s = sessionRef.current;
     if (!s || !dirtyRef.current) return;
     const state = storeRef.current.getState();
-    state.save(sessionSummary(s, state.index[s.artwork.id], nowRef.current(), activeMs()), s.filled);
+    state.save(sessionSummary(s, state.index[s.artwork.id], nowRef.current(), activeMs()), s.filled, s.order);
   }, [activeMs]);
 
   const persistNow = useCallback(() => {
@@ -107,11 +107,11 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
     const state = storeRef.current.getState();
     const previous = state.index[artwork.id];
     state
-      .loadFilled(artwork.id, artwork.cells.length)
+      .loadCells(artwork.id, artwork.cells.length)
       .catch(() => undefined)
-      .then((bits) => {
+      .then((stored) => {
         if (!alive) return;
-        const restored = createColoringSession(artwork, bits);
+        const restored = createColoringSession(artwork, stored?.bits, stored?.order);
         sessionRef.current = restored;
         dirtyRef.current = false;
         timeRef.current = { base: previous?.activeMs ?? 0, since: nowRef.current() };
@@ -173,7 +173,8 @@ export function useColoringSession(artwork: Artwork, options: ColoringSessionOpt
         dailyRef.current();
       }
       if (result.completedNow) {
-        coloringFeedback.artworkDone();
+        // The success haptic is played by the screen when the celebration shows (after the
+        // completion replay, F18), not here.
         setCompletion('celebrate');
         persistNow();
         return;

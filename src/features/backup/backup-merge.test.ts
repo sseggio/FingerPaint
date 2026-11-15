@@ -67,6 +67,20 @@ describe('planImport', () => {
   });
 });
 
+describe('planImport and fill order journals (F18)', () => {
+  it('writes the journal of the retained progress only', () => {
+    const file = backup([summary('a', 5, 'in_progress'), summary('b', 2, 'in_progress')]);
+    const order = Uint16Array.from([3, 1]);
+    file.progress.set('a', { summary: summary('a', 5, 'in_progress'), bits: createBitset(64), order });
+    file.progress.set('b', { summary: summary('b', 2, 'in_progress'), bits: createBitset(64), order });
+    const local = { index: { a: summary('a', 1, 'in_progress'), b: summary('b', 9, 'in_progress') }, daily: empty() };
+    const plan = planImport(local, file, TODAY);
+    // 'a': the file wins, with its journal. 'b': the device wins, nothing written (its own journal stays).
+    expect(plan.writes.map((w) => w.summary.artworkId)).toEqual(['a']);
+    expect(plan.writes[0].order).toBe(order);
+  });
+});
+
 describe('mergeDaily', () => {
   it('keeps the longer streak alive today and the best of both', () => {
     const merged = mergeDaily(daily('2026-11-14', 2, 12), daily('2026-11-13', 30, 30), TODAY);

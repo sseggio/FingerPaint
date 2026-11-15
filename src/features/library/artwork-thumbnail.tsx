@@ -59,7 +59,7 @@ function useThumbnailImage(artwork: Artwork | undefined, entry: ProgressEntry | 
     let alive = true;
     useProgressStore
       .getState()
-      .loadFilled(artwork.id, artwork.totalCells)
+      .loadFilled(artwork.id, artwork.cells.length)
       .then((bits) => {
         if (!alive) return;
         // Missing or corrupt bitset: show the untouched artwork rather than nothing.

@@ -66,6 +66,9 @@
     "setupFiles": [
       "react-native-gesture-handler/jestSetup.js",
       "<rootDir>/jest.setup.ts"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest/fail-on-console-error.ts"
     ]
   }
 }

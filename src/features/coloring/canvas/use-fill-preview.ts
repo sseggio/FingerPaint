@@ -1,7 +1,7 @@
 import type { SkImage } from '@shopify/react-native-skia';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
-import { scheduleOnUI } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import {
   acknowledgeBatch,
@@ -52,14 +52,26 @@ export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillP
   const layerRevision = useRef(0);
   /**
    * Colors with batches still previewed (JS mirror, updated where the batches are settled): the
-   * canvas mounts their preview paths. A color is dropped at the next batch once the layer
-   * showing it was handed to the UI runtime: always after the preview itself let go of it (an
-   * extra empty path for a while is harmless, an early unmount could flash). Owned by the
-   * current artwork / buffer: a new one starts empty.
+   * canvas mounts their preview paths. A color is dropped once the layer showing it was handed
+   * to the UI runtime (`releaseShown`, scheduled from that very UI task): always after the
+   * preview itself let go of it (an early unmount could flash). Owned by the current artwork /
+   * buffer: a new one starts empty.
    */
   const [tracked, setTracked] = useState<PendingTracker>(() => ({ cells, colorPixels, values: NO_PENDING }));
   const owned = tracked.cells === cells && tracked.colorPixels === colorPixels;
   const pending = owned ? tracked.values : NO_PENDING;
+
+  /**
+   * The layer `revision` is on screen: the colors it shows no longer need their preview path,
+   * unmounted right away rather than at the next batch (report of the F17 review). Called from
+   * the UI task that swapped the layer, so the path always goes after the preview let go.
+   */
+  const releaseShown = useCallback((revision: number) => {
+    setTracked((t) => {
+      const values = dropShownValues(t.values, revision);
+      return values === t.values ? t : { ...t, values };
+    });
+  }, []);
 
   useLayoutEffect(() => {
     layerRevision.current += 1;
@@ -72,8 +84,9 @@ export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillP
         showLayer(s, revision);
         return s;
       }, true);
+      scheduleOnRN(releaseShown, revision);
     });
-  }, [colorLayer, layer, preview]);
+  }, [colorLayer, layer, preview, releaseShown]);
 
   // Another artwork (or a restored session): nothing pending applies to it any more.
   useLayoutEffect(() => {

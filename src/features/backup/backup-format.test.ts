@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS } from '@/features/settings/settings-schema';
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import { bitsetToBase64, createBitset, setBit } from '@/lib/bitset';
 import { canonicalJson, fnv1a64 } from '@/lib/checksum';
+import { encodeFillOrder } from '@/lib/fill-order';
 import type { DailyState } from '@/lib/daily';
 
 import {
@@ -16,7 +17,8 @@ import {
 } from './backup-format';
 
 const CATALOG: Record<string, number> = { cat: 20, fish: 9 };
-const catalog: CatalogLookup = (id) => (Object.prototype.hasOwnProperty.call(CATALOG, id) ? CATALOG[id] : undefined);
+const catalog: CatalogLookup = (id) =>
+  Object.prototype.hasOwnProperty.call(CATALOG, id) ? { cellCount: CATALOG[id], totalCells: CATALOG[id] } : undefined;
 
 function bitsWith(total: number, count: number): Uint8Array {
   const bits = createBitset(total);
@@ -101,6 +103,48 @@ describe('serializeBackup / parseBackup', () => {
     if (!result.ok) return;
     expect(Object.keys(result.backup).sort()).toEqual(['createdAt', 'daily', 'progress', 'settings', 'unknownCount']);
     expect(JSON.stringify(result.backup.settings)).not.toMatch(/pro|pack/);
+  });
+});
+
+describe('fill order journal (F18)', () => {
+  function withJournal(): BackupData {
+    const data = sample();
+    data.progress.set('cat', { summary: summary('cat', 3, 'in_progress'), bits: bitsWith(20, 3), order: Uint16Array.from([2, 0, 1]) });
+    return data;
+  }
+
+  it('round-trips an optional journal without changing the format version', () => {
+    const text = serializeBackup(withJournal(), 1);
+    const file = fileOf(text);
+    expect(file.version).toBe(1);
+    const progress = file.payload.progress as Record<string, { order?: string }>;
+    expect(progress.cat.order).toBe(encodeFillOrder(Uint16Array.from([2, 0, 1])));
+    expect(progress.fish).not.toHaveProperty('order');
+    const result = parseBackup(text, catalog);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.backup.progress.get('cat')?.order).toEqual(Uint16Array.from([2, 0, 1]));
+    expect(result.backup.progress.get('fish')).not.toHaveProperty('order');
+  });
+
+  it('still imports files written before the journal existed', () => {
+    const result = parseBackup(serializeBackup(sample(), 1), catalog);
+    expect(result.ok && result.backup.progress.get('cat')).toEqual({ summary: summary('cat', 3, 'in_progress'), bits: bitsWith(20, 3) });
+  });
+
+  it.each([
+    ['a cell not filled', encodeFillOrder(Uint16Array.from([0, 5]))],
+    ['a duplicate', encodeFillOrder(Uint16Array.from([0, 0]))],
+    ['an index outside the grid', encodeFillOrder(Uint16Array.from([25]))],
+    ['malformed base64', '###'],
+    ['the wrong type', 12],
+  ])('drops a journal with %s and keeps the progress', (_name, order) => {
+    const file = fileOf(serializeBackup(sample(), 1));
+    (file.payload.progress as Record<string, Record<string, unknown>>).cat.order = order;
+    const result = parseBackup(resign(file), catalog);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.backup.progress.get('cat')).toEqual({ summary: summary('cat', 3, 'in_progress'), bits: bitsWith(20, 3) });
   });
 });
 

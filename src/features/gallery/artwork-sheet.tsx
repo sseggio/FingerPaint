@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, Button, SegmentedControl } from '@/components/ui';
@@ -30,11 +31,14 @@ export interface ArtworkSheetProps {
   busy: PngAction | null;
   onClose(): void;
   onContinue(artwork: ArtworkSource): void;
+  /** Opens a finished artwork and replays its coloring (F18). Hidden with reduce motion. */
+  onReplay?: (artwork: ArtworkSource) => void;
   onPng(artwork: ArtworkSource, action: PngAction, background: string | null): void;
 }
 
-/** Bottom sheet with the actions on one artwork: continue, export as PNG, share. */
-export function ArtworkSheet({ artwork, progress, busy, onClose, onContinue, onPng }: ArtworkSheetProps) {
+/** Bottom sheet with the actions on one artwork: continue, watch again, export as PNG, share. */
+export function ArtworkSheet({ artwork, progress, busy, onClose, onContinue, onReplay, onPng }: ArtworkSheetProps) {
+  const reduceMotion = useReducedMotion();
   const t = useT();
   const locale = useLocale();
   const { colors } = useTheme();
@@ -103,6 +107,14 @@ export function ArtworkSheet({ artwork, progress, busy, onClose, onContinue, onP
                 }
                 onPress={() => onContinue(artwork)}
               />
+              {done && onReplay && !reduceMotion ? (
+                <Button
+                  variant="secondary"
+                  label={t('gallery.sheet.replay')}
+                  accessibilityLabel={t('gallery.sheet.replayLabel', { title })}
+                  onPress={() => onReplay(artwork)}
+                />
+              ) : null}
               <View style={styles.row}>
                 <Button
                   variant="secondary"

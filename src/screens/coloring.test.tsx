@@ -110,7 +110,7 @@ describe('ColoringScreen', () => {
     expect(screen.queryByLabelText('Palette')).toBeNull();
     expect(JSON.parse(screen.getByTestId('redirect').props.children)).toEqual({ pathname: '/shop', params: { reason: 'pro' } });
 
-    useEntitlementsStore.setState({ entitlements: { pro: true, packs: [], source: 'mock' } });
+    await act(() => useEntitlementsStore.setState({ entitlements: { pro: true, packs: [], source: 'mock' } }));
     await renderScreen('tabby-cat');
     expect(screen.getByLabelText('Palette')).toBeTruthy();
     spy.mockRestore();
@@ -125,13 +125,13 @@ describe('ColoringScreen', () => {
     await renderScreen('tabby-cat');
     expect(backdrop()).toBeUndefined();
 
-    useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['neon'], source: 'mock' } });
+    await act(() => useEntitlementsStore.setState({ entitlements: { pro: false, packs: ['neon'], source: 'mock' } }));
     await renderScreen('tabby-cat');
     expect(backdrop()).toBe(canvasThemes.neon.backdrop);
 
-    useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS, neonTheme: false } });
+    await act(() => useSettingsStore.setState({ settings: { ...DEFAULT_SETTINGS, neonTheme: false } }));
     await renderScreen('tabby-cat');
     expect(backdrop()).toBeUndefined();
-    useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS });
+    await act(() => useEntitlementsStore.setState({ entitlements: DEFAULT_ENTITLEMENTS }));
   });
 });

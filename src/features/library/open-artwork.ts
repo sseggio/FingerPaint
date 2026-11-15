@@ -5,7 +5,7 @@ import { useEntitlementsStore } from '@/features/entitlements/entitlements-store
 import type { ArtworkAccess } from '@/lib/artwork/types';
 
 export type ArtworkRoute =
-  | { pathname: '/color/[artworkId]'; params: { artworkId: string } }
+  | { pathname: '/color/[artworkId]'; params: { artworkId: string; replay?: '1' } }
   | { pathname: '/shop'; params: { reason: LockReason } };
 
 /**
@@ -18,8 +18,14 @@ export function artworkRoute(artwork: { id: string; access: ArtworkAccess }, ent
   return { pathname: '/color/[artworkId]', params: { artworkId: artwork.id } };
 }
 
-export function openArtwork(artwork: { id: string; access: ArtworkAccess }) {
-  router.push(artworkRoute(artwork, useEntitlementsStore.getState().entitlements));
+/** `replay`: replay the coloring of a finished artwork when it opens (F18, "Watch again"). */
+export function openArtwork(artwork: { id: string; access: ArtworkAccess }, options: { replay?: boolean } = {}) {
+  const route = artworkRoute(artwork, useEntitlementsStore.getState().entitlements);
+  if (options.replay && route.pathname === '/color/[artworkId]') {
+    router.push({ pathname: route.pathname, params: { ...route.params, replay: '1' } });
+    return;
+  }
+  router.push(route);
 }
 
 const LOCK_REASONS: readonly unknown[] = ['pro', 'pack'];
