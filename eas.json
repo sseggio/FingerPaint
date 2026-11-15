@@ -27,8 +27,8 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "REPLACE_ME",
-        "appleTeamId": "REPLACE_ME"
+        "ascAppId": "com.krafting.pixeljoy",
+        "appleTeamId": "6835033152"
       }
     }
   }
