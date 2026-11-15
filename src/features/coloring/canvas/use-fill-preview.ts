@@ -1,5 +1,5 @@
 import type { SkImage } from '@shopify/react-native-skia';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
@@ -40,20 +40,20 @@ export interface FillPreviewOptions {
 
 /**
  * Keeps the fill preview on screen until the color layer shows its cells (see
- * `@/lib/fill-preview`). The color layer image is handed to the canvas through a shared value,
- * set in the same UI task that drops the batches it now shows: the image swap and the preview
- * removal are always drawn in the same frame, whatever the JS / UI timing.
+ * `@/lib/fill-preview`). The color layer image itself is drawn from a plain React prop (no Skia
+ * object in a shared value, F19); one UI frame after a new image was committed, the batches it
+ * shows leave the preview. Removing them late is invisible (the preview draws the same pixels),
+ * removing them before the image is drawn would flash.
  */
 export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillPreviewOptions) {
   /** Batches sent to the JS runtime, drawn until the color layer shows them. */
   const preview = useSharedValue<PreviewState>(emptyPreview());
-  const layer = useSharedValue<SkImage | null>(colorLayer);
-  /** Last color layer revision handed to the UI runtime. */
+  /** Last color layer revision committed (counted at commit, read by `onBatch`). */
   const layerRevision = useRef(0);
   /**
    * Colors with batches still previewed (JS mirror, updated where the batches are settled): the
-   * canvas mounts their preview paths. A color is dropped once the layer showing it was handed
-   * to the UI runtime (`releaseShown`, scheduled from that very UI task): always after the
+   * canvas mounts their preview paths. A color is dropped once the layer showing it is drawn
+   * (`releaseShown`, scheduled from the UI frame that dropped its batches): always after the
    * preview itself let go of it (an early unmount could flash). Owned by the current artwork /
    * buffer: a new one starts empty.
    */
@@ -64,7 +64,7 @@ export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillP
   /**
    * The layer `revision` is on screen: the colors it shows no longer need their preview path,
    * unmounted right away rather than at the next batch (report of the F17 review). Called from
-   * the UI task that swapped the layer, so the path always goes after the preview let go.
+   * the UI frame that dropped its batches, so the path always goes after the preview let go.
    */
   const releaseShown = useCallback((revision: number) => {
     setTracked((t) => {
@@ -73,20 +73,30 @@ export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillP
     });
   }, []);
 
+  // Counted at commit: a batch settled from now on is shown by the next revision.
   useLayoutEffect(() => {
     layerRevision.current += 1;
+  }, [colorLayer]);
+
+  // The new image is committed: one UI frame later it is drawn, its batches can leave the preview.
+  useEffect(() => {
     const revision = layerRevision.current;
     scheduleOnUI(() => {
       'worklet';
-      layer.set(colorLayer);
-      preview.modify((s) => {
-        'worklet';
-        showLayer(s, revision);
-        return s;
-      }, true);
-      scheduleOnRN(releaseShown, revision);
+      requestAnimationFrame(() => {
+        try {
+          preview.modify((s) => {
+            'worklet';
+            showLayer(s, revision);
+            return s;
+          }, true);
+          scheduleOnRN(releaseShown, revision);
+        } catch {
+          // Worst case the preview stays drawn, identical to the layer below: nothing to see.
+        }
+      });
     });
-  }, [colorLayer, layer, preview, releaseShown]);
+  }, [colorLayer, preview, releaseShown]);
 
   // Another artwork (or a restored session): nothing pending applies to it any more.
   useLayoutEffect(() => {
@@ -118,15 +128,19 @@ export function useFillPreview({ colorPixels, colorLayer, cells, onFill }: FillP
       });
       scheduleOnUI(() => {
         'worklet';
-        preview.modify((s) => {
-          'worklet';
-          acknowledgeBatch(s, id, rejected, shownAt);
-          return s;
-        }, true);
+        try {
+          preview.modify((s) => {
+            'worklet';
+            acknowledgeBatch(s, id, rejected, shownAt);
+            return s;
+          }, true);
+        } catch {
+          // Never abort the app from the UI runtime (F19); the batch then stays previewed.
+        }
       });
     },
     [cells, colorPixels, onFill, preview],
   );
 
-  return { preview, layer, onBatch, pending };
+  return { preview, onBatch, pending };
 }

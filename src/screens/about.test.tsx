@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Linking } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Linking, Share } from 'react-native';
 
 import { CONTACT_EMAIL } from '@/features/about/app-info';
 import { OPEN_SOURCE_CREDITS } from '@/features/about/licenses';
+import { useDiagnosticsStore } from '@/features/diagnostics';
 
 import { AboutScreen } from './about';
 
@@ -37,5 +38,35 @@ describe('AboutScreen', () => {
     await fireEvent.press(screen.getByRole('button', { name: `Write an email to ${CONTACT_EMAIL}` }));
     expect(open).toHaveBeenCalledWith(`mailto:${CONTACT_EMAIL}`);
     open.mockRestore();
+  });
+
+  it('hides the diagnostics section while no error was recorded', async () => {
+    await render(<AboutScreen />);
+    await act(async () => {
+      await useDiagnosticsStore.getState().hydrate();
+    });
+    expect(screen.queryByRole('header', { name: 'Diagnostics' })).toBeNull();
+  });
+
+  it('lists recorded errors, copies the report through the share sheet and clears them', async () => {
+    await act(async () => {
+      await useDiagnosticsStore.getState().record('gesture:tap.onActivate', 'TypeError: boom', 'at tap (canvas)');
+    });
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction, activityType: undefined });
+    await render(<AboutScreen />);
+    expect(screen.getByRole('header', { name: 'Diagnostics' })).toBeTruthy();
+    expect(screen.getByText('1 error recorded')).toBeTruthy();
+    expect(screen.getByText(/gesture:tap\.onActivate TypeError: boom/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Copy the diagnostics report' }));
+    const message = (share.mock.calls[0][0] as { message: string }).message;
+    expect(message).toContain('PixelJoy diagnostics, version 1.0.0 (7)');
+    expect(message).toContain('TypeError: boom');
+    expect(message).toContain('at tap (canvas)');
+    share.mockRestore();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole('button', { name: 'Clear the recorded errors' }));
+    });
+    expect(screen.queryByRole('header', { name: 'Diagnostics' })).toBeNull();
+    expect(useDiagnosticsStore.getState().entries).toEqual([]);
   });
 });

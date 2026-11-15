@@ -4,6 +4,7 @@ import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText, Button, SettingsSection } from '@/components/ui';
 import { CONTACT_EMAIL, getAppVersion } from '@/features/about/app-info';
 import { OPEN_SOURCE_CREDITS } from '@/features/about/licenses';
+import { DiagnosticsSection } from '@/features/diagnostics';
 import { useT } from '@/features/i18n';
 import { funAccents, palette, radius, spacing, useTheme } from '@/theme';
 
@@ -16,7 +17,10 @@ function Bullet({ accent, text }: { accent: string; text: string }) {
   );
 }
 
-/** "About": version, privacy promise, credits, open-source licenses and contact. Fully offline. */
+/**
+ * "About": version, privacy promise, credits, open-source licenses, contact and the local
+ * diagnostics (only when errors were recorded). Fully offline.
+ */
 export function AboutScreen() {
   const t = useT();
   const { colors } = useTheme();
@@ -86,6 +90,8 @@ export function AboutScreen() {
           />
         </View>
       </SettingsSection>
+
+      <DiagnosticsSection version={build ? `${version} (${build})` : version} />
     </ScrollView>
   );
 }

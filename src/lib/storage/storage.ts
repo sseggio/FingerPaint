@@ -12,6 +12,8 @@ export const StorageKeys = {
   entitlements: 'fp:entitlements',
   /** Ledger of the mock purchase provider (dev / internal builds only). */
   mockStore: 'fp:mock-store',
+  /** Last errors caught on the device (F19), shown in "About". Never sent, never backed up. */
+  diagnostics: 'fp:diagnostics',
 } as const;
 
 /** Subset of the AsyncStorage API we rely on (injectable for tests). */

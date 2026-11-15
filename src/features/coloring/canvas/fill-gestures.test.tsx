@@ -6,7 +6,9 @@ import { createRef } from 'react';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { createGestureController, fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
+import { useDiagnosticsStore } from '@/features/diagnostics/diagnostics-store';
 import { toArtwork } from '@/lib/artwork/codec';
+import * as geometry from '@/lib/geometry';
 
 import { createPerfArtworkSource } from './__fixtures__/perf-artwork';
 import { createColorPixels, paintCells } from './layers';
@@ -30,10 +32,13 @@ const activeColor = artwork.cells[centerIndex] - 1;
 
 type Point = { x: number; y: number };
 
-/** `scheduleOnRN` hops to the JS runtime asynchronously (even under Jest). */
+/**
+ * `scheduleOnRN` / `scheduleOnUI` hop runtimes asynchronously (even under Jest), and the preview
+ * waits one UI frame after a layer commit: let a few timer turns go by.
+ */
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (let k = 0; k < 4; k++) await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
@@ -222,6 +227,42 @@ describe('fill gestures (F15)', () => {
   });
 });
 
+describe('gesture worklets never throw (F19)', () => {
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await act(async () => {
+      await useDiagnosticsStore.getState().clear();
+    });
+  });
+
+  it('an exception in the tap worklet is caught and logged locally, the app goes on', async () => {
+    // Installed before the render: the worklets capture their helpers when they are created.
+    jest.spyOn(geometry, 'screenToCell').mockImplementation(() => {
+      throw new Error('boom');
+    });
+    const { onFill } = await setup();
+    await tap(CENTER);
+    expect(onFill).not.toHaveBeenCalled();
+    const [entry] = useDiagnosticsStore.getState().entries;
+    expect(entry.source).toBe('gesture:tap.onActivate');
+    expect(entry.message).toContain('boom');
+    expect(entry.stack).toContain('boom');
+  });
+
+  it('an exception in the long-press worklets is caught too', async () => {
+    // Installed before the render: the worklets capture their helpers when they are created.
+    jest.spyOn(geometry, 'screenToCell').mockImplementation(() => {
+      throw new Error('bad cell');
+    });
+    const { onFill } = await setup();
+    fireGestureHandler(getByGestureTestId('fill-long-press'), longPressEvents([CENTER, { x: CENTER.x + 20, y: CENTER.y }]));
+    await flush();
+    expect(onFill).not.toHaveBeenCalled();
+    const sources = useDiagnosticsStore.getState().entries.map((e) => e.source);
+    expect(sources).toContain('gesture:longPress.onActivate');
+  });
+});
+
 type HostProps = Record<string, unknown>;
 
 /** Props of the host Skia nodes of `type` in the rendered tree. */
@@ -250,10 +291,16 @@ function previewed(indices: number[]): number[] {
   );
 }
 
-/** The color layer image currently drawn (the last `skImage`, under the preview). */
+/** The color layer image currently drawn (the last `skImage`, under the preview): a plain prop (F19). */
 function drawnLayer(): unknown {
   const images = hostProps('skImage');
-  return (images[images.length - 1].image as ValueOf<unknown>).value;
+  return images[images.length - 1].image;
+}
+
+/** A long press on `p` without sliding: a one-cell stroke, sent on release. */
+async function pressCell(p: Point) {
+  fireGestureHandler(getByGestureTestId('fill-long-press'), longPressEvents([p]));
+  await flush();
 }
 
 describe('fill preview / color layer sync (F16)', () => {
@@ -283,6 +330,10 @@ describe('fill preview / color layer sync (F16)', () => {
     });
     return {
       onFill,
+      /** Commits a new color layer revision, without letting the UI frame after it go by. */
+      rerender: async (revision: number) => {
+        await rerender(ui(revision));
+      },
       /** The coloring session's coalesced revision bump (a frame or more later). */
       bump: async (revision: number) => {
         await rerender(ui(revision));
@@ -292,7 +343,7 @@ describe('fill preview / color layer sync (F16)', () => {
   }
 
   it('keeps the released stroke drawn until the color layer containing it is drawn', async () => {
-    const { onFill, bump } = await setupSynced();
+    const { onFill, rerender } = await setupSynced();
     fireGestureHandler(
       getByGestureTestId('fill-long-press'),
       longPressEvents([CENTER, { x: CENTER.x + 20, y: CENTER.y }, { x: CENTER.x + 60, y: CENTER.y }]),
@@ -304,9 +355,12 @@ describe('fill preview / color layer sync (F16)', () => {
     // preview still covers every cell of the stroke (no gray frame).
     expect(previewed(batch)).toEqual(batch);
     expect(drawnLayer()).toBe(layerBefore);
-    await bump(1);
-    // Same UI task: the new image is drawn and the preview is gone.
+    // The new image is committed: the preview stays on top of it for one more UI frame...
+    await rerender(1);
     expect(drawnLayer()).not.toBe(layerBefore);
+    expect(previewed(batch)).toEqual(batch);
+    // ...then leaves (late removal is invisible: same pixels as the layer).
+    await flush();
     expect(previewed(batch)).toEqual([]);
   });
 
@@ -318,9 +372,16 @@ describe('fill preview / color layer sync (F16)', () => {
     expect(path?.opacity).toBeUndefined();
   });
 
-  it('a tap is previewed at once and stays until its layer is drawn', async () => {
-    const { bump } = await setupSynced();
+  it('a tap only reports its cell: no preview batch (F19)', async () => {
+    const { onFill } = await setupSynced();
     await tap(CENTER);
+    expect(onFill).toHaveBeenCalledWith([centerIndex], 'tap');
+    expect(previewed([centerIndex])).toEqual([]);
+  });
+
+  it('a stroke cell is previewed and stays until its layer is drawn', async () => {
+    const { bump } = await setupSynced();
+    await pressCell(CENTER);
     expect(previewed([centerIndex])).toEqual([centerIndex]);
     await bump(1);
     expect(previewed([centerIndex])).toEqual([]);
@@ -328,8 +389,8 @@ describe('fill preview / color layer sync (F16)', () => {
 
   it('cells refused by the session leave the preview without waiting for a layer', async () => {
     const { onFill } = await setupSynced({ accept: false });
-    await tap(CENTER);
-    expect(onFill).toHaveBeenCalledWith([centerIndex], 'tap');
+    await pressCell(CENTER);
+    expect(onFill).toHaveBeenCalledWith([centerIndex], 'drag');
     expect(previewed([centerIndex])).toEqual([]);
   });
 
@@ -358,10 +419,10 @@ describe('fill preview / color layer sync (F16)', () => {
     const previewPaths = () => hostProps('skPath').filter((p) => p.antiAlias === false).length;
     // Only the active color has a preview path.
     expect(previewPaths()).toBe(1);
-    await tap(CENTER);
+    await pressCell(CENTER);
     await rerender(ui(0, other));
     await flush();
-    // The tapped cell (previous color) is still previewed, next to the new active color's path.
+    // The pressed cell (previous color) is still previewed, next to the new active color's path.
     expect(previewed([centerIndex])).toEqual([centerIndex]);
     expect(previewPaths()).toBe(2);
     await rerender(ui(1, other));
@@ -394,8 +455,8 @@ describe('fill preview / color layer sync (F16)', () => {
     });
     const previewColors = () => hostProps('skPath').filter((p) => p.antiAlias === false).map((p) => p.color);
     const hex = (c: number) => artwork.palette.colors[c].hex;
-    await tap(CENTER);
-    // Two color changes: the tapped color is neither the active nor the previous one any more,
+    await pressCell(CENTER);
+    // Two color changes: the pressed color is neither the active nor the previous one any more,
     // its path is only kept because its batch is pending.
     await rerender(ui(0, second));
     await rerender(ui(0, third));

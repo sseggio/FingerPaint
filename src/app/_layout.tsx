@@ -5,9 +5,12 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { installGlobalErrorHandler } from '@/features/diagnostics/global-error-handler';
 import { useFlushOnBackground, useHydration } from '@/features/hydration/use-hydration';
 import { useTheme } from '@/theme';
 
+// Uncaught JS errors are logged on the device ("About" > Diagnostics) before the default handler.
+installGlobalErrorHandler();
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export const unstable_settings = {

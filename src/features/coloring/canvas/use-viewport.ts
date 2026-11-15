@@ -13,6 +13,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { reportWorkletError } from '@/features/diagnostics/report-worklet-error';
 import {
   clamp,
   clampTranslation,
@@ -182,20 +183,30 @@ export function useViewport({
     cancelAnimation(ty);
   };
 
+  // Gesture callbacks run on the UI runtime: an exception there aborts the app (F19), so each
+  // body is guarded and the error goes to the local diagnostics log instead.
   const pinch = usePinchGesture({
     enabled: measured && !locked,
     onBegin: () => {
-      stopAnimations();
+      try {
+        stopAnimations();
+      } catch (error) {
+        reportWorkletError('pinch.onBegin', error);
+      }
     },
     onUpdate: (e) => {
-      if (filling.get()) return;
-      const { grid: g, view: v, bounds } = geometry;
-      const current = { scale: scale.get(), tx: tx.get(), ty: ty.get() };
-      const nextScale = clamp(current.scale * e.scaleChange, bounds.min, bounds.max);
-      const next = clampViewport(zoomAt(current, nextScale, e.focalX, e.focalY), g, v, bounds);
-      scale.set(next.scale);
-      tx.set(next.tx);
-      ty.set(next.ty);
+      try {
+        if (filling.get()) return;
+        const { grid: g, view: v, bounds } = geometry;
+        const current = { scale: scale.get(), tx: tx.get(), ty: ty.get() };
+        const nextScale = clamp(current.scale * e.scaleChange, bounds.min, bounds.max);
+        const next = clampViewport(zoomAt(current, nextScale, e.focalX, e.focalY), g, v, bounds);
+        scale.set(next.scale);
+        tx.set(next.tx);
+        ty.set(next.ty);
+      } catch (error) {
+        reportWorkletError('pinch.onUpdate', error);
+      }
     },
   });
 
@@ -207,38 +218,58 @@ export function useViewport({
     minPointers: VIEWPORT_PAN_GESTURE.minPointers,
     minDistance: VIEWPORT_PAN_GESTURE.minDistance,
     onBegin: () => {
-      stopAnimations();
-      panHeld.set(false);
+      try {
+        stopAnimations();
+        panHeld.set(false);
+      } catch (error) {
+        reportWorkletError('viewportPan.onBegin', error);
+      }
     },
     onActivate: () => {
-      if (filling.get()) panHeld.set(true);
-      else panning.set(true);
+      try {
+        if (filling.get()) panHeld.set(true);
+        else panning.set(true);
+      } catch (error) {
+        reportWorkletError('viewportPan.onActivate', error);
+      }
     },
     onUpdate: (e) => {
-      if (filling.get()) {
-        panHeld.set(true);
-        return;
+      try {
+        if (filling.get()) {
+          panHeld.set(true);
+          return;
+        }
+        // A second finger ended the stroke and now pans / pinches: a real pan again, with momentum.
+        if (e.numberOfPointers > 1) panHeld.set(false);
+        panning.set(true);
+        const { grid: g, view: v } = geometry;
+        const s = scale.get();
+        tx.set(clampTranslation(tx.get() + e.changeX, g.width * s, v.width));
+        ty.set(clampTranslation(ty.get() + e.changeY, g.height * s, v.height));
+      } catch (error) {
+        reportWorkletError('viewportPan.onUpdate', error);
       }
-      // A second finger ended the stroke and now pans / pinches: a real pan again, with momentum.
-      if (e.numberOfPointers > 1) panHeld.set(false);
-      panning.set(true);
-      const { grid: g, view: v } = geometry;
-      const s = scale.get();
-      tx.set(clampTranslation(tx.get() + e.changeX, g.width * s, v.width));
-      ty.set(clampTranslation(ty.get() + e.changeY, g.height * s, v.height));
     },
     onDeactivate: (e) => {
-      if (e.canceled || panHeld.get() || filling.get()) return;
-      const { grid: g, view: v } = geometry;
-      const s = scale.get();
-      const contentW = g.width * s;
-      const contentH = g.height * s;
-      // Momentum, bounded by the same limits as the drag itself.
-      if (contentW > v.width) tx.set(withDecay({ velocity: e.velocityX, clamp: [v.width - contentW, 0] }));
-      if (contentH > v.height) ty.set(withDecay({ velocity: e.velocityY, clamp: [v.height - contentH, 0] }));
+      try {
+        if (e.canceled || panHeld.get() || filling.get()) return;
+        const { grid: g, view: v } = geometry;
+        const s = scale.get();
+        const contentW = g.width * s;
+        const contentH = g.height * s;
+        // Momentum, bounded by the same limits as the drag itself.
+        if (contentW > v.width) tx.set(withDecay({ velocity: e.velocityX, clamp: [v.width - contentW, 0] }));
+        if (contentH > v.height) ty.set(withDecay({ velocity: e.velocityY, clamp: [v.height - contentH, 0] }));
+      } catch (error) {
+        reportWorkletError('viewportPan.onDeactivate', error);
+      }
     },
     onFinalize: () => {
-      panning.set(false);
+      try {
+        panning.set(false);
+      } catch (error) {
+        reportWorkletError('viewportPan.onFinalize', error);
+      }
     },
   });
 

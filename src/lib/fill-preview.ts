@@ -11,8 +11,9 @@
  * 1. UI: `addBatch` when the batch is sent (`shownAt` unknown, -1);
  * 2. JS: the batch is filled, then `settleBatch` tells which cells the session refused (dropped
  *    from the preview right away) and which layer revision will show the others;
- * 3. UI: `acknowledgeBatch` records it; `showLayer` is called in the same UI task that swaps the
- *    color layer image, so the new image and the preview removal land in the same frame.
+ * 3. UI: `acknowledgeBatch` records it; `showLayer` is called one frame after the color layer
+ *    image of that revision was committed (F19), when it is already drawn: removing the preview
+ *    late is invisible (same pixels), removing it early would flash.
  *
  * Over cells already painted, the preview draws exactly the same thing as the color layer
  * (target color, opaque, no anti-aliasing), so keeping it a little longer is invisible.
@@ -57,10 +58,14 @@ function prune(state: PreviewState) {
   state.batches = kept;
 }
 
-/** Adds cells sent to the JS runtime to the preview. Returns the batch id to acknowledge. */
-export function addBatch(state: PreviewState, cells: number[]): number {
+/**
+ * Adds cells sent to the JS runtime to the preview. Returns the batch id to acknowledge: `id`
+ * when given (taken from a counter kept outside the state, F19), else the next one of the state.
+ */
+export function addBatch(state: PreviewState, cells: number[], batchId?: number): number {
   'worklet';
-  const id = state.nextId++;
+  const id = batchId ?? state.nextId;
+  state.nextId = Math.max(state.nextId, id + 1);
   if (cells.length > 0) state.batches.push({ id, cells: cells.slice(), shownAt: -1 });
   return id;
 }

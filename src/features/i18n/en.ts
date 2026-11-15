@@ -313,6 +313,15 @@ export const en = {
   'about.contact.body': 'A question, an idea, a bug? Write to us, we read everything.',
   'about.contact.button': 'Write to us',
   'about.contact.label': 'Write an email to {email}',
+  'about.diagnostics.title': 'Diagnostics',
+  'about.diagnostics.intro':
+    'Errors caught on this device. They stay here: nothing is sent. You can copy them to include in a message to us.',
+  'about.diagnostics.count': { one: '{count} error recorded', other: '{count} errors recorded' },
+  'about.diagnostics.copy': 'Copy',
+  'about.diagnostics.copyLabel': 'Copy the diagnostics report',
+  'about.diagnostics.clear': 'Clear',
+  'about.diagnostics.clearLabel': 'Clear the recorded errors',
+  'about.diagnostics.reportHeader': 'PixelJoy diagnostics, version {version}',
 
   'language.fr': 'Français',
   'language.en': 'English',
