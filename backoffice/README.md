@@ -82,9 +82,9 @@ Le manifeste public est à `https://catalogue.example.com/catalog/v1/manifest.js
 
 ### Brancher l'app sur le catalogue
 
-L'app lit l'adresse du catalogue dans la variable `EXPO_PUBLIC_CATALOG_URL`, **vide par défaut** (catalogue en ligne désactivé : l'app ne montre que le contenu embarqué et ne fait aucune requête). Une fois le domaine en ligne :
+L'app lit l'adresse du catalogue dans la variable `EXPO_PUBLIC_CATALOG_URL`, **absente par défaut** (catalogue en ligne désactivé : l'app ne montre que le contenu embarqué et ne fait aucune requête). Une fois le domaine en ligne :
 
-1. Dans `eas.json` (à la racine du dépôt), renseigne `"EXPO_PUBLIC_CATALOG_URL": "https://catalogue.example.com"` dans `build.preview.env` et `build.production.env` (et `build.development.env` si tu veux tester en développement). Uniquement l'origine, sans `/catalog/...` ni `/` final. Seul `https://` est accepté : toute autre valeur désactive la fonctionnalité.
+1. Dans `eas.json` (à la racine du dépôt), ajoute `"EXPO_PUBLIC_CATALOG_URL": "https://catalogue.example.com"` (jamais une valeur vide : EAS la refuse) dans `build.preview.env` et `build.production.env` (et `build.development.env` si tu veux tester en développement). Uniquement l'origine, sans `/catalog/...` ni `/` final. Seul `https://` est accepté : toute autre valeur désactive la fonctionnalité.
 2. En local : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start` (ou une ligne dans `.env.local`).
 3. Rebuild (`eas build`) : la variable est figée dans l'app au moment du build.
 
