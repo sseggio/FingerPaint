@@ -57,7 +57,7 @@ describe('SettingsScreen', () => {
       expect(screen.getByRole('header', { name: header })).toBeTruthy();
     }
     for (const name of [
-      'Drag to fill',
+      'Slide to fill after a long press',
       'Haptics',
       'Colorblind mode',
       'Large numbers',

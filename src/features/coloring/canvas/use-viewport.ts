@@ -1,6 +1,6 @@
 import type { Transforms3d } from '@shopify/react-native-skia';
 import { useCallback, useEffect, useMemo } from 'react';
-import { usePanGesture, usePinchGesture, useTapGesture } from 'react-native-gesture-handler';
+import { usePanGesture, usePinchGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
   Easing,
@@ -17,7 +17,6 @@ import {
   clamp,
   clampTranslation,
   clampViewport,
-  doubleTapViewport,
   EMPTY_RANGE,
   fitViewport,
   focusCellViewport,
@@ -31,11 +30,10 @@ import {
   type CellRange,
   type Size,
 } from '@/lib/geometry';
+import { TOUCH_SLOP } from '@/lib/touch-intent';
 
 /** Breathing room around the grid at the minimum zoom (points). */
 export const VIEWPORT_PADDING = 12;
-/** Strong ease-out (expo-animation skill) for the double-tap zoom. */
-const ZOOM_TIMING = { duration: 280, easing: Easing.bezier(0.23, 1, 0.32, 1) };
 /** Grid line opacity at full strength. */
 export const GRID_MAX_OPACITY = 0.22;
 /** Same in high-contrast mode: clearly marked lines. */
@@ -49,15 +47,17 @@ export interface ViewportOptions {
   view: Size | null;
   /** Cell size (points) from which numbers are drawn. */
   numberThreshold: number;
-  /** Fingers needed to pan: 2 while one-finger drags color cells, 1 otherwise. */
-  panMinPointers: 1 | 2;
+  /** True while continuous fill runs (owned by the fill gestures): the view stands still. */
+  filling: SharedValue<boolean>;
   /** High-contrast mode: stronger grid lines. */
   highContrast?: boolean;
 }
 
 export interface ViewportState {
-  /** Navigation gestures (pinch, pan, double tap), composed by the canvas with the fill ones. */
-  gestures: readonly [ReturnType<typeof usePinchGesture>, ReturnType<typeof usePanGesture>, ReturnType<typeof useTapGesture>];
+  /** Navigation gestures (pinch, pan), composed by the canvas with the fill ones. */
+  gestures: readonly [ReturnType<typeof usePinchGesture>, ReturnType<typeof usePanGesture>];
+  /** True while the view pans with one or two fingers. */
+  panning: SharedValue<boolean>;
   scale: SharedValue<number>;
   tx: SharedValue<number>;
   ty: SharedValue<number>;
@@ -76,21 +76,27 @@ export interface ViewportState {
 }
 
 /**
- * Viewport shared values and gestures (pinch around the focal point, bounded pan with decay,
- * double tap to zoom in / back out). Everything runs on the UI thread: no React state is touched
- * while a gesture is active.
+ * Viewport shared values and gestures (pinch around the focal point, bounded pan with decay, one
+ * or two fingers). Everything runs on the UI thread: no React state is touched while a gesture is
+ * active.
+ *
+ * No double tap to zoom (F15): taps fill cells and are often quick and close together, so a
+ * double tap would zoom by surprise (or delay every tap to tell them apart). Pinch is enough.
  */
 export function useViewport({
   grid,
   view,
   numberThreshold,
-  panMinPointers,
+  filling,
   highContrast = false,
 }: ViewportOptions): ViewportState {
   const scale = useSharedValue(1);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const glyphRange = useSharedValue<CellRange>(EMPTY_RANGE);
+  const panning = useSharedValue(false);
+  /** The running pan stood still for a while (continuous fill): no momentum on release. */
+  const panHeld = useSharedValue(false);
 
   const gridW = grid.width;
   const gridH = grid.height;
@@ -127,6 +133,7 @@ export function useViewport({
       stopAnimations();
     },
     onUpdate: (e) => {
+      if (filling.get()) return;
       const { grid: g, view: v, bounds } = geometry;
       const current = { scale: scale.get(), tx: tx.get(), ty: ty.get() };
       const nextScale = clamp(current.scale * e.scaleChange, bounds.min, bounds.max);
@@ -137,20 +144,34 @@ export function useViewport({
     },
   });
 
+  // One finger moving past the slop, or two fingers (along with the pinch). A second finger
+  // landing during a one-finger pan simply joins it: the pinch takes over the zoom.
   const pan = usePanGesture({
+    testID: 'viewport-pan',
     enabled: measured,
-    minPointers: panMinPointers,
+    minPointers: 1,
+    minDistance: TOUCH_SLOP,
     onBegin: () => {
       stopAnimations();
+      panHeld.set(false);
+    },
+    onActivate: () => {
+      if (filling.get()) panHeld.set(true);
+      else panning.set(true);
     },
     onUpdate: (e) => {
+      if (filling.get()) {
+        panHeld.set(true);
+        return;
+      }
+      panning.set(true);
       const { grid: g, view: v } = geometry;
       const s = scale.get();
       tx.set(clampTranslation(tx.get() + e.changeX, g.width * s, v.width));
       ty.set(clampTranslation(ty.get() + e.changeY, g.height * s, v.height));
     },
     onDeactivate: (e) => {
-      if (e.canceled) return;
+      if (e.canceled || panHeld.get() || filling.get()) return;
       const { grid: g, view: v } = geometry;
       const s = scale.get();
       const contentW = g.width * s;
@@ -159,22 +180,10 @@ export function useViewport({
       if (contentW > v.width) tx.set(withDecay({ velocity: e.velocityX, clamp: [v.width - contentW, 0] }));
       if (contentH > v.height) ty.set(withDecay({ velocity: e.velocityY, clamp: [v.height - contentH, 0] }));
     },
-  });
-
-  const doubleTap = useTapGesture({
-    enabled: measured,
-    numberOfTaps: 2,
-    onActivate: (e) => {
-      const { grid: g, view: v, bounds } = geometry;
-      stopAnimations();
-      const current = { scale: scale.get(), tx: tx.get(), ty: ty.get() };
-      const target = doubleTapViewport(current, e.x, e.y, g, v, bounds);
-      scale.set(withTiming(target.scale, ZOOM_TIMING));
-      tx.set(withTiming(target.tx, ZOOM_TIMING));
-      ty.set(withTiming(target.ty, ZOOM_TIMING));
+    onFinalize: () => {
+      panning.set(false);
     },
   });
-
 
   const transform = useDerivedValue<Transforms3d>(() => [
     { translateX: tx.get() },
@@ -224,7 +233,8 @@ export function useViewport({
   );
 
   return {
-    gestures: [pinch, pan, doubleTap],
+    gestures: [pinch, pan],
+    panning,
     scale,
     tx,
     ty,

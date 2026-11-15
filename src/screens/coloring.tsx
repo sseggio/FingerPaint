@@ -12,6 +12,7 @@ import { useCosmetics } from '@/features/entitlements/use-cosmetics';
 import { PixelCanvas, type PixelCanvasHandle } from '@/features/coloring/canvas/pixel-canvas';
 import { CompletionCard } from '@/features/coloring/completion-card';
 import { Confetti } from '@/features/coloring/confetti';
+import { coloringFeedback } from '@/features/coloring/feedback';
 import { nextArtworkId } from '@/features/coloring/next-artwork';
 import { PaletteBar } from '@/features/coloring/palette-bar';
 import { resolveColoringArtwork } from '@/features/coloring/resolve-artwork';
@@ -138,6 +139,7 @@ function ColoringView({ artwork }: { artwork: Artwork }) {
           activeColor={coloring ? activeColor : null}
           onFill={coloring ? fill : undefined}
           dragToFill={dragToFill}
+          onFillStart={coloringFeedback.fillStart}
           accessibilityLabel={label}
         />
         {completion === 'celebrate' ? <Confetti colors={confettiPalettes[cosmetics.confetti]} /> : null}

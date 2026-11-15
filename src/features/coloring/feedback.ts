@@ -14,6 +14,8 @@ function play(effect: () => Promise<void>): void {
 export const coloringFeedback = {
   /** Tap on a cell of another color: nothing is painted, a light tap says "not this one". */
   wrongColor: () => play(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
+  /** A long press has just started continuous fill: the finger can now slide to color. */
+  fillStart: () => play(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
   /** A color has just been finished (the palette moves on to the next one). */
   colorDone: () => play(() => Haptics.selectionAsync()),
   /** The whole artwork is finished. */

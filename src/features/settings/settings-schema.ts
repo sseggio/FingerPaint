@@ -8,6 +8,11 @@ export type SessionTimerMin = 0 | 10 | 20 | 30;
 export interface Settings {
   locale: LocalePreference;
   theme: ThemePreference;
+  /**
+   * "Fill by sliding after a long press" (F15). Before F15 it meant "one-finger drags fill"; the
+   * stored value keeps its intent (sliding a finger can color several cells, or not), so it is
+   * reused as-is, without a schema migration.
+   */
   dragToFill: boolean;
   haptics: boolean;
   colorblindSymbols: boolean;
