@@ -109,10 +109,13 @@ Une mauvaise couleur ne se pose pas : on joue une haptique légère, sans pénal
 - **Numéros et symboles :** ils sont dessinés via `Atlas` (texture de glyphes pré-rendue, `RSXform` calculés en worklet) et **uniquement pour les cases visibles**. Ils n'apparaissent qu'au-delà de 14 pt par case (18 pt en mode grands numéros).
 - **Surbrillance de la couleur active :** un masque `SkImage` par couleur, mis en cache paresseusement.
 - **Gestes (API GH 3 à vérifier) :**
-  - pinch avec point focal ;
-  - pan à deux doigts (à un doigt si `dragToFill` est désactivé) ;
-  - tap ;
-  - pan à un doigt pour le drag-fill.
+  - pinch avec point focal + pan à deux doigts ;
+  - pan à un doigt (dès que le doigt dépasse le slop de 10 pt), avec inertie ;
+  - tap court (< 250 ms, < 10 pt) = remplir la case ;
+  - appui long (250 ms sans bouger) puis glisser = remplissage continu (haptique légère, anneau autour de la case sous le doigt) si `dragToFill` (« Remplir en glissant après un appui long ») est activé ; un deuxième doigt termine le trait.
+  - pas de double-tap zoom (F15) : il entrait en conflit avec les taps de remplissage rapides et rapprochés ; le pinch suffit.
+
+  Le modèle de classification est dans `src/lib/touch-intent.ts`.
 
   Le hit-test inverse la transformation en worklet, déduplique les cases et envoie des lots au JS (`scheduleOnRN`). Le zoom va de « grille entière visible » à 48 pt par case.
 - **Budget :** 60 fps en pan et zoom sur une grille 128×128 sur iPhone 12.

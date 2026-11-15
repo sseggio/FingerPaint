@@ -113,6 +113,15 @@ describe('useSettingsStore', () => {
     expect(migrateSettingsV1toV2('nope')).toBe('nope');
   });
 
+  it('keeps a stored dragToFill choice as the long-press fill setting (F15, no schema change)', async () => {
+    const stored = { ...DEFAULT_SETTINGS, dragToFill: false, largeNumbers: true, locale: 'fr' as const };
+    await AsyncStorage.setItem(StorageKeys.settings, JSON.stringify(createEnvelope(stored, 2)));
+    const store = createSettingsStore();
+    await store.getState().hydrate();
+    expect(store.getState().settings).toEqual(stored);
+    expect(DEFAULT_SETTINGS.dragToFill).toBe(true);
+  });
+
   it('resets to defaults', async () => {
     const store = createSettingsStore();
     await store.getState().update({ haptics: false });

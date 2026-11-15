@@ -44,6 +44,8 @@ import { FOCUS_TIMING, useViewport } from './use-viewport';
 const NEAREST: SamplingOptions = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 /** Numbers are downscaled from the atlas texture: smooth them. */
 const SMOOTH: SamplingOptions = { filter: FilterMode.Linear, mipmap: MipmapMode.None };
+/** Gap (cells) between the cell under the finger and the continuous-fill ring. */
+const RING_PAD = 0.2;
 
 export interface PixelCanvasProps {
   artwork: Artwork;
@@ -53,12 +55,17 @@ export interface PixelCanvasProps {
   colorRevision: number;
   /** Large-numbers mode: numbers appear from a bigger cell size. */
   largeNumbers?: boolean;
-  /** Active palette color (0-based): its cells are highlighted and taps/drags fill it. */
+  /** Active palette color (0-based): its cells are highlighted and taps / long-press slides fill it. */
   activeColor?: number | null;
-  /** Receives the cells tapped or dragged over. Without it the canvas is read-only. */
+  /** Receives the cells tapped or slid over. Without it the canvas is read-only. */
   onFill?: FillHandler;
-  /** One-finger drags color cells (then two fingers pan); otherwise one finger pans. */
+  /**
+   * A long press then a slide fills every cell under the finger ("fill by sliding after a long
+   * press"). One finger always pans the view, a tap always fills.
+   */
   dragToFill?: boolean;
+  /** Continuous fill just started after a long press (e.g. a light haptic). */
+  onFillStart?: () => void;
   /** Colorblind mode: symbols instead of numbers. */
   colorblindSymbols?: boolean;
   /** High-contrast mode: stronger grid lines, glyphs with a halo. */
@@ -159,7 +166,8 @@ function useStrokePath(stroke: SharedValue<StrokeState>, gridWidth: number) {
 /**
  * The coloring canvas: one Skia `<Canvas>` whose world group is transformed by shared values.
  * Layers (back to front): grayscale background, active-color highlight, numbers, color layer
- * (opaque over filled cells, so their numbers and highlight disappear), drag preview, grid, "Find" marker.
+ * (opaque over filled cells, so their numbers and highlight disappear), drag preview, grid, "Find" marker,
+ * continuous-fill ring around the cell under the finger.
  */
 export function PixelCanvas({
   artwork,
@@ -169,6 +177,7 @@ export function PixelCanvas({
   activeColor = null,
   onFill,
   dragToFill = true,
+  onFillStart,
   colorblindSymbols = false,
   highContrast = false,
   theme = canvasThemes.classic,
@@ -224,13 +233,15 @@ export function PixelCanvas({
   const capacity = view ? maxVisibleCells(view, threshold, grid) : 0;
 
   const canFill = !!onFill && activeColor !== null;
-  const { gestures, scale, tx, ty, transform, gridOpacity, glyphRange, getViewCenter, focusCell } = useViewport({
-    grid,
-    view,
-    numberThreshold: threshold,
-    panMinPointers: canFill && dragToFill ? 2 : 1,
-    highContrast,
-  });
+  const filling = useSharedValue(false);
+  const { gestures, panning, scale, tx, ty, transform, gridOpacity, glyphRange, getViewCenter, focusCell } =
+    useViewport({
+      grid,
+      view,
+      numberThreshold: threshold,
+      filling,
+      highContrast,
+    });
 
   // "Find" marker: a ring around the target cell that pulses three times, then fades.
   const pulse = useSharedValue(0);
@@ -279,16 +290,20 @@ export function PixelCanvas({
     activeValue.set(activeColor === null ? 0 : activeColor + 1);
   }, [activeColor, activeValue]);
   const noop = useCallback<FillHandler>(() => undefined, []);
+  const noopStart = useCallback(() => undefined, []);
   const fill = useFillGestures({
     grid,
     cells,
     enabled: !!view && canFill,
-    dragToFill,
+    longPressFill: dragToFill,
     activeValue,
     scale,
     tx,
     ty,
+    filling,
+    panning,
     onFill: onFill ?? noop,
+    onFillStart: onFillStart ?? noopStart,
   });
   const { clearPreview } = fill;
   // Painted cells now show in the color layer: drop the stroke preview drawn over them.
@@ -296,8 +311,19 @@ export function PixelCanvas({
     clearPreview();
   }, [colorRevision, clearPreview]);
   const strokePath = useStrokePath(fill.stroke, width);
+  const { fingerCell, ring } = fill;
+  const fingerRect = useDerivedValue(() => {
+    const i = fingerCell.get();
+    if (i < 0) return Skia.XYWHRect(-10, -10, 0, 0);
+    return Skia.XYWHRect((i % width) - RING_PAD, Math.floor(i / width) - RING_PAD, 1 + RING_PAD * 2, 1 + RING_PAD * 2);
+  });
+  // ~2 pt ring with a ~5 pt halo whatever the zoom: discreet, but visible around the finger.
+  const fingerStroke = useDerivedValue(() => 2 / Math.max(1, scale.get()));
+  const fingerHalo = useDerivedValue(() => 5 / Math.max(1, scale.get()));
   const activeHex = activeColor === null ? undefined : artwork.palette.colors[activeColor]?.hex;
-  const gesture = useSimultaneousGestures(...gestures, fill.tap, fill.drag);
+  // All simultaneous; the conflicts (tap vs pan vs long press, second finger) are settled by the
+  // activation criteria of `@/lib/touch-intent` and the `filling` / `panning` shared values.
+  const gesture = useSimultaneousGestures(...gestures, fill.tap, fill.longPress);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -336,6 +362,12 @@ export function PixelCanvas({
               />
               <Rect rect={pulseRect} style="stroke" strokeWidth={pulseHalo} color={theme.halo} opacity={pulse} />
               <Rect rect={pulseRect} style="stroke" strokeWidth={pulseStroke} color={theme.ring} opacity={pulse} />
+              {activeHex ? (
+                <Group opacity={ring}>
+                  <Rect rect={fingerRect} style="stroke" strokeWidth={fingerHalo} color={theme.halo} />
+                  <Rect rect={fingerRect} style="stroke" strokeWidth={fingerStroke} color={theme.ring} />
+                </Group>
+              ) : null}
             </Group>
           </Canvas>
         ) : null}
