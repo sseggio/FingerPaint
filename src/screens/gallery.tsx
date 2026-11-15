@@ -4,7 +4,7 @@ import { FlatList, StyleSheet, useWindowDimensions, View, type ListRenderItem } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, SegmentedControl, Toast } from '@/components/ui';
-import { listAlbums, listArtworks } from '@/features/artwork/registry';
+import { useRegistry } from '@/features/artwork/use-registry';
 import { ArtworkSheet } from '@/features/gallery/artwork-sheet';
 import { exportArtworkPng, type PngAction } from '@/features/gallery/export-artwork';
 import { GalleryEmpty } from '@/features/gallery/gallery-empty';
@@ -32,12 +32,14 @@ export function GalleryScreen() {
   const [busy, setBusy] = useState<PngAction | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const artworks = useMemo(() => listArtworks(), []);
+  // Downloaded artworks withdrawn from the online catalog stay here while they have progress.
+  const registry = useRegistry();
+  const artworks = useMemo(() => registry.listArtworksWithRetired(), [registry]);
   const accentById = useMemo(() => {
     const map = new Map<string, string>();
-    listAlbums().forEach((a, i) => map.set(a.id, funAccents[i % funAccents.length]));
+    registry.listAlbums().forEach((a, i) => map.set(a.id, funAccents[i % funAccents.length]));
     return map;
-  }, []);
+  }, [registry]);
   const completed = useMemo(() => galleryList(artworks, index, 'completed'), [artworks, index]);
   const inProgress = useMemo(() => galleryList(artworks, index, 'in_progress'), [artworks, index]);
   const items = segment === 'completed' ? completed : inProgress;

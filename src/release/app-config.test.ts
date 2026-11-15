@@ -98,6 +98,13 @@ describe('eas.json', () => {
     }
   });
 
+  it('declares the online catalog URL in every profile: empty (feature off) or HTTPS', () => {
+    for (const profile of Object.values(eas.build) as { env?: Record<string, string> }[]) {
+      expect(profile.env).toHaveProperty('EXPO_PUBLIC_CATALOG_URL');
+      expect(profile.env?.EXPO_PUBLIC_CATALOG_URL).toMatch(/^(|https:\/\/[a-z0-9.-]+(\/.*)?)$/);
+    }
+  });
+
   it('has App Store Connect submit placeholders', () => {
     expect(eas.submit.production.ios).toEqual({ ascAppId: expect.any(String), appleTeamId: expect.any(String) });
   });

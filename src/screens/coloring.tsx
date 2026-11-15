@@ -5,7 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, Button, Card, Toast } from '@/components/ui';
-import { listArtworks } from '@/features/artwork/registry';
+import { useRegistry } from '@/features/artwork/use-registry';
 import { lockReason } from '@/features/entitlements/can-access';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useCosmetics } from '@/features/entitlements/use-cosmetics';
@@ -124,9 +124,10 @@ function ColoringView({ artwork, replayOnOpen = false }: { artwork: Artwork; rep
   // While coloring, the selector returns null without reading the index at all.
   // "Next" never offers a locked artwork.
   const entitlements = useEntitlementsStore((s) => s.entitlements);
+  const registry = useRegistry();
   const orderedIds = useMemo(
-    () => listArtworks().filter((a) => a.id === artwork.id || !lockReason(a.access, entitlements)).map((a) => a.id),
-    [artwork.id, entitlements],
+    () => registry.listArtworks().filter((a) => a.id === artwork.id || !lockReason(a.access, entitlements)).map((a) => a.id),
+    [artwork.id, entitlements, registry],
   );
   const nextId = useProgressStore(
     useCallback(

@@ -13,6 +13,7 @@ Construit avec Expo SDK 58, React Native, TypeScript, Expo Router, Skia, Reanima
 - **Accessibilité** : mode daltonien (symboles), gros numéros, contraste élevé, mode gaucher, VoiceOver, Dynamic Type, FR/EN.
 - **Bien-être** : rappel de pause optionnel, aucune notification.
 - **Boutique honnête** : achats uniques (Pro, pack Océan profond, thème Néon), « Restaurer les achats » toujours visible ; outils et indices toujours gratuits.
+- **Nouveaux dessins** (facultatif) : catalogue public téléchargé depuis le back-office auto-hébergé (`backoffice/`), sans compte ni identifiant, utilisable hors ligne une fois téléchargé.
 - **Confidentialité** : aucune donnée collectée, tout reste sur l'appareil (voir Réglages › À propos et [docs/privacy-policy.md](docs/privacy-policy.md)).
 
 ## Lancer en local
@@ -22,6 +23,8 @@ npm install
 npx expo start                                   # boutique « bientôt disponible »
 EXPO_PUBLIC_IAP_PROVIDER=mock npx expo start     # boutique simulée + panneau dev
 ```
+
+Catalogue en ligne (back-office F21, facultatif) : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start`. Pour les builds, renseigner `EXPO_PUBLIC_CATALOG_URL` dans les profils de `eas.json` (vide par défaut = fonctionnalité désactivée, l'app n'utilise que le contenu embarqué). Voir [backoffice/README.md](backoffice/README.md#brancher-lapp-sur-le-catalogue).
 
 Les achats (`expo-iap`) et Skia demandent un **development build** (`npx expo run:ios` ou `npx eas-cli@latest build --profile development`).
 

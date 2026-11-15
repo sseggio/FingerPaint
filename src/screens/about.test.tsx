@@ -3,6 +3,7 @@ import { Linking, Share } from 'react-native';
 
 import { CONTACT_EMAIL } from '@/features/about/app-info';
 import { OPEN_SOURCE_CREDITS } from '@/features/about/licenses';
+import { useCatalogStore } from '@/features/catalog/catalog-store';
 import { useDiagnosticsStore } from '@/features/diagnostics';
 
 import { AboutScreen } from './about';
@@ -30,6 +31,15 @@ describe('AboutScreen', () => {
       expect(screen.getByText(new RegExp(`^${credit.name.replace(/[/.@-]/g, '\\$&')}: MIT license`))).toBeTruthy();
     }
     expect(screen.getByText(CONTACT_EMAIL)).toBeTruthy();
+  });
+
+  it('explains the anonymous catalog download only when the online catalog is configured', async () => {
+    expect(useCatalogStore.getState().enabled).toBe(false);
+    await render(<AboutScreen />);
+    expect(screen.queryByText(/public catalog/)).toBeNull();
+    await act(async () => useCatalogStore.setState({ enabled: true }));
+    expect(screen.getByText('New artworks come from a public catalog, downloaded without any identifier.')).toBeTruthy();
+    await act(async () => useCatalogStore.setState({ enabled: false }));
   });
 
   it('opens the mail app from an explicitly labelled button', async () => {

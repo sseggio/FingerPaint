@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText, Badge, PressableScale, ProgressBar } from '@/components/ui';
 import { getArtwork } from '@/features/artwork/registry';
+import { useIsNewArtwork } from '@/features/catalog/catalog-store';
 import { localizedTitle, useLocale, useT } from '@/features/i18n';
 import type { ArtworkSource } from '@/lib/artwork/types';
 import { artworkStatus, percentFilled, type ProgressEntry } from '@/lib/library';
@@ -26,6 +27,7 @@ export const ArtworkTile = memo(function ArtworkTile({ artwork, progress, width,
   const locale = useLocale();
   const { colors } = useTheme();
   const reason = useLockReason(artwork.access);
+  const isNew = useIsNewArtwork(artwork.id);
   const title = localizedTitle(artwork.title, locale);
   const status = artworkStatus(artwork.id, progress ? { [artwork.id]: progress } : {});
   const percent = status === 'completed' ? 100 : percentFilled(progress?.filledCount ?? 0, getArtwork(artwork.id)?.totalCells ?? 0);
@@ -37,12 +39,13 @@ export const ArtworkTile = memo(function ArtworkTile({ artwork, progress, width,
       : status === 'in_progress'
         ? t('library.tileState.percent', { percent })
         : t('library.tileState.new');
-  const label = reason
+  const baseLabel = reason
     ? t('library.lockedLabel', {
         title,
         kind: reason === 'pro' ? t('library.badge.proLong') : t('library.badge.packLong'),
       })
     : t('library.tileLabel', { title, state });
+  const label = isNew ? `${baseLabel}, ${t('library.badge.newLong')}` : baseLabel;
 
   return (
     <PressableScale
@@ -53,7 +56,11 @@ export const ArtworkTile = memo(function ArtworkTile({ artwork, progress, width,
         <ArtworkThumbnail artworkId={artwork.id} size={thumb} progress={progress} />
         <View style={styles.badges} pointerEvents="none">
           {reason ? <AccessBadge reason={reason} /> : <View />}
-          {status === 'completed' ? <Badge label="✓" color={palette.mint} /> : null}
+          {status === 'completed' ? (
+            <Badge label="✓" color={palette.mint} />
+          ) : isNew ? (
+            <Badge label={t('library.badge.new')} color={palette.sun} />
+          ) : null}
         </View>
       </View>
       <AppText variant="caption" numberOfLines={1}>
@@ -63,7 +70,7 @@ export const ArtworkTile = memo(function ArtworkTile({ artwork, progress, width,
         <ProgressBar value={percent / 100} color={accent} trackColor={colors.surfaceAlt} />
       ) : (
         <AppText variant="caption" tone="secondary" numberOfLines={1}>
-          {status === 'completed' ? t('library.tile.done') : t('library.tile.new')}
+          {status === 'completed' ? t('library.tile.done') : isNew ? t('library.tile.justIn') : t('library.tile.new')}
         </AppText>
       )}
     </PressableScale>

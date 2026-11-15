@@ -4,7 +4,8 @@ import { FlatList, StyleSheet, useWindowDimensions, View, type ListRenderItem } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, PressableScale } from '@/components/ui';
-import { listAlbums, listArtworks } from '@/features/artwork/registry';
+import { useRegistry } from '@/features/artwork/use-registry';
+import { useCatalogStore } from '@/features/catalog/catalog-store';
 import { DailySection } from '@/features/daily/daily-section';
 import { PERF_ARTWORK_ID } from '@/features/coloring/perf-artwork-id';
 import { useT } from '@/features/i18n';
@@ -15,6 +16,7 @@ import { FilterBar } from '@/features/library/filter-bar';
 import { GRID_GAP, GRID_PADDING, gridLayout } from '@/features/library/grid';
 import { useLibraryIndex } from '@/features/library/use-library-index';
 import type { AlbumSource, ArtworkSource } from '@/lib/artwork/types';
+import { newAlbumIds } from '@/lib/catalog/catalog-index';
 import {
   albumProgress,
   chunk,
@@ -28,7 +30,15 @@ import {
 import { funAccents, radius, spacing, useTheme } from '@/theme';
 
 type Item =
-  | { kind: 'album'; key: string; album: AlbumSource; artworks: readonly ArtworkSource[]; progress: AlbumProgress; accent: string }
+  | {
+      kind: 'album';
+      key: string;
+      album: AlbumSource;
+      artworks: readonly ArtworkSource[];
+      progress: AlbumProgress;
+      accent: string;
+      isNew: boolean;
+    }
   | { kind: 'row'; key: string; artworks: ArtworkSource[] }
   | { kind: 'empty'; key: string };
 
@@ -57,9 +67,15 @@ export function LibraryScreen({ now }: { now?: () => Date } = {}) {
   const { columns, tileWidth } = gridLayout(width);
   const index = useLibraryIndex();
   const [filters, setFilters] = useState<LibraryFilters>(NO_FILTERS);
-  // Static content: listed once.
-  const albums = useMemo(() => listAlbums(), []);
-  const artworks = useMemo(() => listArtworks(), []);
+  // Bundled content plus the downloaded catalog: listed again only when the catalog changes.
+  const registry = useRegistry();
+  const albums = useMemo(() => registry.listAlbums(), [registry]);
+  const artworks = useMemo(() => registry.listArtworks(), [registry]);
+  // The daily pick only draws from bundled artworks: the sequence stays the same on every device.
+  const dailyArtworks = useMemo(() => registry.listEmbeddedArtworks(), [registry]);
+  const catalogEntries = useCatalogStore((s) => s.index.entries);
+  const newSince = useCatalogStore((s) => s.newSince);
+  const newAlbums = useMemo(() => newAlbumIds(catalogEntries, newSince), [catalogEntries, newSince]);
   const accentById = useMemo(() => {
     const map = new Map<string, string>();
     albums.forEach((a, i) => map.set(a.id, accentOf(i)));
@@ -106,11 +122,12 @@ export function LibraryScreen({ now }: { now?: () => Date } = {}) {
           artworks: albumArtworks,
           progress: albumProgress(album.id, albumArtworks, index),
           accent: accentOf(i),
+          isNew: newAlbums.has(album.id),
         };
       })
       // Albums without artworks yet (announced packs) are hidden until content ships.
       .filter((item) => item.artworks.length > 0);
-  }, [albums, artworksByAlbum, columns, filtered, filtering, index]);
+  }, [albums, artworksByAlbum, columns, filtered, filtering, index, newAlbums]);
 
   const renderItem = useCallback<ListRenderItem<Item>>(
     ({ item }) => {
@@ -121,6 +138,7 @@ export function LibraryScreen({ now }: { now?: () => Date } = {}) {
             artworks={item.artworks}
             progress={item.progress}
             accent={item.accent}
+            isNew={item.isNew}
             onPress={openAlbum}
           />
         );
@@ -169,7 +187,7 @@ export function LibraryScreen({ now }: { now?: () => Date } = {}) {
         </View>
       </View>
 
-      <DailySection artworks={artworks} index={index} now={now} />
+      <DailySection artworks={dailyArtworks} index={index} now={now} />
 
       {continueItems.length > 0 ? (
         <View style={styles.section}>

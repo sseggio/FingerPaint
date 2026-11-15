@@ -5,7 +5,7 @@
 > Remplacer l'adresse de contact `hello@pixeljoy.app` (placeholder, voir
 > `src/features/about/app-info.ts`) par une adresse réelle avant publication.
 
-Dernière mise à jour / Last updated: 2026-11-14
+Dernière mise à jour / Last updated: 2026-11-15
 
 ---
 
@@ -14,7 +14,10 @@ Dernière mise à jour / Last updated: 2026-11-14
 **En bref : PixelJoy ne collecte aucune donnée. Tout reste sur ton appareil. Pas de publicité, pas de pistage.**
 
 ### Données collectées
-Aucune. PixelJoy n'a ni compte utilisateur, ni serveur, ni backend. L'application n'envoie aucune information à l'éditeur ni à un tiers.
+Aucune. PixelJoy n'a ni compte utilisateur ni backend qui te concerne. L'application n'envoie aucune information personnelle à l'éditeur ni à un tiers.
+
+### Catalogue de nouveaux dessins
+L'app télécharge le catalogue public de nouveaux dessins (une liste et des fichiers d'illustrations, identiques pour tout le monde) depuis le serveur de l'éditeur, **sans envoyer d'identifiant** : pas de compte, pas de cookie, pas d'identifiant d'appareil ou publicitaire, aucune information sur ta progression ou tes achats. Comme pour toute connexion internet, le serveur voit techniquement l'adresse IP de la requête ; il ne tient **aucun journal d'accès** et ne la conserve pas. Les dessins téléchargés sont stockés sur ton appareil et restent utilisables hors ligne.
 
 ### Données stockées sur l'appareil
 Pour fonctionner, l'application enregistre **localement**, dans le stockage privé de l'app :
@@ -52,7 +55,10 @@ Si cette politique change (par exemple avec une future fonction de synchronisati
 **In short: PixelJoy collects no data. Everything stays on your device. No ads, no tracking.**
 
 ### Data collected
-None. PixelJoy has no user account, no server and no backend. The app sends no information to the publisher or to any third party.
+None. PixelJoy has no user account and no backend that knows about you. The app sends no personal information to the publisher or to any third party.
+
+### New artwork catalog
+The app downloads the public catalog of new artworks (a list and artwork files, identical for everyone) from the publisher's server **without sending any identifier**: no account, no cookie, no device or advertising identifier, nothing about your progress or purchases. As with any internet connection, the server technically sees the request's IP address; it keeps **no access log** and does not store it. Downloaded artworks are stored on your device and remain usable offline.
 
 ### Data stored on the device
 To work, the app stores **locally**, in the app's private storage:

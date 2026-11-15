@@ -7,7 +7,7 @@ import { getConnInfo } from '@hono/node-server/conninfo';
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app';
-import { CHANGED_AT_KEY } from './catalog';
+import { CHANGED_AT_KEY, findEmbeddedCollisions } from './catalog';
 import { readConfig } from './config';
 import { CatalogDb } from './db';
 import { loadEmbedded } from './embedded';
@@ -25,6 +25,12 @@ const embedded = loadEmbedded(config.embeddedPath);
 const db = new CatalogDb(join(config.dataDir, 'catalog.sqlite'));
 db.syncBuiltinAlbums(embedded, new Date().toISOString());
 if (!db.getMeta(CHANGED_AT_KEY)) db.setMeta(CHANGED_AT_KEY, new Date().toISOString());
+const collisions = findEmbeddedCollisions(db, embedded.artworkIds);
+if (collisions.length > 0) {
+  console.warn(
+    `[backoffice] WARNING: catalog artwork ids also embedded in the app (ignored by the app, rename them): ${collisions.join(', ')}`,
+  );
+}
 
 const app = createApp({
   db,

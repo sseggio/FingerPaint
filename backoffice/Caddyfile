@@ -5,7 +5,11 @@
 }
 
 {$DOMAIN} {
-	encode zstd gzip
+	# The app already gzips /catalog/* itself with its own ETag (and answers If-None-Match
+	# with 304). Re-encoding there would rewrite the ETag and break conditional requests, so
+	# Caddy only compresses the other routes (admin UI and API).
+	@compressible not path /catalog/*
+	encode @compressible zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

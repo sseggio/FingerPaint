@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { getArtwork } from '@/features/artwork/registry';
+import { getArtwork, getRegistry, setRemoteContent } from '@/features/artwork/registry';
 import { useDailyStore } from '@/features/daily/daily-store';
 import { DEFAULT_ENTITLEMENTS } from '@/features/entitlements/can-access';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
@@ -14,7 +14,7 @@ import { countBits, createBitset, setBit } from '@/lib/bitset';
 import { StorageKeys } from '@/lib/storage';
 
 import { checksumOf, MAX_BACKUP_BYTES } from './backup-format';
-import { applyImport, backupFileName, exportBackup, pickBackup } from './backup-io';
+import { applyImport, backupFileName, catalogLookup, exportBackup, pickBackup } from './backup-io';
 
 jest.mock('@/features/files/files', () => {
   const disk = new Map<string, string | Uint8Array>();
@@ -227,5 +227,20 @@ describe('backup export → reinstall → import', () => {
 
   it('names files by local day', () => {
     expect(backupFileName(new Date(2026, 0, 2, 23, 30))).toBe('pixeljoy-2026-01-02.pixeljoy');
+  });
+});
+
+describe('downloaded catalog artworks in backups', () => {
+  it('accepts catalog ids known on this device, skips the others', () => {
+    const strawberry = getArtwork('strawberry')!;
+    const source = { ...getRegistry().getArtworkSource('strawberry')!, id: 'kitten', album: 'garden' };
+    expect(catalogLookup('kitten')).toBeUndefined();
+    setRemoteContent({ albums: [], artworks: [], retired: [source] });
+    try {
+      expect(catalogLookup('kitten')).toEqual({ cellCount: strawberry.cells.length, totalCells: strawberry.totalCells });
+    } finally {
+      setRemoteContent(undefined);
+    }
+    expect(catalogLookup('kitten')).toBeUndefined();
   });
 });

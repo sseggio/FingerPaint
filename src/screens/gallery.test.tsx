@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
-import { getArtwork } from '@/features/artwork/registry';
+import { getArtwork, getRegistry, setRemoteContent } from '@/features/artwork/registry';
 import { exportArtworkPng } from '@/features/gallery/export-artwork';
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import { useProgressStore } from '@/features/progress/progress-store';
@@ -91,6 +91,19 @@ describe('GalleryScreen', () => {
     const open = screen.getAllByLabelText(/colored, last colored on/).map((n) => n.props.accessibilityLabel as string);
     expect(open).toHaveLength(2);
     expect(open[0]).toMatch(/fox/i);
+  });
+
+  it('keeps downloaded artworks withdrawn from the catalog while they have progress', async () => {
+    const source = { ...getRegistry().getArtworkSource('strawberry')!, id: 'old-kitten', album: 'gone', title: { fr: 'Vieux chaton', en: 'Old kitten' } };
+    setRemoteContent({ albums: [], artworks: [], retired: [source] });
+    try {
+      useProgressStore.setState({ index: { 'old-kitten': entry('old-kitten', 'completed', base) } });
+      await render(<GalleryScreen />);
+      expect(screen.getByRole('radio', { name: 'Finished (1)' })).toBeTruthy();
+      expect(screen.getAllByLabelText(/^“Old kitten/)).toHaveLength(1);
+    } finally {
+      await act(async () => setRemoteContent(undefined));
+    }
   });
 
   it('opens the action sheet: continue, export (with background) and share', async () => {

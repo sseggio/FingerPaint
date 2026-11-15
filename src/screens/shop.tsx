@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Button, Card, PressableScale } from '@/components/ui';
-import { listArtworks } from '@/features/artwork/registry';
+import { useRegistry } from '@/features/artwork/use-registry';
 import type { LockReason } from '@/features/entitlements/can-access';
 import { CATALOG, ownsSku, type CatalogItem } from '@/features/entitlements/catalog';
 import { useEntitlementsStore, type RestoreResult } from '@/features/entitlements/entitlements-store';
@@ -23,8 +23,9 @@ type Notice = { message: string; accent: string };
 
 /** Artworks included in a product (Pro artworks, or the pack's album), null for cosmetics. */
 function useArtworkCounts(): Readonly<Record<Sku, number | null>> {
+  const registry = useRegistry();
   return useMemo(() => {
-    const all = listArtworks();
+    const all = registry.listArtworks();
     const count = (item: CatalogItem): number | null => {
       if (item.kind === 'pro') return all.filter((a) => a.access === 'pro').length;
       if (item.kind === 'content') {
@@ -33,7 +34,7 @@ function useArtworkCounts(): Readonly<Record<Sku, number | null>> {
       return null;
     };
     return Object.fromEntries(CATALOG.map((item) => [item.sku, count(item)])) as Record<Sku, number | null>;
-  }, []);
+  }, [registry]);
 }
 
 function CloseButton() {
