@@ -1,4 +1,5 @@
 import { MAX_SIZE } from '@/lib/artwork/types';
+import { numberOpacity, numberThreshold, numberZoomRange } from '@/lib/number-visibility';
 
 import {
   cellsOnLine,
@@ -13,7 +14,6 @@ import {
   FOCUS_CELL_PT,
   maxVisibleCells,
   MAX_CELL_PT,
-  numberThreshold,
   rangeFromKey,
   rangeKey,
   rangeSize,
@@ -135,13 +135,14 @@ describe('visibleRange', () => {
     expect(rangeSize(r)).toBe(0);
   });
 
-  it('never exceeds the glyph buffer bound once numbers are shown', () => {
+  it('never exceeds the glyph buffer bound once numbers are drawn', () => {
     const big = { width: 128, height: 128 };
     const phone = { width: 390, height: 700 };
-    const threshold = numberThreshold(false);
-    const cap = maxVisibleCells(phone, threshold, big);
+    const bounds = scaleBounds(big, phone);
+    const { start } = numberZoomRange(bounds.min, bounds.max, false);
+    const cap = maxVisibleCells(phone, start, big);
     for (let tx = 0; tx > -1500; tx -= 37) {
-      for (const scale of [threshold, threshold + 0.3, 20, 48]) {
+      for (const scale of [start, start + 0.3, 30, 48]) {
         expect(rangeSize(visibleRange({ scale, tx, ty: tx / 2 }, big, phone))).toBeLessThanOrEqual(cap);
       }
     }
@@ -160,8 +161,8 @@ describe('zoom', () => {
   });
 
   it('uses a higher threshold in large-numbers mode', () => {
-    expect(numberThreshold(false)).toBe(14);
-    expect(numberThreshold(true)).toBe(18);
+    expect(numberThreshold(false)).toBe(28);
+    expect(numberThreshold(true)).toBe(34);
   });
 
   it('double tap zooms in around the point, then back out to the fit', () => {
@@ -222,5 +223,23 @@ describe('focusCellViewport (Find hint)', () => {
     const target = focusCellViewport(fitViewport(grid, view), 0, 0, grid, view, bounds);
     expect(target.tx).toBeLessThanOrEqual(0);
     expect(screenToCell(1, view.height / 2, target, grid)?.col).toBe(0);
+  });
+});
+
+describe('focusCellViewport reaches the numbers (F17)', () => {
+  it.each([
+    ['small artwork', { width: 16, height: 16 }, false],
+    ['small artwork, large numbers', { width: 16, height: 16 }, true],
+    ['big artwork', { width: 128, height: 128 }, false],
+    ['big artwork, large numbers', { width: 128, height: 128 }, true],
+    ['tiny artwork', { width: 8, height: 8 }, true],
+  ])('numbers are fully visible on arrival from the overview: %s', (_name, art, large) => {
+    const phone = { width: 390, height: 700 };
+    const bounds = scaleBounds(art, phone, 12);
+    const range = numberZoomRange(bounds.min, bounds.max, large);
+    const fitted = fitViewport(art, phone, 12);
+    expect(numberOpacity(fitted.scale, range)).toBe(0);
+    const target = focusCellViewport(fitted, 3, 3, art, phone, bounds, range.full);
+    expect(numberOpacity(target.scale, range)).toBe(1);
   });
 });

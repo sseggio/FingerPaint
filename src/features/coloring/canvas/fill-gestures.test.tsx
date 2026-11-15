@@ -332,6 +332,43 @@ describe('fill preview / color layer sync (F16)', () => {
     expect(previewed([centerIndex])).toEqual([]);
   });
 
+  it('keeps the preview of a previous color mounted until its layer is drawn, then unmounts it', async () => {
+    const pixels = createColorPixels(artwork.width, artwork.height);
+    const onFill = jest.fn((batch: number[]) => paintCells(pixels, artwork, batch));
+    const other = (activeColor + 1) % artwork.palette.colors.length;
+    const ui = (revision: number, color: number) => (
+      <GestureHandlerRootView>
+        <PixelCanvas
+          artwork={artwork}
+          colorPixels={pixels}
+          colorRevision={revision}
+          activeColor={color}
+          onFill={onFill}
+          accessibilityLabel="Artwork"
+        />
+      </GestureHandlerRootView>
+    );
+    const { rerender } = await render(ui(0, activeColor));
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, ...VIEW } },
+      });
+    });
+    const previewPaths = () => hostProps('skPath').filter((p) => p.antiAlias === false).length;
+    // Only the active color has a preview path.
+    expect(previewPaths()).toBe(1);
+    await tap(CENTER);
+    await rerender(ui(0, other));
+    await flush();
+    // The tapped cell (previous color) is still previewed, next to the new active color's path.
+    expect(previewed([centerIndex])).toEqual([centerIndex]);
+    expect(previewPaths()).toBe(2);
+    await rerender(ui(1, other));
+    await flush();
+    expect(previewed([centerIndex])).toEqual([]);
+    expect(previewPaths()).toBe(1);
+  });
+
   it('an unrelated layer drawn before the stroke is painted does not drop the preview', async () => {
     const { bump } = await setupSynced();
     const fill = createGestureController(getByGestureTestId('fill-long-press'));

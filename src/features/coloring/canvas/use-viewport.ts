@@ -20,7 +20,6 @@ import {
   EMPTY_RANGE,
   fitViewport,
   focusCellViewport,
-  GRID_MIN_CELL_PT,
   rangeFromKey,
   rangeKey,
   scaleBounds,
@@ -30,6 +29,12 @@ import {
   type CellRange,
   type Size,
 } from '@/lib/geometry';
+import {
+  gridVisibility,
+  numberOpacity as opacityAt,
+  numberZoomRange,
+  type NumberZoomRange,
+} from '@/lib/number-visibility';
 import { VIEWPORT_PAN_GESTURE } from '@/lib/touch-intent';
 
 /** Breathing room around the grid at the minimum zoom (points). */
@@ -45,8 +50,8 @@ export interface ViewportOptions {
   grid: Size;
   /** Canvas size in points; null until measured. */
   view: Size | null;
-  /** Cell size (points) from which numbers are drawn. */
-  numberThreshold: number;
+  /** Large-numbers mode: numbers need bigger cells (see `@/lib/number-visibility`). */
+  largeNumbers?: boolean;
   /** True while continuous fill runs (owned by the fill gestures): the view stands still. */
   filling: SharedValue<boolean>;
   /** High-contrast mode: stronger grid lines. */
@@ -64,7 +69,11 @@ export interface ViewportState {
   /** Skia transform for the world group (screen = world × scale + t). */
   transform: DerivedValue<Transforms3d>;
   gridOpacity: DerivedValue<number>;
-  /** Cells whose numbers are drawn: visible cells once zoomed past the threshold, else empty. */
+  /** Scales between which the numbers fade in (none at the overview, see `numberZoomRange`). */
+  numberRange: NumberZoomRange;
+  /** Opacity of the numbers at the current zoom (0 at the overview). */
+  numberOpacity: DerivedValue<number>;
+  /** Cells whose numbers are drawn: visible cells once the numbers fade in, else empty. */
   glyphRange: SharedValue<CellRange>;
   /** World point (cells) at the center of the view, or null before the view is measured. */
   getViewCenter(): { x: number; y: number } | null;
@@ -86,7 +95,7 @@ export interface ViewportState {
 export function useViewport({
   grid,
   view,
-  numberThreshold,
+  largeNumbers = false,
   filling,
   highContrast = false,
 }: ViewportOptions): ViewportState {
@@ -108,8 +117,9 @@ export function useViewport({
   const geometry = useMemo(() => {
     const g = { width: gridW, height: gridH };
     const v = { width: Math.max(1, viewW), height: Math.max(1, viewH) };
-    return { grid: g, view: v, bounds: scaleBounds(g, v, VIEWPORT_PADDING) };
-  }, [gridW, gridH, viewW, viewH]);
+    const bounds = scaleBounds(g, v, VIEWPORT_PADDING);
+    return { grid: g, view: v, bounds, numbers: numberZoomRange(bounds.min, bounds.max, largeNumbers) };
+  }, [gridW, gridH, viewW, viewH, largeNumbers]);
 
   // Fit the whole grid when the artwork or the canvas size changes (never during a gesture).
   useEffect(() => {
@@ -194,12 +204,14 @@ export function useViewport({
   ]);
 
   const gridMax = highContrast ? GRID_MAX_OPACITY_HIGH : GRID_MAX_OPACITY;
-  const gridOpacity = useDerivedValue(() => clamp((scale.get() - GRID_MIN_CELL_PT) / 6, 0, 1) * gridMax);
+  const gridOpacity = useDerivedValue(() => gridVisibility(scale.get()) * gridMax);
+  // Fades with the zoom on the UI thread: no React state, the glyph atlas is untouched.
+  const numberOpacity = useDerivedValue(() => opacityAt(scale.get(), geometry.numbers));
 
   // The glyph buffers are rebuilt only when the set of visible cells changes, not every frame.
   useAnimatedReaction(
     () => {
-      if (!measured || scale.get() < numberThreshold) return -1;
+      if (!measured || opacityAt(scale.get(), geometry.numbers) <= 0) return -1;
       return rangeKey(visibleRange({ scale: scale.get(), tx: tx.get(), ty: ty.get() }, geometry.grid, geometry.view));
     },
     (key, previous) => {
@@ -215,11 +227,13 @@ export function useViewport({
   const focusCell = useCallback(
     (col: number, row: number, animate: boolean) => {
       if (!measured) return false;
-      const { grid: g, view: v, bounds } = geometry;
+      const { grid: g, view: v, bounds, numbers } = geometry;
       cancelAnimation(scale);
       cancelAnimation(tx);
       cancelAnimation(ty);
-      const target = focusCellViewport({ scale: scale.get(), tx: tx.get(), ty: ty.get() }, col, row, g, v, bounds);
+      const current = { scale: scale.get(), tx: tx.get(), ty: ty.get() };
+      // Zoomed in at least to the full opacity of the numbers: readable on arrival (F17).
+      const target = focusCellViewport(current, col, row, g, v, bounds, numbers.full);
       if (animate) {
         scale.set(withTiming(target.scale, FOCUS_TIMING));
         tx.set(withTiming(target.tx, FOCUS_TIMING));
@@ -242,6 +256,8 @@ export function useViewport({
     ty,
     transform,
     gridOpacity,
+    numberRange: geometry.numbers,
+    numberOpacity,
     glyphRange,
     getViewCenter,
     focusCell,
