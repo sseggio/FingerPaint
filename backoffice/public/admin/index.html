@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>PixelJoy · Back-office</title>
+    <link rel="icon" href="/admin/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/admin/admin.css" />
+    <script src="/admin/admin.js" defer></script>
+  </head>
+  <body>
+    <main id="login-view" class="login" hidden>
+      <form id="login-form" class="card login-card" autocomplete="on">
+        <div class="brand brand-lg"><span class="brand-mark" aria-hidden="true"></span>PixelJoy</div>
+        <p class="muted">Back-office du catalogue</p>
+        <label class="field">
+          <span>Mot de passe</span>
+          <input id="login-password" type="password" name="password" autocomplete="current-password" required maxlength="1024" />
+        </label>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" aria-label="Se connecter">Se connecter</button>
+      </form>
+    </main>
+
+    <div id="app-view" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"></span>PixelJoy <span class="brand-sub">back-office</span></div>
+        <nav class="tabs" role="tablist" aria-label="Sections">
+          <button type="button" role="tab" class="tab" data-tab="new" aria-selected="true" aria-label="Nouvelle œuvre">Nouvelle œuvre</button>
+          <button type="button" role="tab" class="tab" data-tab="artworks" aria-selected="false" aria-label="Œuvres">Œuvres</button>
+          <button type="button" role="tab" class="tab" data-tab="albums" aria-selected="false" aria-label="Albums">Albums</button>
+        </nav>
+        <button type="button" id="logout" class="btn btn-ghost" aria-label="Se déconnecter">Déconnexion</button>
+      </header>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+      <!-- New artwork -->
+      <section id="tab-new" class="panel" role="tabpanel">
+        <div class="grid-2">
+          <form id="upload-form" class="card">
+            <h2>1. Importer un PNG</h2>
+            <p class="muted">Un pixel = une case, 8 à 128 px de côté, 1 Mo max. La transparence donne des cases vides.</p>
+            <label class="field">
+              <span>Fichier PNG</span>
+              <input id="upload-file" type="file" name="file" accept="image/png" required aria-label="Fichier PNG" />
+            </label>
+            <label class="field">
+              <span>Couleurs max. : <strong id="max-colors-value">24</strong></span>
+              <input id="upload-max-colors" type="range" name="maxColors" min="2" max="40" value="24" aria-label="Nombre maximal de couleurs" />
+            </label>
+            <p id="upload-error" class="error" role="alert" hidden></p>
+            <button type="submit" class="btn btn-primary" aria-label="Convertir le PNG">Convertir</button>
+          </form>
+
+          <div id="preview-card" class="card" hidden>
+            <h2>2. Aperçu</h2>
+            <div class="preview">
+              <img id="preview-img" alt="Aperçu de l’œuvre convertie" />
+            </div>
+            <p id="preview-stats" class="stats"></p>
+            <ol id="preview-palette" class="palette" aria-label="Palette"></ol>
+          </div>
+        </div>
+
+        <form id="meta-form" class="card" hidden novalidate>
+          <h2>3. Informations</h2>
+          <div class="grid-3">
+            <label class="field">
+              <span>Identifiant (kebab-case)</span>
+              <input name="id" required maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="sea-otter" aria-label="Identifiant" />
+            </label>
+            <label class="field">
+              <span>Titre FR</span>
+              <input name="titleFr" required maxlength="60" aria-label="Titre en français" />
+            </label>
+            <label class="field">
+              <span>Titre EN</span>
+              <input name="titleEn" required maxlength="60" aria-label="Titre en anglais" />
+            </label>
+          </div>
+          <div data-meta-fields></div>
+          <ul id="meta-errors" class="error-list" role="alert" hidden></ul>
+          <div class="actions">
+            <button type="submit" name="action" value="draft" class="btn btn-secondary" aria-label="Enregistrer en brouillon">Enregistrer en brouillon</button>
+            <button type="submit" name="action" value="publish" class="btn btn-primary" aria-label="Publier">Publier</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Artworks -->
+      <section id="tab-artworks" class="panel" role="tabpanel" hidden>
+        <div class="card">
+          <h2>Œuvres du catalogue</h2>
+          <p class="muted" id="artworks-summary"></p>
+          <ul id="artwork-list" class="artwork-list"></ul>
+        </div>
+      </section>
+
+      <!-- Albums -->
+      <section id="tab-albums" class="panel" role="tabpanel" hidden>
+        <div class="card">
+          <h2>Albums</h2>
+          <p class="muted">Les albums embarqués dans l’app sont en lecture seule. L’ordre détermine l’affichage dans l’app (0 = en premier).</p>
+          <ul id="album-list" class="album-list"></ul>
+        </div>
+        <form id="album-form" class="card" novalidate>
+          <h2>Nouvel album</h2>
+          <div class="grid-3">
+            <label class="field"><span>Identifiant</span><input name="id" required maxlength="48" aria-label="Identifiant de l’album" /></label>
+            <label class="field"><span>Titre FR</span><input name="titleFr" required maxlength="60" aria-label="Titre de l’album en français" /></label>
+            <label class="field"><span>Titre EN</span><input name="titleEn" required maxlength="60" aria-label="Titre de l’album en anglais" /></label>
+          </div>
+          <div class="grid-3">
+            <div data-access-field></div>
+            <label class="field"><span>Ordre</span><input name="order" type="number" min="0" max="10000" value="0" aria-label="Ordre de l’album" /></label>
+          </div>
+          <ul class="error-list" data-errors role="alert" hidden></ul>
+          <div class="actions"><button type="submit" class="btn btn-primary" aria-label="Créer l’album">Créer l’album</button></div>
+        </form>
+      </section>
+
+      <dialog id="edit-dialog" class="dialog" aria-labelledby="edit-title">
+        <form id="edit-form" method="dialog" novalidate>
+          <h2 id="edit-title">Modifier</h2>
+          <p class="muted">Toute modification du contenu crée une nouvelle révision (rev + 1).</p>
+          <div class="grid-2">
+            <label class="field"><span>Titre FR</span><input name="titleFr" required maxlength="60" aria-label="Titre en français" /></label>
+            <label class="field"><span>Titre EN</span><input name="titleEn" required maxlength="60" aria-label="Titre en anglais" /></label>
+          </div>
+          <div data-meta-fields></div>
+          <ul class="error-list" data-errors role="alert" hidden></ul>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-close aria-label="Annuler">Annuler</button>
+            <button type="submit" class="btn btn-primary" value="save" aria-label="Enregistrer les modifications">Enregistrer</button>
+          </div>
+        </form>
+      </dialog>
+    </div>
+  </body>
+</html>

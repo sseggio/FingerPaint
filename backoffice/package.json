@@ -1,0 +1,31 @@
+{
+  "name": "pixeljoy-backoffice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PixelJoy self-hosted online catalog and admin back-office",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "gen:embedded": "node scripts/gen-embedded.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node --disable-warning=ExperimentalWarning dist/server.mjs",
+    "dev": "npm run gen:embedded && npm run build && node --disable-warning=ExperimentalWarning --env-file-if-exists=.env dist/server.mjs",
+    "hash-password": "npm run build && node dist/hash-password.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.8",
+    "hono": "^4.13.18",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pngjs": "^6.0.5",
+    "esbuild": "^0.28.2",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

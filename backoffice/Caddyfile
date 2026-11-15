@@ -1,0 +1,15 @@
+# Automatic HTTPS (Let's Encrypt) for $DOMAIN. No `log` directive: Caddy writes no access log,
+# so no IP address is ever stored.
+{
+	admin off
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	reverse_proxy app:8080
+}

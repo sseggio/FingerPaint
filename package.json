@@ -60,7 +60,8 @@
     "preset": "jest-expo",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/.claude/"
+      "/.claude/",
+      "/backoffice/"
     ],
     "resolver": "react-native-reanimated/jest/resolver",
     "setupFiles": [
@@ -69,6 +70,9 @@
     ],
     "setupFilesAfterEnv": [
       "<rootDir>/jest/fail-on-console-error.ts"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/backoffice/"
     ]
   }
 }

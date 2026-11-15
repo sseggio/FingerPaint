@@ -1,0 +1,49 @@
+# Manual deployment of the catalog back-office to the VPS over SSH (see backoffice/README.md).
+# Required repository secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY and VPS_KNOWN_HOSTS (the server's
+# public host key line(s), e.g. from `ssh-keyscan <host>` run once from a trusted machine). The job
+# fails when one is missing: the host key is never fetched blindly at deploy time.
+name: Backoffice deploy
+on:
+  workflow_dispatch:
+    inputs:
+      path:
+        description: Repository path on the VPS
+        required: true
+        default: ~/pixeljoy
+permissions:
+  contents: read
+concurrency:
+  group: backoffice-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          for name in VPS_HOST VPS_SSH_KEY VPS_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; exit 1; fi
+          done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Pull, rebuild and restart
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_PATH: ${{ inputs.path }}
+        run: |
+          if [ -z "$VPS_USER" ]; then echo "::error::Missing repository secret VPS_USER"; exit 1; fi
+          case "$DEPLOY_PATH" in
+            *[!A-Za-z0-9._/~-]*) echo "invalid path"; exit 1 ;;
+          esac
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "set -e; cd $DEPLOY_PATH && git pull --ff-only && cd backoffice && docker compose up -d --build && docker image prune -f && docker compose ps"
+      - name: Clean up
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

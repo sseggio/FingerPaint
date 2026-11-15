@@ -1,0 +1,14 @@
+# Used by BuildKit for backoffice/Dockerfile (context = repo root): send only what the build needs.
+*
+!src/lib/artwork
+!src/lib/color.ts
+!src/lib/symbols.ts
+!src/content/albums.json
+!src/content/artworks
+!backoffice
+backoffice/node_modules
+backoffice/dist
+backoffice/generated
+backoffice/data
+backoffice/backups
+backoffice/.env
