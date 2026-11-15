@@ -101,7 +101,7 @@ describe('backup export → reinstall → import', () => {
     await useSettingsStore.getState().update({ colorblindSymbols: true, sessionTimerMin: 20 });
 
     await expect(exportBackup('Save', () => NOW)).resolves.toBe('shared');
-    expect(mocked.writeFile).toHaveBeenCalledWith('cache', 'backups', 'fingerpaint-2026-11-14.fingerpaint', expect.any(String));
+    expect(mocked.writeFile).toHaveBeenCalledWith('cache', 'backups', 'pixeljoy-2026-11-14.pixeljoy', expect.any(String));
     const uri = mocked.writeFile.mock.results[0].value as Promise<string>;
     const fileUri = await uri;
     expect(mocked.shareFile).toHaveBeenCalledWith(fileUri, expect.objectContaining({ dialogTitle: 'Save' }));
@@ -116,7 +116,7 @@ describe('backup export → reinstall → import', () => {
     await wipeDevice();
     expect(useProgressStore.getState().index).toEqual({});
 
-    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'backup.fingerpaint', size: 1000 });
+    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'backup.pixeljoy', size: 1000 });
     const outcome = await pickBackup(NOW);
     expect(outcome.status).toBe('ready');
     if (outcome.status !== 'ready') return;
@@ -150,7 +150,7 @@ describe('backup export → reinstall → import', () => {
     await useProgressStore.getState().remove('tabby-cat');
     await useProgressStore.getState().importEntries([colored('tabby-cat', 2)]);
 
-    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.fingerpaint' });
+    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.pixeljoy' });
     const outcome = await pickBackup(NOW);
     if (outcome.status !== 'ready') throw new Error(`unexpected ${outcome.status}`);
     expect(outcome.plan.summary).toMatchObject({ improved: 1, kept: 1, added: 0 });
@@ -170,7 +170,7 @@ describe('backup export → reinstall → import', () => {
     const fileUri = await (mocked.writeFile.mock.results[0].value as Promise<string>);
     const text = mocked.disk.get(fileUri) as string;
     mocked.disk.set(fileUri, text.replace('"filledCount": 5', '"filledCount": 6'));
-    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.fingerpaint' });
+    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.pixeljoy' });
     await expect(pickBackup(NOW)).resolves.toEqual({ status: 'error', error: 'checksum' });
 
     mocked.pickFile.mockResolvedValueOnce({ uri: 'file:///missing', name: 'm' });
@@ -184,7 +184,7 @@ describe('backup export → reinstall → import', () => {
     const fileUri = await (mocked.writeFile.mock.results[0].value as Promise<string>);
     await useProgressStore.getState().remove('tabby-cat');
 
-    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.fingerpaint' });
+    mocked.pickFile.mockResolvedValueOnce({ uri: fileUri, name: 'b.pixeljoy' });
     const outcome = await pickBackup(NOW);
     if (outcome.status !== 'ready') throw new Error(`unexpected ${outcome.status}`);
     expect(outcome.plan.summary).toMatchObject({ added: 1, kept: 0 });
@@ -201,8 +201,8 @@ describe('backup export → reinstall → import', () => {
     await exportBackup('Save', () => NOW);
     expect(mocked.pruneFolder).toHaveBeenCalledWith('cache', 'backups', expect.any(Function));
     const shouldDelete = mocked.pruneFolder.mock.calls[0][2] as (name: string) => boolean;
-    expect(shouldDelete('fingerpaint-2026-11-14.fingerpaint')).toBe(false);
-    expect(shouldDelete('fingerpaint-2026-11-01.fingerpaint')).toBe(true);
+    expect(shouldDelete('pixeljoy-2026-11-14.pixeljoy')).toBe(false);
+    expect(shouldDelete('pixeljoy-2026-11-01.pixeljoy')).toBe(true);
   });
 
   it('says when sharing is unavailable', async () => {
@@ -211,6 +211,6 @@ describe('backup export → reinstall → import', () => {
   });
 
   it('names files by local day', () => {
-    expect(backupFileName(new Date(2026, 0, 2, 23, 30))).toBe('fingerpaint-2026-01-02.fingerpaint');
+    expect(backupFileName(new Date(2026, 0, 2, 23, 30))).toBe('pixeljoy-2026-01-02.pixeljoy');
   });
 });

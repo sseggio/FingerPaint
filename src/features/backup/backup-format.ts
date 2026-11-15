@@ -6,19 +6,19 @@ import { canonicalJson, fnv1a64 } from '@/lib/checksum';
 import { isDailyState, type DailyState } from '@/lib/daily';
 
 /**
- * `.fingerpaint` backup file (see docs/backup-format.md). A versioned JSON document:
+ * `.pixeljoy` backup file (see docs/backup-format.md). A versioned JSON document:
  *
  * ```
- * { format: 'fingerpaint-backup', version: 1, createdAt, checksum, payload: { progress, daily, settings } }
+ * { format: 'pixeljoy-backup', version: 1, createdAt, checksum, payload: { progress, daily, settings } }
  * ```
  *
  * `checksum` is the FNV-1a 64 of the canonical JSON of `payload`. Purchases / entitlements are
  * NEVER written, and anything that is not progress, streak or settings is ignored on import:
  * a backup can never unlock paid content.
  */
-export const BACKUP_FORMAT = 'fingerpaint-backup';
+export const BACKUP_FORMAT = 'pixeljoy-backup';
 export const BACKUP_VERSION = 1;
-export const BACKUP_EXTENSION = '.fingerpaint';
+export const BACKUP_EXTENSION = '.pixeljoy';
 /** Files larger than this are refused before being parsed (a full V1 backup is ~100 KB). */
 export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 /** Upper bound on progress entries (far above the catalog size; guards against huge files). */

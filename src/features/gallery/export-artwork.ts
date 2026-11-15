@@ -21,7 +21,7 @@ export type PngOutcome = 'shared' | 'unavailable' | 'missing';
 export function staleExport(action: PngAction, artworkId: string, latest: string): (name: string) => boolean {
   const safeLatest = safeFileName(latest);
   if (action === 'share') return (name) => name !== safeLatest;
-  const prefix = `${safeFileName(`fingerpaint-${artworkId}`)}-`;
+  const prefix = `${safeFileName(`pixeljoy-${artworkId}`)}-`;
   return (name) => name !== safeLatest && name.startsWith(prefix) && /^\d+x\d+\.png$/.test(name.slice(prefix.length));
 }
 
@@ -41,7 +41,7 @@ export async function exportArtworkPng(
   const artwork = getArtwork(artworkId);
   if (!artwork) return 'missing';
   const png = renderArtworkPng(artwork, await fillFor(artworkId, artwork.totalCells, entry), background);
-  const name = `fingerpaint-${artworkId}-${png.width}x${png.height}.png`;
+  const name = `pixeljoy-${artworkId}-${png.width}x${png.height}.png`;
   const location = action === 'export' ? 'documents' : 'cache';
   const folder = action === 'export' ? 'exports' : 'share';
   const uri = await writeFile(location, folder, name, png.bytes);

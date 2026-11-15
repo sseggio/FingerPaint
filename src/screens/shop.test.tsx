@@ -62,7 +62,7 @@ describe('ShopScreen with EXPO_PUBLIC_IAP_PROVIDER=none', () => {
     await flush();
     expect(screen.getByRole('header', { name: 'Coming soon' })).toBeTruthy();
     expect(screen.getByText('This artwork is included with Pro.')).toBeTruthy();
-    for (const title of ['FingerPaint Pro', 'Deep ocean pack', 'Neon pack']) {
+    for (const title of ['PixelJoy Pro', 'Deep ocean pack', 'Neon pack']) {
       expect(screen.getByRole('header', { name: title })).toBeTruthy();
     }
     expect(screen.getAllByText('Coming soon').length).toBeGreaterThanOrEqual(3);
@@ -124,7 +124,7 @@ describe('ShopScreen with the mock store', () => {
     });
     provider.setNextOutcome('cancel');
     await act(async () => {
-      fireEvent.press(screen.getByRole('button', { name: 'Buy FingerPaint Pro for 4,99 € (mock)' }));
+      fireEvent.press(screen.getByRole('button', { name: 'Buy PixelJoy Pro for 4,99 € (mock)' }));
     });
     await flush();
     expect(screen.getByText('No problem, nothing was charged.')).toBeTruthy();

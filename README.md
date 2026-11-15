@@ -1,4 +1,4 @@
-# FingerPaint 🎨
+# PixelJoy 🎨
 
 Coloriage pixel art par numéros, **original**, pour iPhone (Android compilable) : sans pub, sans pistage, sans pay-to-win, et qui marche entièrement hors ligne.
 
@@ -9,7 +9,7 @@ Construit avec Expo SDK 58, React Native, TypeScript, Expo Router, Skia, Reanima
 - **48 illustrations originales** en 6 albums (Jardin, Océan, Cuisine, Animaux, Espace, et le pack Océan profond), de 16×16 à 96×96.
 - **Coloriage fluide** (canvas Skia) : zoom et déplacement, glisser pour remplir, indices gratuits et illimités, confettis à la complétion, sauvegarde automatique.
 - **Image du jour** et série indulgente (jokers, jamais de pression).
-- **Mes œuvres** : galerie, export PNG, sauvegarde/restauration de la progression dans un fichier `.fingerpaint`.
+- **Mes œuvres** : galerie, export PNG, sauvegarde/restauration de la progression dans un fichier `.pixeljoy`.
 - **Accessibilité** : mode daltonien (symboles), gros numéros, contraste élevé, mode gaucher, VoiceOver, Dynamic Type, FR/EN.
 - **Bien-être** : rappel de pause optionnel, aucune notification.
 - **Boutique honnête** : achats uniques (Pro, pack Océan profond, thème Néon), « Restaurer les achats » toujours visible ; outils et indices toujours gratuits.

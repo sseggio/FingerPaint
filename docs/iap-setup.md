@@ -1,6 +1,6 @@
 # Achats intégrés (IAP) : mise en place
 
-FingerPaint vend trois **achats uniques non consommables**. Il n'y a ni abonnement, ni monnaie virtuelle, ni booster. Les outils et les indices restent toujours gratuits.
+PixelJoy vend trois **achats uniques non consommables**. Il n'y a ni abonnement, ni monnaie virtuelle, ni booster. Les outils et les indices restent toujours gratuits.
 
 | Product ID (SKU) | Type | Contenu |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Pro n'inclut **pas** les packs : chaque pack est un achat de contenu distinct (v
   - le délai : sans réponse du store, `purchase()` se résout en `timeout` après 2 min, ou 10 s après un retour au premier plan depuis l'arrière-plan (la boutique n'est jamais bloquée). Un achat qui aboutit plus tard est quand même accordé par le listener ;
   - la course restauration / achat : une réponse du store demandée **avant** un octroi ne retire jamais cet octroi (il est fusionné) ; la réponse suivante redevient la référence (remboursements) ;
   - les erreurs : `user-cancelled` donne un message calme (« rien n'a été débité »). `already-owned` déclenche une restauration silencieuse. Les erreurs réseau ou de store affichent un message honnête.
-- Une sauvegarde `.fingerpaint` ne contient **jamais** les achats, et l'import les ignore.
+- Une sauvegarde `.pixeljoy` ne contient **jamais** les achats, et l'import les ignore.
 
 ## 1. App Store Connect
 

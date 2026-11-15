@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Generates every app icon / splash asset from one original pixel-art design: "Drop", a
- * cheerful pink paint drop on a violet canvas sprinkled with palette pixels (FingerPaint's own
+ * cheerful pink paint drop on a violet canvas sprinkled with palette pixels (PixelJoy's own
  * mascot, drawn here cell by cell — no third-party artwork).
  *
  *   node scripts/generate-icons.mjs [--preview <dir>]

@@ -83,7 +83,7 @@ export interface PickedFile {
 
 /** Lets the user pick one file (copied to the cache). Null when cancelled. */
 export async function pickFile(): Promise<PickedFile | null> {
-  // `.fingerpaint` has no registered type: accept any file, the content is validated anyway.
+  // `.pixeljoy` has no registered type: accept any file, the content is validated anyway.
   const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
   if (result.canceled) return null;
   const asset = result.assets[0];

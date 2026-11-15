@@ -20,8 +20,8 @@ const { expo } = readJson('app.json');
 const eas = readJson('eas.json');
 
 describe('app.json', () => {
-  it('has the FingerPaint identity', () => {
-    expect(expo).toMatchObject({ name: 'FingerPaint', slug: 'fingerpaint', scheme: 'fingerpaint' });
+  it('has the PixelJoy identity', () => {
+    expect(expo).toMatchObject({ name: 'PixelJoy', slug: 'fingerpaint' /* linked EAS project slug */, scheme: 'pixeljoy' });
     expect(expo.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(expo.ios.bundleIdentifier).toBe('com.krafting.pixeljoy');
     expect(expo.android.package).toBe('com.krafting.pixeljoy');
