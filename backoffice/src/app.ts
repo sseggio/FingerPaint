@@ -41,12 +41,15 @@ export interface AppConfig {
   /** Behind Caddy: the client address is the right-most X-Forwarded-For entry (memory only). */
   trustProxy: boolean;
   rateLimit?: RateLimitOptions;
+  /** Password verifications allowed in parallel (default MAX_LOGIN_CHECKS). */
+  maxConcurrentLogins?: number;
   now?: () => Date;
   /** Client address when not behind a proxy (from the socket); tests leave it out. */
   remoteAddress?: (c: Context) => string | undefined;
 }
 
 const JSON_LIMIT = 256 * 1024;
+export const MAX_LOGIN_CHECKS = 2;
 const UPLOAD_LIMIT = MAX_PNG_BYTES + 64 * 1024;
 
 const ADMIN_CSP = [
@@ -124,6 +127,8 @@ export function createApp(cfg: AppConfig) {
   const now = cfg.now ?? (() => new Date());
   const store = new ArtworkStore(cfg.dataDir);
   const sessions = new SessionManager(cfg.db, cfg.sessionSecret);
+  const maxLoginChecks = cfg.maxConcurrentLogins ?? MAX_LOGIN_CHECKS;
+  let loginChecks = 0;
   const limiter = new LoginRateLimiter(cfg.rateLimit ?? { perClient: 5, global: 50, windowMs: 15 * 60 * 1000 });
   const embeddedIds = new Set(cfg.embedded.artworkIds);
   const cookieName = cfg.cookieSecure ? SESSION_COOKIE : SESSION_COOKIE.replace('__Host-', '');
@@ -231,21 +236,28 @@ export function createApp(cfg: AppConfig) {
   });
 
   api.post('/login', bodyLimit({ maxSize: 4096, onError: (c) => c.json({ error: 'too_large' }, 413) }), async (c) => {
+    // At most MAX_LOGIN_CHECKS scrypt verifications run at once (CPU + ~32 MB each): beyond, 429.
+    if (loginChecks >= maxLoginChecks) {
+      return c.json({ error: 'rate_limited', retryAfter: 1 }, 429, { 'Retry-After': '1' });
+    }
     const client = clientId(c);
     const t = now().getTime();
-    const wait = limiter.retryAfter(client, t);
+    const wait = limiter.reserve(client, t);
     if (wait > 0) {
       const seconds = String(Math.ceil(wait / 1000));
       return c.json({ error: 'rate_limited', retryAfter: Number(seconds) }, 429, { 'Retry-After': seconds });
     }
-    const body: unknown = await c.req.json().catch(() => null);
-    const password = isRecord(body) && typeof body.password === 'string' ? body.password : '';
-    const ok = password.length > 0 && (await verifyPassword(password, cfg.passwordHash));
-    if (!ok) {
-      limiter.fail(client, t);
-      return c.json({ error: 'bad_password' }, 401);
+    loginChecks++;
+    let ok = false;
+    try {
+      const body: unknown = await c.req.json().catch(() => null);
+      const password = isRecord(body) && typeof body.password === 'string' ? body.password : '';
+      ok = password.length > 0 && (await verifyPassword(password, cfg.passwordHash));
+    } finally {
+      loginChecks--;
     }
-    limiter.succeed(client);
+    if (!ok) return c.json({ error: 'bad_password' }, 401);
+    limiter.refund(client);
     const session = sessions.create(t);
     setCookie(c, cookieName, session.token, {
       httpOnly: true,

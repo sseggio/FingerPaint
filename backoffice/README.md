@@ -101,6 +101,8 @@ docker compose up -d --build
 docker image prune -f
 ```
 
+Les images de base (`node:22-alpine`, `caddy:2-alpine`) sont **épinglées par digest** (`@sha256:…`) dans `Dockerfile` et `docker-compose.yml` : une mise à jour d'image ne s'applique jamais à ton insu. Dependabot (`.github/dependabot.yml`) ouvre chaque semaine une PR qui met à jour ces digests (et les dépendances npm) ; une fois fusionnée, `git pull` puis `docker compose up -d --build` l'applique. Pour le faire à la main : `docker buildx imagetools inspect node:22-alpine` (ou `caddy:2-alpine`) affiche le digest courant (ligne `Digest:`) à reporter après `@sha256:`.
+
 Les données (base + fichiers d'œuvres) sont dans le volume Docker `catalog-data` : elles survivent aux mises à jour et aux redémarrages. La liste des ids embarqués est régénérée à chaque build depuis `src/content`.
 
 Déploiement en un clic (optionnel) : le workflow GitHub **Backoffice deploy** (`.github/workflows/backoffice-deploy.yml`, lancement manuel) se connecte au VPS en SSH et exécute ces commandes. Ajoute dans *Settings › Secrets and variables › Actions* :
@@ -110,7 +112,9 @@ Déploiement en un clic (optionnel) : le workflow GitHub **Backoffice deploy** (
 | `VPS_HOST` | IP ou nom du VPS |
 | `VPS_USER` | utilisateur SSH (membre du groupe `docker`) |
 | `VPS_SSH_KEY` | clé privée SSH dédiée au déploiement (sa clé publique dans `~/.ssh/authorized_keys` du VPS) |
-| `VPS_KNOWN_HOSTS` | (recommandé) sortie de `ssh-keyscan <ip-du-vps>`, pour vérifier l'identité du serveur |
+| `VPS_KNOWN_HOSTS` | **obligatoire** : la ou les lignes de clé d'hôte du VPS, pour vérifier son identité (le job échoue si ce secret est vide) |
+
+Pour obtenir `VPS_KNOWN_HOSTS` sans risque : sur le VPS lui-même, lance `for f in /etc/ssh/ssh_host_*_key.pub; do echo "<ip-du-vps> $(cut -d' ' -f1,2 "$f")"; done` et copie la sortie. (Depuis ton ordinateur, `ssh-keyscan <ip-du-vps>` fonctionne aussi si tu compares l'empreinte avec celle affichée par `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` sur le VPS.)
 
 Le chemin du dépôt sur le VPS est un paramètre du workflow (par défaut `~/pixeljoy`).
 
@@ -192,7 +196,7 @@ rm -rf /tmp/restore
 - Mot de passe : hash scrypt (N = 2^15) dans `ADMIN_PASSWORD_HASH`, comparaison en temps constant.
 - Session : jeton aléatoire dans un cookie `__Host-pj_admin` `HttpOnly; Secure; SameSite=Strict` (12 h), seul son HMAC (`SESSION_SECRET`) est stocké en base.
 - CSRF : jeton par session exigé dans l'en-tête `X-CSRF-Token` + vérification de l'en-tête `Origin` sur toute requête qui modifie quelque chose (y compris la connexion).
-- Connexion limitée à 5 échecs / 15 min par client et 50 échecs / 15 min au total (compteurs en mémoire uniquement).
+- Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
 - `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS ajouté par Caddy.
 - Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..128 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
 - Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (seul Caddy est joignable).
@@ -208,4 +212,4 @@ cp .env.example .env  # puis ADMIN_PASSWORD_HASH, SESSION_SECRET, et PUBLIC_URL=
 npm run dev           # http://localhost:8080/admin
 ```
 
-Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`true` derrière Caddy), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).
+Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`false` par défaut dans l'image ; `docker-compose.yml` le met à `true` car seul Caddy joint l'app — ne l'active jamais si le port 8080 est exposé directement), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).

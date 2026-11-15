@@ -54,7 +54,11 @@ export interface RateLimitOptions {
   windowMs: number;
 }
 
-/** Fixed-window limiter on failed logins. Memory only; entries expire with their window. */
+/**
+ * Fixed-window limiter on login attempts. Memory only; entries expire with their window.
+ * An attempt is reserved *before* the (slow) password check, so concurrent requests cannot all
+ * pass the check; a successful login refunds it.
+ */
 export class LoginRateLimiter {
   private readonly clients = new Map<string, { count: number; resetAt: number }>();
   private globalCount = 0;
@@ -62,29 +66,30 @@ export class LoginRateLimiter {
 
   constructor(private readonly opts: RateLimitOptions) {}
 
-  /** Milliseconds to wait before another attempt, or 0 when allowed. */
-  retryAfter(client: string, nowMs: number): number {
+  /** Reserves one attempt. Returns 0 when allowed, else the milliseconds to wait (nothing reserved). */
+  reserve(client: string, nowMs: number): number {
     if (nowMs >= this.globalResetAt) {
       this.globalCount = 0;
       this.globalResetAt = nowMs + this.opts.windowMs;
     }
     if (this.globalCount >= this.opts.global) return this.globalResetAt - nowMs;
-    const entry = this.clients.get(client);
-    if (!entry || nowMs >= entry.resetAt) return 0;
-    return entry.count >= this.opts.perClient ? entry.resetAt - nowMs : 0;
-  }
-
-  fail(client: string, nowMs: number) {
+    let entry = this.clients.get(client);
+    if (!entry || nowMs >= entry.resetAt) {
+      entry = { count: 0, resetAt: nowMs + this.opts.windowMs };
+      this.clients.set(client, entry);
+    }
+    if (entry.count >= this.opts.perClient) return entry.resetAt - nowMs;
+    entry.count++;
     this.globalCount++;
-    const entry = this.clients.get(client);
-    if (!entry || nowMs >= entry.resetAt) this.clients.set(client, { count: 1, resetAt: nowMs + this.opts.windowMs });
-    else entry.count++;
     if (this.clients.size > 10_000) {
       for (const [k, v] of this.clients) if (nowMs >= v.resetAt) this.clients.delete(k);
     }
+    return 0;
   }
 
-  succeed(client: string) {
+  /** Successful login: gives the reserved attempt back and clears the client's failures. */
+  refund(client: string) {
     this.clients.delete(client);
+    if (this.globalCount > 0) this.globalCount--;
   }
 }
