@@ -106,7 +106,7 @@ Une mauvaise couleur ne se pose pas : on joue une haptique légère, sans pénal
 - Un seul `<Canvas>` contient un `<Group transform>` piloté par les shared values `scale`, `tx` et `ty`. Il n'y a aucun re-render React pendant un geste.
 - **Couche fond :** une `SkImage` w×h px en niveaux de gris (luminance de la couleur cible), dessinée agrandie avec `FilterMode.Nearest` en un seul draw.
 - **Couche couleur :** une `SkImage` w×h régénérée par lot, au plus une fois par frame, depuis un buffer RGBA.
-- **Numéros et symboles :** ils sont dessinés via `Atlas` (texture de glyphes pré-rendue, `RSXform` calculés en worklet) et **uniquement pour les cases visibles**. Ils n'apparaissent qu'au-delà de 14 pt par case (18 pt en mode grands numéros).
+- **Numéros et symboles :** ils sont dessinés via `Atlas` (texture de glyphes pré-rendue, `RSXform` calculés en worklet) et **uniquement pour les cases visibles**. Ils sont absents de la vue d'ensemble et apparaissent en fondu une fois zoomé (F17 : ≥ 28 pt par case, 34 pt en grands numéros, et ≥ 1,3 × le zoom « fit » ; constantes dans `src/lib/number-visibility.ts`).
 - **Surbrillance de la couleur active :** un masque `SkImage` par couleur, mis en cache paresseusement.
 - **Gestes (API GH 3 à vérifier) :**
   - pinch avec point focal + pan à deux doigts ;
@@ -345,6 +345,62 @@ F01 (foundation) est en cours. La liste commence à F02.
   - une build `preview` iOS réussit (ou un dry-run documenté) ;
   - l'app fonctionne en mode avion.
 - **Tests :** rendu de l'écran À propos, test de configuration (bundle id, privacy manifest, profils EAS), test de liste noire des SDK de pub et d'analytics.
+
+---
+
+## 2 bis. Itération 1 (retours TestFlight)
+
+Corrections issues des premiers retours TestFlight, une feature = une branche = une PR, comme en V1.
+
+### F15 · Gestes : déplacer à un doigt, tap pour remplir, appui long + glisser
+**Branche :** `claude/feat-15-one-finger-pan`
+
+- **Objectif :** naviguer sans peindre par accident.
+- **Périmètre :** `lib/touch-intent.ts` (critères d'activation), `use-viewport.ts` (pan à un ou deux doigts, inertie), `use-fill-gestures.ts` (tap, appui long puis glisser), réglage « remplir en glissant après un appui long », suppression du double-tap zoom.
+- **Critères d'acceptation :**
+  - un doigt qui glisse déplace la vue, ne remplit rien ;
+  - un tap remplit la case (couleur active) ;
+  - un appui long puis un glissement remplit les cases survolées, sans bouger la vue ;
+  - un second doigt pendant un remplissage le termine et passe en pan / pinch.
+- **Tests :** `touch-intent`, gestes simulés (tap, pan, appui long + glisser, second doigt), réglage persistant.
+
+### F16 · Plus de flash au relâchement d'un remplissage
+**Branche :** `claude/feat-16-no-flash`
+
+- **Objectif :** l'aperçu du remplissage reste affiché jusqu'à ce que la couche couleur montre les cases.
+- **Périmètre :** `lib/fill-preview.ts` (lots en attente, acquittement, révision de couche), `use-fill-preview.ts` (image de couche et retrait de l'aperçu dans la même tâche UI), aperçu opaque sans anticrénelage.
+- **Critères d'acceptation :**
+  - aucune image grise entre le relâchement et l'affichage de la couche ;
+  - les cases refusées par la session quittent l'aperçu sans attendre ;
+  - une couche sans rapport avec le trait ne retire pas l'aperçu.
+- **Tests :** `fill-preview` (fonctions pures), synchro aperçu / couche avec le mock Skia.
+
+### F17 · Numéros visibles seulement une fois zoomé
+**Branche :** `claude/feat-17-numbers-zoom`
+
+- **Objectif :** une vue d'ensemble lisible (dessin en niveaux de gris + surbrillance de la couleur active), les numéros quand on zoome.
+- **Périmètre :**
+  - `lib/number-visibility.ts` : seuils au même endroit (28 pt par case, 34 en grands numéros, ≥ 1,3 × le zoom « fit », fondu de 0,85 × seuil au seuil, grille fine de 12 à 18 pt) ;
+  - opacité des numéros en worklet (`Group` autour de l'`Atlas`), sans setState ni reconstruction de l'atlas ;
+  - « Trouver » zoome au moins jusqu'à l'opacité pleine des numéros ;
+  - aperçu de remplissage monté seulement pour la couleur active et les couleurs encore en attente (report revue F16).
+- **Critères d'acceptation :**
+  - aucun numéro (ni symbole) à la vue d'ensemble, même sur une petite œuvre (16×16) ;
+  - numéros pleinement visibles une fois zoomé au-delà du seuil, et à l'arrivée de « Trouver » ;
+  - transition en fondu pendant le pinch ;
+  - grands numéros : seuil plus élevé ; œuvres minuscules : numéros atteignables au zoom max ;
+  - aucune régression d'accessibilité (la palette porte l'information).
+- **Tests :** opacité selon taille de case et zoom / fit (vue d'ensemble → 0, zoom fort → 1, plage de fondu, grands numéros, œuvre minuscule), `focusCellViewport` atteint le seuil, rendu avec le mock Skia (opacité 0 puis 1 après « Trouver »).
+
+### F18 · Animation de fin (à venir)
+**Branche :** `claude/feat-18-completion-animation`
+
+- **Objectif :** une fin d'œuvre plus gratifiante.
+- **Critères d'acceptation (provisoires) :**
+  - animation déclenchée une seule fois à la complétion ;
+  - respect de « Réduire les animations » ;
+  - aucune régression des boutons « Suivante » et « Bibliothèque ».
+- **Tests :** déclenchement unique, variante sans mouvement.
 
 ---
 

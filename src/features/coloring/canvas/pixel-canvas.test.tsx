@@ -101,8 +101,50 @@ describe('PixelCanvas (Skia mock)', () => {
     const types = hostTypes();
     // Background, highlight mask, color layer.
     expect(types.filter((t) => t === 'skImage')).toHaveLength(3);
-    // Fill preview (one path per palette color) + grid.
-    expect(types.filter((t) => t === 'skPath')).toHaveLength(artwork.palette.colors.length + 1);
+    // Fill preview (the active color only: nothing else is pending) + grid.
+    expect(types.filter((t) => t === 'skPath')).toHaveLength(2);
+  });
+
+  it('hides the numbers at the overview and shows them once zoomed in by "Find" (F17)', async () => {
+    const ref = createRef<PixelCanvasHandle>();
+    await render(
+      <GestureHandlerRootView>
+        <PixelCanvas
+          ref={ref}
+          artwork={artwork}
+          colorPixels={createColorPixels(artwork.width, artwork.height)}
+          colorRevision={0}
+          activeColor={0}
+          onFill={() => undefined}
+          accessibilityLabel="Artwork"
+        />
+      </GestureHandlerRootView>,
+    );
+    await act(async () => {
+      await fireEvent(screen.getByLabelText('Artwork'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
+      });
+    });
+    /** Opacity of the group wrapping the number atlas. */
+    const numbersOpacity = () => {
+      const found: number[] = [];
+      const walk = (node: unknown) => {
+        if (!node || typeof node !== 'object') return;
+        const n = node as { type?: unknown; props?: { opacity?: { value: number } }; children?: unknown[] | null };
+        if (n.type === 'skGroup' && n.children?.some((c) => (c as { type?: unknown }).type === 'skAtlas')) {
+          found.push(n.props?.opacity?.value ?? -1);
+        }
+        n.children?.forEach(walk);
+      };
+      const json = screen.toJSON();
+      (Array.isArray(json) ? json : [json]).forEach(walk);
+      return found;
+    };
+    expect(numbersOpacity()).toEqual([0]);
+    await act(async () => {
+      ref.current?.focusCell(60 * artwork.width + 60, false);
+    });
+    expect(numbersOpacity()).toEqual([1]);
   });
 
   it('moves the view to a cell for the Find hint, at any zoom, with or without motion', async () => {

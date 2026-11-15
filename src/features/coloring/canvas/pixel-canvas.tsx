@@ -30,7 +30,7 @@ import {
 
 import type { Artwork } from '@/lib/artwork/types';
 import { groupByValue, previewCells } from '@/lib/fill-preview';
-import { maxVisibleCells, numberThreshold as thresholdFor, type CellRange, type Size } from '@/lib/geometry';
+import { maxVisibleCells, type CellRange, type Size } from '@/lib/geometry';
 import { canvasThemes, type CanvasThemeColors } from '@/theme';
 
 import { createNumberAtlas, type GlyphAtlas } from './glyph-atlas';
@@ -54,7 +54,7 @@ export interface PixelCanvasProps {
   colorPixels: Uint8Array;
   /** Bump to rebuild the color layer image after `colorPixels` changed. */
   colorRevision: number;
-  /** Large-numbers mode: numbers appear from a bigger cell size. */
+  /** Large-numbers mode: numbers appear from a bigger cell size (see `@/lib/number-visibility`). */
   largeNumbers?: boolean;
   /** Active palette color (0-based): its cells are highlighted and taps / long-press slides fill it. */
   activeColor?: number | null;
@@ -109,7 +109,7 @@ interface NumberGlyphsProps {
 
 /**
  * Numbers of the visible cells in one Atlas draw. The buffers hold `capacity` slots (the most
- * cells visible at the numbers threshold); slot i maps to the i-th cell of the visible range and
+ * cells visible once the numbers start fading in); slot i maps to the i-th cell of the visible range and
  * unused slots get a zero-scale transform. They are refilled on the UI thread only when the
  * visible range changes.
  */
@@ -177,10 +177,10 @@ const PreviewCells = memo(function PreviewCells({ groups, value, color, gridWidt
 
 /**
  * The coloring canvas: one Skia `<Canvas>` whose world group is transformed by shared values.
- * Layers (back to front): grayscale background, active-color highlight, numbers, color layer
- * (opaque over filled cells, so their numbers and highlight disappear), fill preview (same look as
- * the color layer, until it shows the cells), grid, "Find" marker,
- * continuous-fill ring around the cell under the finger.
+ * Layers (back to front): grayscale background, active-color highlight, numbers (faded in with
+ * the zoom, none at the overview), color layer (opaque over filled cells, so their numbers and
+ * highlight disappear), fill preview (same look as the color layer, until it shows the cells),
+ * grid, "Find" marker, continuous-fill ring around the cell under the finger.
  */
 export function PixelCanvas({
   artwork,
@@ -199,7 +199,6 @@ export function PixelCanvas({
 }: PixelCanvasProps) {
   const { width, height } = artwork;
   const [view, setView] = useState<Size | null>(null);
-  const threshold = thresholdFor(largeNumbers);
   const grid = useMemo(() => ({ width, height }), [width, height]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -244,18 +243,25 @@ export function PixelCanvas({
   // the new one is committed (and the last one on unmount).
   useEffect(() => () => atlas?.image.dispose(), [atlas]);
   const cells = useMemo(() => Array.from(artwork.cells), [artwork.cells]);
-  const capacity = view ? maxVisibleCells(view, threshold, grid) : 0;
 
   const canFill = !!onFill && activeColor !== null;
   const filling = useSharedValue(false);
-  const { gestures, panning, scale, tx, ty, transform, gridOpacity, glyphRange, getViewCenter, focusCell } =
-    useViewport({
-      grid,
-      view,
-      numberThreshold: threshold,
-      filling,
-      highContrast,
-    });
+  const {
+    gestures,
+    panning,
+    scale,
+    tx,
+    ty,
+    transform,
+    gridOpacity,
+    numberRange,
+    numberOpacity,
+    glyphRange,
+    getViewCenter,
+    focusCell,
+  } = useViewport({ grid, view, largeNumbers, filling, highContrast });
+  // Glyphs are drawn above the start of their fade-in only (F17: none at the overview).
+  const capacity = view ? maxVisibleCells(view, numberRange.start, grid) : 0;
 
   // "Find" marker: a ring around the target cell that pulses three times, then fades.
   const pulse = useSharedValue(0);
@@ -305,7 +311,7 @@ export function PixelCanvas({
   }, [activeColor, activeValue]);
   const noop = useCallback<FillHandler>(() => undefined, []);
   const noopStart = useCallback(() => undefined, []);
-  const { preview, layer, onBatch } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
+  const { preview, layer, onBatch, pending } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
   const fill = useFillGestures({
     grid,
     cells,
@@ -334,6 +340,16 @@ export function PixelCanvas({
   const fingerHalo = useDerivedValue(() => 5 / Math.max(1, scale.get()));
   const activeHex = activeColor === null ? undefined : artwork.palette.colors[activeColor]?.hex;
   const paletteHexes = artwork.palette.colors.map((c) => c.hex);
+  // Preview paths are mounted only for the colors that can be previewed (no UI → JS hop): the
+  // active one (a stroke only collects its cells, so its path is ready before the first one), the
+  // previous one (a stroke still running while the palette changes) and the colors whose batches
+  // are still pending (`pending`, tracked on the JS side by `useFillPreview`).
+  const activeNumber = activeColor === null ? 0 : activeColor + 1;
+  const [actives, setActives] = useState({ current: activeNumber, previous: 0 });
+  if (actives.current !== activeNumber) setActives({ current: activeNumber, previous: actives.current });
+  const previewValues = paletteHexes
+    .map((_, k) => k + 1)
+    .filter((v) => v === activeNumber || v === actives.previous || pending[v] !== undefined);
   // All simultaneous; the conflicts (tap vs pan vs long press, second finger) are settled by the
   // activation criteria of `@/lib/touch-intent` and the `filling` / `panning` shared values.
   const gesture = useSimultaneousGestures(...gestures, fill.tap, fill.longPress);
@@ -355,18 +371,26 @@ export function PixelCanvas({
                 <Image image={highlight} x={0} y={0} width={width} height={height} sampling={NEAREST} />
               ) : null}
               {atlas && capacity > 0 ? (
-                <NumberGlyphs
-                  atlas={atlas}
-                  cells={cells}
-                  inks={inks}
-                  gridWidth={width}
-                  capacity={capacity}
-                  range={glyphRange}
-                />
+                <Group opacity={numberOpacity}>
+                  <NumberGlyphs
+                    atlas={atlas}
+                    cells={cells}
+                    inks={inks}
+                    gridWidth={width}
+                    capacity={capacity}
+                    range={glyphRange}
+                  />
+                </Group>
               ) : null}
               <Image image={layer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
-              {paletteHexes.map((hex, k) => (
-                <PreviewCells key={k} groups={groups} value={k + 1} color={hex} gridWidth={width} />
+              {previewValues.map((value) => (
+                <PreviewCells
+                  key={value}
+                  groups={groups}
+                  value={value}
+                  color={paletteHexes[value - 1]}
+                  gridWidth={width}
+                />
               ))}
               <Path
                 path={gridPath}

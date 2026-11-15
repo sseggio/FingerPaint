@@ -7,6 +7,7 @@
  */
 
 import { MAX_SIZE } from '@/lib/artwork/types';
+import { NUMBER_MIN_CELL_PT_LARGE } from '@/lib/number-visibility';
 
 export interface Size {
   width: number;
@@ -40,14 +41,11 @@ export interface CellRange {
 
 /** Largest zoom: one cell is this many points wide. */
 export const MAX_CELL_PT = 48;
-/** Numbers appear from this cell size (points). */
-export const NUMBER_MIN_CELL_PT = 14;
-/** Same threshold in large-numbers mode. */
-export const NUMBER_MIN_CELL_PT_LARGE = 18;
-/** Grid lines appear from this cell size (points). */
-export const GRID_MIN_CELL_PT = 8;
-/** Cell size a double tap zooms to (at least), comfortably above the numbers threshold. */
-export const DOUBLE_TAP_CELL_PT = 26;
+/**
+ * Cell size a double tap zooms to (at least), above the numbers threshold even in large mode
+ * (see `@/lib/number-visibility`).
+ */
+export const DOUBLE_TAP_CELL_PT = 36;
 
 export function clamp(value: number, min: number, max: number): number {
   'worklet';
@@ -148,15 +146,10 @@ export function rangeSize(r: CellRange): number {
   return Math.max(0, r.x1 - r.x0) * Math.max(0, r.y1 - r.y0);
 }
 
-/** Cell size from which numbers are drawn. */
-export function numberThreshold(largeNumbers: boolean): number {
-  'worklet';
-  return largeNumbers ? NUMBER_MIN_CELL_PT_LARGE : NUMBER_MIN_CELL_PT;
-}
-
 /**
- * Upper bound of visible cells once numbers are shown (scale >= threshold): sizes the glyph
- * buffer. A view `n` points wide shows at most ceil(n / threshold) + 1 partial columns.
+ * Upper bound of visible cells once numbers are drawn (scale > threshold, the start of their
+ * fade-in, see `numberZoomRange`): sizes the glyph buffer. A view `n` points wide shows at most
+ * ceil(n / threshold) + 1 partial columns.
  */
 export function maxVisibleCells(view: Size, threshold: number, grid: Size): number {
   'worklet';
@@ -183,8 +176,14 @@ export function doubleTapViewport(
   return clampViewport(zoomAt(v, readable, fx, fy), grid, view, bounds);
 }
 
-/** Cell size the "Find" hint zooms to (at least): numbers are readable, even in large mode. */
-export const FOCUS_CELL_PT = 28;
+/**
+ * Default cell size the "Find" hint zooms to (at least): 34 pt, the absolute numbers threshold of
+ * the large mode, deliberately, so that a caller without the zoom context still lands on readable
+ * numbers in both modes. The only app caller (`useViewport`) passes the full-opacity scale of
+ * `numberZoomRange` instead, which also accounts for the zoom over the fit (and the max zoom);
+ * the default is used by the geometry tests only.
+ */
+export const FOCUS_CELL_PT = NUMBER_MIN_CELL_PT_LARGE;
 
 /** World point (in cells) at the center of the view. */
 export function viewCenter(v: Viewport, view: Size): { x: number; y: number } {
