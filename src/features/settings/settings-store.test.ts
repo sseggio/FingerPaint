@@ -2,7 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { createEnvelope, StorageKeys } from '@/lib/storage';
 
-import { DEFAULT_SETTINGS, isSettings, migrateSettingsV0toV1, migrateSettingsV1toV2 } from './settings-schema';
+import {
+  DEFAULT_SETTINGS,
+  isSettings,
+  migrateSettingsV0toV1,
+  migrateSettingsV1toV2,
+  migrateSettingsV2toV3,
+  settingsSchema,
+  withNewerSettingsDefaults,
+} from './settings-schema';
 import { createSettingsStore } from './settings-store';
 
 function deferred<T>() {
@@ -34,6 +42,28 @@ describe('settings schema', () => {
     expect(isSettings({ ...DEFAULT_SETTINGS, theme: 'neon' })).toBe(false);
     expect(isSettings({ ...DEFAULT_SETTINGS, sessionTimerMin: 15 })).toBe(false);
     expect(isSettings({ ...DEFAULT_SETTINGS, haptics: 'yes' })).toBe(false);
+    expect(isSettings({ ...DEFAULT_SETTINGS, fillDelayMs: 200 })).toBe(false);
+    for (const fillDelayMs of [120, 150, 250]) expect(isSettings({ ...DEFAULT_SETTINGS, fillDelayMs })).toBe(true);
+  });
+
+  it('defaults the long-press delay to normal (150 ms) at schema v3', () => {
+    expect(DEFAULT_SETTINGS.fillDelayMs).toBe(150);
+    expect(settingsSchema.version).toBe(3);
+  });
+
+  it('migrates v2 → v3: the delay gets its default, nothing else changes', () => {
+    const { fillDelayMs: _d, ...v2 } = { ...DEFAULT_SETTINGS, haptics: false, leftHanded: true, neonTheme: false };
+    const migrated = migrateSettingsV2toV3(v2);
+    expect(migrated).toEqual({ ...v2, fillDelayMs: 150 });
+    expect(isSettings(migrated)).toBe(true);
+    // An existing value is never overwritten.
+    expect(migrateSettingsV2toV3({ ...v2, fillDelayMs: 250 })).toMatchObject({ fillDelayMs: 250 });
+    expect(() => migrateSettingsV2toV3(null)).toThrow();
+  });
+
+  it('fills the delay in backups written before it existed', () => {
+    const { fillDelayMs: _d, ...old } = DEFAULT_SETTINGS;
+    expect(withNewerSettingsDefaults(old)).toEqual(DEFAULT_SETTINGS);
   });
 
   it('migrates v0 → v1', () => {
@@ -120,6 +150,33 @@ describe('useSettingsStore', () => {
     await store.getState().hydrate();
     expect(store.getState().settings).toEqual(stored);
     expect(DEFAULT_SETTINGS.dragToFill).toBe(true);
+  });
+
+  it('hydrates stored v2 settings through the v3 migration without losing any of them', async () => {
+    const { fillDelayMs: _d, ...v2 } = {
+      ...DEFAULT_SETTINGS,
+      locale: 'fr' as const,
+      theme: 'dark' as const,
+      dragToFill: false,
+      haptics: false,
+      colorblindSymbols: true,
+      sessionTimerMin: 20 as const,
+      goldConfetti: false,
+    };
+    await AsyncStorage.setItem(StorageKeys.settings, JSON.stringify(createEnvelope(v2, 2)));
+    const store = createSettingsStore();
+    await store.getState().hydrate();
+    expect(store.getState().settings).toEqual({ ...v2, fillDelayMs: 150 });
+  });
+
+  it('persists the long-press delay', async () => {
+    const a = createSettingsStore();
+    await a.getState().hydrate();
+    await a.getState().update({ fillDelayMs: 120 });
+    const b = createSettingsStore();
+    await b.getState().hydrate();
+    expect(b.getState().settings.fillDelayMs).toBe(120);
+    await expect(b.getState().update({ fillDelayMs: 300 as never })).rejects.toThrow(TypeError);
   });
 
   it('resets to defaults', async () => {

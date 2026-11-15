@@ -68,6 +68,10 @@ describe('ColoringScreen', () => {
     expect(screen.getByLabelText('Palette')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Color 1, 0 of \d+ cells$/ })).toBeSelected();
     expect(screen.getByLabelText(/0% colored/)).toBeTruthy();
+    // Progress bar of the active color (F23).
+    const bar = screen.getByRole('progressbar');
+    expect(bar.props.accessibilityLabel).toMatch(/^Color 1 progress, 0 of \d+ cells$/);
+    expect(bar.props.accessibilityValue).toMatchObject({ min: 0, now: 0 });
   });
 
   it('restores saved progress and shows the end screen for a finished artwork', async () => {

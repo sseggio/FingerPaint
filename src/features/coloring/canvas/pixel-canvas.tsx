@@ -87,6 +87,8 @@ export interface PixelCanvasProps {
    * press"). One finger always pans the view, a tap always fills.
    */
   dragToFill?: boolean;
+  /** Hold time (ms) before continuous fill starts (setting, F23); the default delay otherwise. */
+  fillDelayMs?: number;
   /** Continuous fill just started after a long press (e.g. a light haptic). */
   onFillStart?: () => void;
   /** Colorblind mode: symbols instead of numbers. */
@@ -270,6 +272,7 @@ export function PixelCanvas({
   activeColor = null,
   onFill,
   dragToFill = true,
+  fillDelayMs,
   onFillStart,
   colorblindSymbols = false,
   highContrast = false,
@@ -479,6 +482,7 @@ export function PixelCanvas({
     cells,
     enabled: !!view && canFill,
     longPressFill: dragToFill,
+    longPressMs: fillDelayMs,
     activeValue,
     scale,
     tx,

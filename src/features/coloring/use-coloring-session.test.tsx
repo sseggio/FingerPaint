@@ -94,14 +94,85 @@ describe('useColoringSession', () => {
     const { result } = await open(await freshStore());
     await act(async () => result.current.fill(A, 'drag'));
     expect(result.current.activeColor).toBe(1);
-    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+    // A light success haptic for each finished color (F23).
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
     await act(async () => result.current.fill(B, 'drag'));
     expect(result.current.activeColor).toBe(2);
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(2);
     await act(async () => result.current.fill(C, 'drag'));
     expect(result.current.completion).toBe('celebrate');
     await act(async () => result.current.fill(C, 'drag'));
-    // The success haptic belongs to the celebration, played by the screen after the replay.
-    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+    // The artwork's success haptic belongs to the celebration, played by the screen after the replay.
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(2);
+  });
+
+  describe('pause on a finished color before the next one (F23)', () => {
+    async function openWithDelay() {
+      const store = await freshStore();
+      const hook = await renderHook(() => useColoringSession(artwork, { store, advanceDelayMs: 600 }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      jest.useFakeTimers();
+      return hook;
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('keeps the finished color active for the delay, then selects the next one', async () => {
+      const { result } = await openWithDelay();
+      await act(async () => result.current.fill(A, 'drag'));
+      expect(result.current.session?.colorFilled[0]).toBe(A.length);
+      expect(result.current.activeColor).toBe(0);
+      await act(async () => {
+        jest.advanceTimersByTime(599);
+      });
+      expect(result.current.activeColor).toBe(0);
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(result.current.activeColor).toBe(1);
+    });
+
+    it('a fill during the pause moves on first and is meant for the next color', async () => {
+      const { result } = await openWithDelay();
+      await act(async () => result.current.fill(A, 'drag'));
+      await act(async () => result.current.fill([B[0]], 'tap'));
+      expect(result.current.activeColor).toBe(1);
+      expect(result.current.session?.colorFilled[1]).toBe(1);
+      // The scheduled move does not happen twice.
+      await act(async () => result.current.selectColor(2));
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(result.current.activeColor).toBe(2);
+    });
+
+    it('a color chosen by the user during the pause wins', async () => {
+      const { result } = await openWithDelay();
+      await act(async () => result.current.fill(A, 'drag'));
+      await act(async () => result.current.selectColor(2));
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(result.current.activeColor).toBe(2);
+    });
+
+    it('nothing fires after the screen is left', async () => {
+      const { result, unmount } = await openWithDelay();
+      const setTimer = jest.spyOn(globalThis, 'setTimeout');
+      const clearTimer = jest.spyOn(globalThis, 'clearTimeout');
+      await act(async () => result.current.fill(A, 'drag'));
+      const index = setTimer.mock.calls.findIndex(([, ms]) => ms === 600);
+      expect(index).toBeGreaterThanOrEqual(0);
+      const timer = setTimer.mock.results[index].value as ReturnType<typeof setTimeout>;
+      await act(async () => unmount());
+      expect(clearTimer).toHaveBeenCalledWith(timer);
+      setTimer.mockRestore();
+      clearTimer.mockRestore();
+    });
   });
 
   it('autosaves, flushes on unmount and restores the exact state when coming back', async () => {

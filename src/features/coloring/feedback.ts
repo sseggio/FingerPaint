@@ -16,8 +16,11 @@ export const coloringFeedback = {
   wrongColor: () => play(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
   /** A long press has just started continuous fill: the finger can now slide to color. */
   fillStart: () => play(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
-  /** A color has just been finished (the palette moves on to the next one). */
-  colorDone: () => play(() => Haptics.selectionAsync()),
+  /**
+   * A color has just been finished: its progress bar pops (F23), then the palette moves on to the
+   * next one. A light success notification, distinct from the selection tick.
+   */
+  colorDone: () => play(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   /** The whole artwork is finished. */
   artworkDone: () => play(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   /** Switching color in the palette. */

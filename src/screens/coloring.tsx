@@ -10,6 +10,7 @@ import { lockReason } from '@/features/entitlements/can-access';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useCosmetics } from '@/features/entitlements/use-cosmetics';
 import { PixelCanvas, type PixelCanvasHandle, type ReplayRequest } from '@/features/coloring/canvas/pixel-canvas';
+import { COLOR_DONE_HOLD_MS } from '@/features/coloring/color-progress';
 import { replayOrder, type ColoringSession } from '@/features/coloring/coloring-session';
 import { CompletionCard } from '@/features/coloring/completion-card';
 import { Confetti } from '@/features/coloring/confetti';
@@ -72,12 +73,17 @@ function ColoringView({ artwork, replayOnOpen = false }: { artwork: Artwork; rep
   const reduceMotion = useReducedMotion();
   const largeNumbers = useSettingsStore((s) => s.settings.largeNumbers);
   const dragToFill = useSettingsStore((s) => s.settings.dragToFill);
+  const fillDelayMs = useSettingsStore((s) => s.settings.fillDelayMs);
   const colorblind = useSettingsStore((s) => s.settings.colorblindSymbols);
   const highContrast = useSettingsStore((s) => s.settings.highContrast);
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
   const cosmetics = useCosmetics();
   const title = localizedTitle(artwork.title, locale);
-  const { session, revision, activeColor, completion, selectColor, fill } = useColoringSession(artwork);
+  // A finished color stays active for a moment (its progress bar full) before the next one;
+  // with reduce motion, right away.
+  const { session, revision, activeColor, completion, selectColor, fill } = useColoringSession(artwork, {
+    advanceDelayMs: reduceMotion ? 0 : COLOR_DONE_HOLD_MS,
+  });
   const canvas = useRef<PixelCanvasHandle>(null);
   const [hint, setHint] = useState<string | null>(null);
   const breakReminder = useBreakReminder(completion === 'none');
@@ -192,6 +198,7 @@ function ColoringView({ artwork, replayOnOpen = false }: { artwork: Artwork; rep
           activeColor={coloring ? activeColor : null}
           onFill={coloring ? fill : undefined}
           dragToFill={dragToFill}
+          fillDelayMs={fillDelayMs}
           onFillStart={coloringFeedback.fillStart}
           replay={replay}
           onReplayEnd={onReplayEnd}

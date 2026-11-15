@@ -6,7 +6,7 @@ import { reportWorkletError } from '@/features/diagnostics/report-worklet-error'
 import { addBatch, type PreviewState } from '@/lib/fill-preview';
 import { DRAG_BATCH_MAX, emptyStroke, pendingCount, strokeTo, type StrokeState } from '@/lib/fill-stroke';
 import { screenToCell, type Size } from '@/lib/geometry';
-import { LONG_PRESS_FILL_GESTURE, TAP_GESTURE } from '@/lib/touch-intent';
+import { LONG_PRESS_MS, longPressFillGestureConfig, tapGestureConfig } from '@/lib/touch-intent';
 
 export type FillSource = 'tap' | 'drag';
 
@@ -24,6 +24,8 @@ export interface FillGestureOptions {
   enabled: boolean;
   /** A long press starts continuous fill ("fill by sliding after a long press" setting). */
   longPressFill: boolean;
+  /** Hold time (ms) before continuous fill starts ("delay before coloring by sliding", F23). */
+  longPressMs?: number;
   /** 1-based palette value of the active color (0 = none). */
   activeValue: SharedValue<number>;
   scale: SharedValue<number>;
@@ -59,6 +61,7 @@ export function useFillGestures({
   cells,
   enabled,
   longPressFill,
+  longPressMs = LONG_PRESS_MS,
   activeValue,
   scale,
   tx,
@@ -131,14 +134,19 @@ export function useFillGestures({
     send();
   };
 
+  // Plain numbers computed on the JS runtime: a delay change only updates the config of the
+  // existing handlers (same handler tags, nothing recreated).
+  const tapConfig = tapGestureConfig(longPressMs, longPressFill);
+  const longPressConfig = longPressFillGestureConfig(longPressMs);
+
   // Every gesture callback below runs on the UI runtime: an exception there aborts the app
   // (F19), so each body is guarded and the error goes to the local diagnostics log instead.
   const tap = useTapGesture({
     testID: 'fill-tap',
     enabled,
     // Explicit fields: the Worklets plugin does not accept spreads in gesture configs.
-    maxDuration: TAP_GESTURE.maxDuration,
-    maxDistance: TAP_GESTURE.maxDistance,
+    maxDuration: tapConfig.maxDuration,
+    maxDistance: tapConfig.maxDistance,
     onActivate: (e) => {
       try {
         if (filling.get()) return;
@@ -154,13 +162,13 @@ export function useFillGestures({
     },
   });
 
-  // Activates once the finger has stayed within the slop for LONG_PRESS_MS (it fails as soon as
+  // Activates once the finger has stayed within the slop for `longPressMs` (it fails as soon as
   // the finger moves farther first: that touch is a pan of the viewport).
   const longPress = usePanGesture({
     testID: 'fill-long-press',
     enabled: enabled && longPressFill,
-    maxPointers: LONG_PRESS_FILL_GESTURE.maxPointers,
-    activateAfterLongPress: LONG_PRESS_FILL_GESTURE.activateAfterLongPress,
+    maxPointers: longPressConfig.maxPointers,
+    activateAfterLongPress: longPressConfig.activateAfterLongPress,
     onActivate: (e) => {
       try {
         if (panning.get()) return;

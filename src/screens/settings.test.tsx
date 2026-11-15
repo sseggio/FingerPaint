@@ -128,6 +128,18 @@ describe('SettingsScreen', () => {
     expect((await storedSettings()).sessionTimerMin).toBe(20);
   });
 
+  it('sets the delay before coloring by sliding (normal by default)', async () => {
+    await render(<SettingsScreen />);
+    expect(screen.getByLabelText('Delay before coloring by sliding')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Normal' })).toBeSelected();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Short' }));
+    expect(useSettingsStore.getState().settings.fillDelayMs).toBe(120);
+    expect(screen.getByRole('radio', { name: 'Short' })).toBeSelected();
+    expect((await storedSettings()).fillDelayMs).toBe(120);
+    await fireEvent.press(screen.getByRole('radio', { name: 'Long' }));
+    expect(useSettingsStore.getState().settings.fillDelayMs).toBe(250);
+  });
+
   it('resets the progress only after confirmation', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const removeAll = jest.fn(() => Promise.resolve());
