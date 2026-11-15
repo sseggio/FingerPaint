@@ -16,7 +16,11 @@
       },
       "infoPlist": {
         "CFBundleAllowMixedLocalizations": true,
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleLocalizations": [
+          "en",
+          "fr"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -99,6 +103,17 @@
     "locales": {
       "en": "./assets/locales/en.json",
       "fr": "./assets/locales/fr.json"
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "04c09651-4379-4da6-99d5-58db27bf4d7c"
+      }
+    },
+    "owner": "sidjo"
   }
 }
