@@ -180,6 +180,7 @@ describe('fill gestures (F15)', () => {
     await flush();
     expect(center().x).toBeCloseTo(before.x);
     fill.end({ ...CENTER });
+    await flush();
   });
 
   it('a second finger ending a stroke pans with momentum again', async () => {
