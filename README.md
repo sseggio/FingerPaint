@@ -24,7 +24,7 @@ npx expo start                                   # boutique « bientôt disponib
 EXPO_PUBLIC_IAP_PROVIDER=mock npx expo start     # boutique simulée + panneau dev
 ```
 
-Catalogue en ligne (back-office F21, facultatif) : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start`. Pour les builds, renseigner `EXPO_PUBLIC_CATALOG_URL` dans les profils de `eas.json` (vide par défaut = fonctionnalité désactivée, l'app n'utilise que le contenu embarqué). Voir [backoffice/README.md](backoffice/README.md#brancher-lapp-sur-le-catalogue).
+Catalogue en ligne (back-office F21, facultatif) : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start`. Pour les builds, ajouter `EXPO_PUBLIC_CATALOG_URL` dans les `env` des profils de `eas.json` (absente par défaut = fonctionnalité désactivée ; EAS refuse une valeur vide, l'app n'utilise que le contenu embarqué). Voir [backoffice/README.md](backoffice/README.md#brancher-lapp-sur-le-catalogue).
 
 Les achats (`expo-iap`) et Skia demandent un **development build** (`npx expo run:ios` ou `npx eas-cli@latest build --profile development`).
 
