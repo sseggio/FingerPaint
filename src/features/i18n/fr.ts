@@ -309,6 +309,15 @@ export const fr: Dictionary = {
   'about.contact.body': 'Une question, une idée, un bug ? Écris-nous, on lit tout.',
   'about.contact.button': 'Nous écrire',
   'about.contact.label': 'Écrire un e-mail à {email}',
+  'about.diagnostics.title': 'Diagnostic',
+  'about.diagnostics.intro':
+    'Erreurs survenues sur cet appareil. Elles restent ici : rien n’est envoyé. Tu peux les copier pour les joindre à un message.',
+  'about.diagnostics.count': { one: '{count} erreur enregistrée', other: '{count} erreurs enregistrées' },
+  'about.diagnostics.copy': 'Copier',
+  'about.diagnostics.copyLabel': 'Copier le rapport de diagnostic',
+  'about.diagnostics.clear': 'Effacer',
+  'about.diagnostics.clearLabel': 'Effacer les erreurs enregistrées',
+  'about.diagnostics.reportHeader': 'Diagnostic PixelJoy, version {version}',
 
   'language.fr': 'Français',
   'language.en': 'English',

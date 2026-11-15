@@ -15,7 +15,17 @@ import {
   type SkPath,
   type Transforms3d,
 } from '@shopify/react-native-skia';
-import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Ref,
+} from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useSimultaneousGestures } from 'react-native-gesture-handler';
 import {
@@ -28,7 +38,6 @@ import {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { scheduleOnUI } from 'react-native-worklets';
 
 import type { Artwork } from '@/lib/artwork/types';
 import { groupByValue, previewCells } from '@/lib/fill-preview';
@@ -171,6 +180,49 @@ const NumberGlyphs = memo(function NumberGlyphs({ atlas, cells, inks, gridWidth,
   return <Atlas image={image} sprites={sprites} transforms={transforms} sampling={SMOOTH} />;
 });
 
+/**
+ * Latest replay frame (F18), set from the JS thread once per frame. Read by `ReplayImage` only:
+ * the frames re-render that one Skia node, as a plain React prop (no Skia object in a shared
+ * value, F19).
+ */
+interface ImageStore {
+  get(): SkImage | null;
+  set(image: SkImage | null): void;
+  subscribe(listener: () => void): () => void;
+}
+
+function createImageStore(): ImageStore {
+  let image: SkImage | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => image,
+    set(next) {
+      if (next === image) return;
+      image = next;
+      listeners.forEach((l) => l());
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+const ReplayImage = memo(function ReplayImage({
+  store,
+  width,
+  height,
+}: {
+  store: ImageStore;
+  width: number;
+  height: number;
+}) {
+  const image = useSyncExternalStore(store.subscribe, store.get, store.get);
+  return <Image image={image} x={0} y={0} width={width} height={height} sampling={NEAREST} />;
+});
+
 interface PreviewCellsProps {
   /** Previewed cells per palette value (1-based). */
   groups: SharedValue<Record<number, number[]>>;
@@ -238,8 +290,8 @@ export function PixelCanvas({
   }, []);
 
   const background = useMemo(() => makeLayerImage(buildBackgroundPixels(artwork), width, height), [artwork, width, height]);
-  // Rebuilt once per revision; the screen coalesces revisions to at most one per frame. Drawn
-  // through `useFillPreview`, in sync with the fill preview.
+  // Rebuilt once per revision; the screen coalesces revisions to at most one per frame. Drawn as
+  // a plain prop (F19); `useFillPreview` drops the preview it shows one frame after the commit.
   const colorLayer = useMemo(
     () => makeLayerImage(colorPixels, width, height),
     // colorRevision signals in-place changes of colorPixels.
@@ -301,8 +353,8 @@ export function PixelCanvas({
   const pulseGrow = useSharedValue(0);
 
   // Completion replay (F18). The player paints its own buffer on the JS thread, one batch per
-  // frame; each frame's image goes to the UI thread through a shared value (no React state).
-  const replayLayer = useSharedValue<SkImage | null>(null);
+  // frame; each frame's image re-renders the replay image node only (see `ReplayImage`).
+  const [replayLayer] = useState(createImageStore);
   const pop = useSharedValue(1);
   const playerRef = useRef<ReplayPlayer | null>(null);
   /** Ends the replay after its pop; run early by `skipReplay`. */
@@ -322,11 +374,7 @@ export function PixelCanvas({
       artwork: art,
       order: replay.order,
       onFrame: (pixels) => {
-        const image = makeLayerImage(pixels, art.width, art.height);
-        scheduleOnUI(() => {
-          'worklet';
-          replayLayer.set(image);
-        });
+        replayLayer.set(makeLayerImage(pixels, art.width, art.height));
       },
       onDone: (skipped) => {
         if (skipped || !replay.pop) {
@@ -425,7 +473,7 @@ export function PixelCanvas({
   }, [activeColor, activeValue]);
   const noop = useCallback<FillHandler>(() => undefined, []);
   const noopStart = useCallback(() => undefined, []);
-  const { preview, layer, onBatch, pending } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
+  const { preview, onBatch, pending } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
   const fill = useFillGestures({
     grid,
     cells,
@@ -483,7 +531,7 @@ export function PixelCanvas({
               <Group transform={transform}>
                 <Image image={background} x={0} y={0} width={width} height={height} sampling={NEAREST} />
                 {replay ? (
-                  <Image image={replayLayer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                  <ReplayImage store={replayLayer} width={width} height={height} />
                 ) : (
                   <>
                     {highlight ? (
@@ -501,7 +549,7 @@ export function PixelCanvas({
                         />
                       </Group>
                     ) : null}
-                    <Image image={layer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+                    <Image image={colorLayer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
                     {previewValues.map((value) => (
                       <PreviewCells
                         key={value}
