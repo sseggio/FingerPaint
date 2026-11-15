@@ -240,6 +240,12 @@ export function createApp(cfg: AppConfig) {
     if (loginChecks >= maxLoginChecks) {
       return c.json({ error: 'rate_limited', retryAfter: 1 }, 429, { 'Retry-After': '1' });
     }
+    // Read the (4 KB max) body before taking a slot: a slow client cannot hold a slot while it uploads.
+    const body: unknown = await c.req.json().catch(() => null);
+    const password = isRecord(body) && typeof body.password === 'string' ? body.password : '';
+    if (loginChecks >= maxLoginChecks) {
+      return c.json({ error: 'rate_limited', retryAfter: 1 }, 429, { 'Retry-After': '1' });
+    }
     const client = clientId(c);
     const t = now().getTime();
     const wait = limiter.reserve(client, t);
@@ -250,8 +256,6 @@ export function createApp(cfg: AppConfig) {
     loginChecks++;
     let ok = false;
     try {
-      const body: unknown = await c.req.json().catch(() => null);
-      const password = isRecord(body) && typeof body.password === 'string' ? body.password : '';
       ok = password.length > 0 && (await verifyPassword(password, cfg.passwordHash));
     } finally {
       loginChecks--;
