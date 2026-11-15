@@ -147,3 +147,47 @@ export function settleBatch(
   }
   return { rejected, shownAt: painted ? layer + 1 : layer };
 }
+
+/**
+ * JS-side mirror of the colors still in the preview: palette value (1-based) → color layer
+ * revision that shows its last pending batch. Lets the canvas mount a preview path only for the
+ * colors that can be previewed, without a UI → JS hop. Immutable updates (React state).
+ */
+export type PendingValues = Readonly<Record<number, number>>;
+
+/**
+ * A batch was settled (`settleBatch`): its painted cells stay previewed until revision
+ * `shownAt`. Returns `pending` itself when nothing changes (batch fully refused, or already
+ * shown by the layer on screen, `layer`).
+ */
+export function addPendingBatch(
+  pending: PendingValues,
+  batch: ArrayLike<number>,
+  rejected: readonly number[],
+  shownAt: number,
+  layer: number,
+  cells: ArrayLike<number>,
+): PendingValues {
+  if (shownAt <= layer) return pending;
+  const refused = new Set(rejected);
+  let next: Record<number, number> | null = null;
+  for (let k = 0; k < batch.length; k++) {
+    if (refused.has(batch[k])) continue;
+    const value = cells[batch[k]];
+    if (!value) continue;
+    const current = (next ?? pending)[value];
+    if (current !== undefined && current >= shownAt) continue;
+    next ??= { ...pending };
+    next[value] = shownAt;
+  }
+  return next ?? pending;
+}
+
+/** The color layer of revision `layer` is drawn: drops the colors it shows (same object if none). */
+export function dropShownValues(pending: PendingValues, layer: number): PendingValues {
+  const keys = Object.keys(pending).map(Number);
+  if (!keys.some((v) => pending[v] <= layer)) return pending;
+  const next: Record<number, number> = {};
+  for (const v of keys) if (pending[v] > layer) next[v] = pending[v];
+  return next;
+}

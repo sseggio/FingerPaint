@@ -148,7 +148,8 @@ export function rangeSize(r: CellRange): number {
 
 /**
  * Upper bound of visible cells once numbers are drawn (scale > threshold, the start of their
- * fade-in, see `numberZoomRange`): sizes the glyph buffer. A view `n` points wide shows at most ceil(n / threshold) + 1 partial columns.
+ * fade-in, see `numberZoomRange`): sizes the glyph buffer. A view `n` points wide shows at most
+ * ceil(n / threshold) + 1 partial columns.
  */
 export function maxVisibleCells(view: Size, threshold: number, grid: Size): number {
   'worklet';
@@ -176,9 +177,11 @@ export function doubleTapViewport(
 }
 
 /**
- * Default cell size the "Find" hint zooms to (at least): the absolute numbers threshold in large
- * mode. The canvas passes the full-opacity scale of `numberZoomRange` instead, which also
- * accounts for the zoom over the fit.
+ * Default cell size the "Find" hint zooms to (at least): 34 pt, the absolute numbers threshold of
+ * the large mode, deliberately, so that a caller without the zoom context still lands on readable
+ * numbers in both modes. The only app caller (`useViewport`) passes the full-opacity scale of
+ * `numberZoomRange` instead, which also accounts for the zoom over the fit (and the max zoom);
+ * the default is used by the geometry tests only.
  */
 export const FOCUS_CELL_PT = NUMBER_MIN_CELL_PT_LARGE;
 

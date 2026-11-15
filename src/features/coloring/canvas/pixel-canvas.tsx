@@ -19,7 +19,6 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector, useSimultaneousGestures } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
-  useAnimatedReaction,
   useDerivedValue,
   useSharedValue,
   withDelay,
@@ -28,7 +27,6 @@ import {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 
 import type { Artwork } from '@/lib/artwork/types';
 import { groupByValue, previewCells } from '@/lib/fill-preview';
@@ -313,7 +311,7 @@ export function PixelCanvas({
   }, [activeColor, activeValue]);
   const noop = useCallback<FillHandler>(() => undefined, []);
   const noopStart = useCallback(() => undefined, []);
-  const { preview, layer, onBatch } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
+  const { preview, layer, onBatch, pending } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
   const fill = useFillGestures({
     grid,
     cells,
@@ -342,25 +340,16 @@ export function PixelCanvas({
   const fingerHalo = useDerivedValue(() => 5 / Math.max(1, scale.get()));
   const activeHex = activeColor === null ? undefined : artwork.palette.colors[activeColor]?.hex;
   const paletteHexes = artwork.palette.colors.map((c) => c.hex);
-  // Preview paths are mounted only for the colors that can be previewed: the active one (a stroke
-  // only collects its cells, so its path is ready before the first one) and the colors of the
-  // batches still pending after a color change, reported by the UI thread when they change.
-  const [pendingValues, setPendingValues] = useState<number[]>([]);
-  const reportPending = useCallback((values: number[]) => {
-    setPendingValues((prev) =>
-      prev.length === values.length && prev.every((v, k) => v === values[k]) ? prev : values,
-    );
-  }, []);
-  useAnimatedReaction(
-    () => Object.keys(groups.get()).map(Number).sort((a, b) => a - b).join(','),
-    (key, previous) => {
-      if (key !== previous) scheduleOnRN(reportPending, key ? key.split(',').map(Number) : []);
-    },
-  );
+  // Preview paths are mounted only for the colors that can be previewed (no UI → JS hop): the
+  // active one (a stroke only collects its cells, so its path is ready before the first one), the
+  // previous one (a stroke still running while the palette changes) and the colors whose batches
+  // are still pending (`pending`, tracked on the JS side by `useFillPreview`).
   const activeNumber = activeColor === null ? 0 : activeColor + 1;
+  const [actives, setActives] = useState({ current: activeNumber, previous: 0 });
+  if (actives.current !== activeNumber) setActives({ current: activeNumber, previous: actives.current });
   const previewValues = paletteHexes
     .map((_, k) => k + 1)
-    .filter((value) => value === activeNumber || pendingValues.includes(value));
+    .filter((v) => v === activeNumber || v === actives.previous || pending[v] !== undefined);
   // All simultaneous; the conflicts (tap vs pan vs long press, second finger) are settled by the
   // activation criteria of `@/lib/touch-intent` and the `filling` / `panning` shared values.
   const gesture = useSimultaneousGestures(...gestures, fill.tap, fill.longPress);

@@ -1,7 +1,9 @@
 import {
   acknowledgeBatch,
   addBatch,
+  addPendingBatch,
   canClearBatch,
+  dropShownValues,
   emptyPreview,
   groupByValue,
   paintedMask,
@@ -120,5 +122,33 @@ describe('settleBatch', () => {
 
   it('nothing newly painted: shown by the current revision already', () => {
     expect(settleBatch([0, 1], [true, false], [true, false], 5)).toEqual({ rejected: [1], shownAt: 5 });
+  });
+});
+
+describe('pending values (JS mirror of the previewed colors)', () => {
+  const cells = [1, 1, 2, 2, 0, 3];
+
+  it('records the colors of the painted cells until the revision that shows them', () => {
+    let pending = addPendingBatch({}, [0, 1, 2], [], 4, 3, cells);
+    expect(pending).toEqual({ 1: 4, 2: 4 });
+    pending = addPendingBatch(pending, [5], [], 5, 3, cells);
+    expect(pending).toEqual({ 1: 4, 2: 4, 3: 5 });
+    pending = dropShownValues(pending, 4);
+    expect(pending).toEqual({ 3: 5 });
+    expect(dropShownValues(pending, 5)).toEqual({});
+  });
+
+  it('ignores refused cells, empty cells and batches already shown', () => {
+    const empty = {};
+    expect(addPendingBatch(empty, [0, 1], [0, 1], 4, 3, cells)).toBe(empty);
+    expect(addPendingBatch(empty, [4], [], 4, 3, cells)).toBe(empty);
+    expect(addPendingBatch(empty, [0], [], 3, 3, cells)).toBe(empty);
+    expect(addPendingBatch(empty, [0, 2], [2], 4, 3, cells)).toEqual({ 1: 4 });
+  });
+
+  it('keeps the same object when nothing changes', () => {
+    const pending = { 1: 6 };
+    expect(addPendingBatch(pending, [0], [], 5, 3, cells)).toBe(pending);
+    expect(dropShownValues(pending, 5)).toBe(pending);
   });
 });
