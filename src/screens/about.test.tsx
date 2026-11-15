@@ -17,7 +17,7 @@ jest.mock('expo-application', () => ({ nativeApplicationVersion: '1.0.0', native
 describe('AboutScreen', () => {
   it('shows the version, the privacy promise, credits, licenses and contact', async () => {
     await render(<AboutScreen />);
-    expect(screen.getByRole('header', { name: 'FingerPaint' })).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'PixelJoy' })).toBeTruthy();
     expect(screen.getByText('Version 1.0.0 (build 7)')).toBeTruthy();
     for (const header of ['Privacy', 'Credits', 'Open-source licenses', 'Contact']) {
       expect(screen.getByRole('header', { name: header })).toBeTruthy();

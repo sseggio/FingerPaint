@@ -31,13 +31,13 @@ Elles viennent des tokens de `src/theme/tokens.ts` : fond du splash `colors.ligh
 | `app.json` | `ios.bundleIdentifier`, `android.package` | `com.krafting.pixeljoy` | Garder si l'identifiant est libre sur le compte Apple, sinon choisir un id unique (et mettre à jour les SKU de `src/features/entitlements/types.ts` + `docs/iap-setup.md`). |
 | `eas.json` | `submit.production.ios.ascAppId` | `REPLACE_ME` | *Apple ID* numérique de l'app (App Store Connect › App › Informations générales). |
 | `eas.json` | `submit.production.ios.appleTeamId` | `REPLACE_ME` | Team ID Apple (10 caractères). |
-| `src/features/about/app-info.ts` | `CONTACT_EMAIL` | `hello@fingerpaint.app` | Adresse de support réelle (aussi dans `docs/privacy-policy.md`). |
+| `src/features/about/app-info.ts` | `CONTACT_EMAIL` | `hello@pixeljoy.app` | Adresse de support réelle (aussi dans `docs/privacy-policy.md`). |
 | `app.json` | `extra.eas.projectId` | absent | Ajouté automatiquement par `eas init`. |
 
 ## 3. Créer l'app
 
 1. developer.apple.com › *Identifiers* : l'identifiant `com.krafting.pixeljoy` peut être créé à la main, ou laissé à EAS (il le crée et active la capacité *In-App Purchase* lors de la synchronisation des capacités).
-2. App Store Connect › *Apps* › **+ Nouvelle app** : plateforme iOS, nom **FingerPaint** (ou variante si pris), langue principale Français, bundle id `com.krafting.pixeljoy`, SKU interne libre (ex. `fingerpaint-ios`).
+2. App Store Connect › *Apps* › **+ Nouvelle app** : plateforme iOS, nom **PixelJoy** (ou variante si pris), langue principale Français, bundle id `com.krafting.pixeljoy`, SKU interne libre (ex. `fingerpaint-ios`).
 3. Reporter l'*Apple ID* de l'app dans `eas.json` (`ascAppId`).
 
 ## 4. EAS
@@ -81,16 +81,16 @@ Suggestions (FR et EN, mode clair, une en sombre) :
 ## 8. Fiche App Store (proposition)
 
 ### Français
-- **Nom** (30) : FingerPaint
+- **Nom** (30) : PixelJoy
 - **Sous-titre** (30) : Pixel art par numéros, zen
 - **Mots-clés** (100) : coloriage,pixel,art,numéros,peinture,détente,zen,anti-stress,dessin,couleur,mosaïque,hors ligne
 - **Texte promotionnel** : Colorie des illustrations pixel art originales, sans pub et sans connexion.
 - **Description** :
   > Colorie des illustrations pixel art originales, case par case, numéro par numéro.
   >
-  > FingerPaint, c'est le coloriage relaxant comme il devrait être : sans publicité, sans pistage, sans énergie ni minuteur. Tout fonctionne hors ligne et tes données restent sur ton appareil.
+  > PixelJoy, c'est le coloriage relaxant comme il devrait être : sans publicité, sans pistage, sans énergie ni minuteur. Tout fonctionne hors ligne et tes données restent sur ton appareil.
   >
-  > • 32 illustrations originales gratuites en 5 albums (jardin, océan, cuisine, animaux, espace), plus 8 avec FingerPaint Pro et un pack de 8 « Océan profond » (achats uniques)
+  > • 32 illustrations originales gratuites en 5 albums (jardin, océan, cuisine, animaux, espace), plus 8 avec PixelJoy Pro et un pack de 8 « Océan profond » (achats uniques)
   > • Coloriage fluide : zoom, glisser pour remplir, indices gratuits et illimités
   > • Une image du jour et une série indulgente (des jokers, jamais de pression)
   > • Accessible : mode daltonien avec symboles, gros numéros, contraste élevé, mode gaucher
@@ -100,16 +100,16 @@ Suggestions (FR et EN, mode clair, une en sombre) :
   > Les outils et les indices sont toujours gratuits. Des achats uniques (sans abonnement) permettent d'ajouter des illustrations Pro, un pack Océan profond ou un thème néon, et de soutenir le projet.
 
 ### English
-- **Name**: FingerPaint
+- **Name**: PixelJoy
 - **Subtitle**: Calm pixel art by numbers
 - **Keywords**: coloring,pixel,art,numbers,paint,relax,zen,calm,drawing,color,mosaic,offline,book
 - **Promotional text**: Color original pixel art, with no ads and no connection needed.
 - **Description**:
   > Color original pixel art illustrations, cell by cell, number by number.
   >
-  > FingerPaint is relaxing coloring the way it should be: no ads, no tracking, no energy, no timers. Everything works offline and your data stays on your device.
+  > PixelJoy is relaxing coloring the way it should be: no ads, no tracking, no energy, no timers. Everything works offline and your data stays on your device.
   >
-  > • 32 free original illustrations in 5 albums (garden, ocean, kitchen, animals, space), plus 8 with FingerPaint Pro and an 8-artwork "Deep Ocean" pack (one-time purchases)
+  > • 32 free original illustrations in 5 albums (garden, ocean, kitchen, animals, space), plus 8 with PixelJoy Pro and an 8-artwork "Deep Ocean" pack (one-time purchases)
   > • Smooth coloring: zoom, drag to fill, free and unlimited hints
   > • A daily picture and a forgiving streak (jokers, never pressure)
   > • Accessible: colorblind mode with symbols, large numbers, high contrast, left-handed mode
@@ -133,10 +133,10 @@ Suggestions (FR et EN, mode clair, une en sombre) :
 ## 10. Notes de test TestFlight (« What to Test »)
 
 ### FR
-> Merci de tester FingerPaint ! Points à regarder : fluidité du coloriage (zoom, glisser pour remplir), lisibilité des numéros, image du jour, export PNG et sauvegarde. Essayez aussi en mode avion : tout doit fonctionner. Les achats sont en environnement sandbox : vous ne serez pas débité. Signalez tout texte peu clair, bug ou ralentissement via le bouton « Envoyer un commentaire » de TestFlight.
+> Merci de tester PixelJoy ! Points à regarder : fluidité du coloriage (zoom, glisser pour remplir), lisibilité des numéros, image du jour, export PNG et sauvegarde. Essayez aussi en mode avion : tout doit fonctionner. Les achats sont en environnement sandbox : vous ne serez pas débité. Signalez tout texte peu clair, bug ou ralentissement via le bouton « Envoyer un commentaire » de TestFlight.
 
 ### EN
-> Thanks for testing FingerPaint! Please look at: coloring smoothness (zoom, drag to fill), number readability, the daily picture, PNG export and backup. Also try airplane mode: everything should work. Purchases run in the sandbox: you will not be charged. Report any unclear text, bug or slowdown with TestFlight's "Send Beta Feedback".
+> Thanks for testing PixelJoy! Please look at: coloring smoothness (zoom, drag to fill), number readability, the daily picture, PNG export and backup. Also try airplane mode: everything should work. Purchases run in the sandbox: you will not be charged. Report any unclear text, bug or slowdown with TestFlight's "Send Beta Feedback".
 
 ### Notes pour l'équipe de revue (App Review)
 > No account or login is required. The app works fully offline. In-app purchases are one-time, non-consumable (Pro artworks, Deep Ocean pack, Neon theme) and can be found in Settings › Shop & support, or by tapping a locked artwork. "Restore purchases" is in the shop.

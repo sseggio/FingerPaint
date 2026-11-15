@@ -1,12 +1,12 @@
-# Sauvegarde `.fingerpaint` et export PNG
+# Sauvegarde `.pixeljoy` et export PNG
 
-## Fichier `.fingerpaint` (F11)
+## Fichier `.pixeljoy` (F11)
 
 JSON UTF-8 versionné, produit par `src/features/backup/backup-format.ts` :
 
 ```json
 {
-  "format": "fingerpaint-backup",
+  "format": "pixeljoy-backup",
   "version": 1,
   "createdAt": 1794650000000,
   "checksum": "9c1f0e2b7a4d3c11",
@@ -67,4 +67,4 @@ une case = un carré de `scale`×`scale` pixels en échantillonnage nearest-neig
   (Enregistrer l'image, Fichiers…) ; « Partager » passe par une copie temporaire du cache.
 - Nettoyage : seule la dernière exportation de chaque œuvre est gardée dans `exports/`, les
   anciennes copies de partage du cache sont purgées à chaque partage, et seule la dernière
-  sauvegarde `.fingerpaint` reste dans `cache/backups/`.
+  sauvegarde `.pixeljoy` reste dans `cache/backups/`.

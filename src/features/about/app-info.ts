@@ -5,7 +5,7 @@ import Constants from 'expo-constants';
  * Support address shown in "About". PLACEHOLDER: replace it with a real, monitored mailbox
  * before the App Store submission (also update docs/privacy-policy.md and the store listing).
  */
-export const CONTACT_EMAIL = 'hello@fingerpaint.app';
+export const CONTACT_EMAIL = 'hello@pixeljoy.app';
 
 export interface AppVersion {
   /** Marketing version (`1.0.0`). */

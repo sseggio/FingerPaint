@@ -1,6 +1,6 @@
 # Crédits du contenu
 
-Toutes les illustrations livrées avec FingerPaint (48 œuvres, 6 albums) sont des **créations originales de FingerPaint**. Elles sont produites par code dans ce dépôt, sans source externe :
+Toutes les illustrations livrées avec PixelJoy (48 œuvres, 6 albums) sont des **créations originales de PixelJoy**. Elles sont produites par code dans ce dépôt, sans source externe :
 
 - `scripts/art/starter.mjs` : les 6 œuvres de départ, en cartes ASCII dessinées à la main ;
 - `scripts/art/<album>.mjs` : les 42 autres œuvres, dessinées avec le petit moteur `scripts/art/engine.mjs` (formes, symétries, contours, ombrage et dégradés quantifiés) ;
@@ -8,14 +8,14 @@ Toutes les illustrations livrées avec FingerPaint (48 œuvres, 6 albums) sont d
 
 Aucune œuvre ne reprend une marque, un logo, un personnage ou un univers existant protégé. Les sujets sont génériques : animaux, plantes, nourriture, objets, paysages. Aucune image tierce, aucun jeu de données et aucune banque d'images n'a servi à les produire.
 
-**Droits** : © FingerPaint. Le contenu est distribué avec l'application. Il ne relève pas d'une licence libre.
+**Droits** : © PixelJoy. Le contenu est distribué avec l'application. Il ne relève pas d'une licence libre.
 
 ## Ajouter une œuvre d'un·e artiste
 
 1. Dessiner l'œuvre en PNG, à raison d'un pixel par case. Les pixels transparents restent des cases vides.
 2. La convertir : `node scripts/png-to-artwork.mjs art.png --id <id> --album <album> --title-fr "…" --title-en "…" [--access free|pro|pack:<id>] [--difficulty 1|2|3] [--max-colors 24]`.
 3. Relancer `node scripts/generate-art.mjs` pour mettre à jour le manifeste (les fichiers importés y sont conservés), puis `npm run validate:art`.
-4. Ajouter une ligne ci-dessous, avec le nom de l'artiste et la licence (cession ou licence exclusive à FingerPaint).
+4. Ajouter une ligne ci-dessous, avec le nom de l'artiste et la licence (cession ou licence exclusive à PixelJoy).
 
 ## Répartition
 

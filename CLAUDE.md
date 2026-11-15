@@ -1,4 +1,4 @@
-# FingerPaint — guide pour les agents
+# PixelJoy — guide pour les agents
 
 App iOS/Android de coloriage pixel art par numéros, **originale** (nom, illustrations et identité propres), construite avec **Expo SDK 58 / React Native / TypeScript / Expo Router**.
 Lis aussi `AGENTS.md` (règles Expo officielles) et les skills dans `.claude/skills/`.

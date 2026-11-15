@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FingerPaint",
+    "name": "PixelJoy",
     "slug": "fingerpaint",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "fingerpaint",
+    "scheme": "pixeljoy",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.krafting.pixeljoy",

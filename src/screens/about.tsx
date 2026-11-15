@@ -35,7 +35,7 @@ export function AboutScreen() {
           ))}
         </View>
         <AppText variant="display" accessibilityRole="header">
-          FingerPaint
+          PixelJoy
         </AppText>
         <AppText tone="secondary">{t('about.tagline')}</AppText>
         <AppText variant="caption" tone="secondary">

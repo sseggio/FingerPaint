@@ -1,4 +1,4 @@
-# FingerPaint : analyse de marché des apps de coloriage pixel art par numéros
+# PixelJoy : analyse de marché des apps de coloriage pixel art par numéros
 
 *Date : novembre 2026. Les prix viennent des fiches App Store, des trackers (App Pricing Lab, Adapty) et des pages éditeurs. Ils varient selon le pays et dans le temps : ce sont des ordres de grandeur, à revérifier avant publication.*
 
@@ -9,7 +9,7 @@
 - **Le marché est mûr et très concentré.** Easybrain (Pixel Art), X-Flow (Happy Color), MWM (Pixel Color, Color Pop AI), Wildlife (Color by Number), Pixite (Pigment), Lake et Recolor se partagent l'essentiel des revenus. Au T4 2025 aux US, les meilleures apps de la catégorie Drawing & Coloring font environ 120 k$ à 230 k$ **par semaine** sur iOS (Sensor Tower). La demande est donc réelle et durable.
 - **Le modèle dominant est hostile à l'utilisateur.** On y trouve des pubs interstitielles toutes les quelques minutes, des indices débloqués par une pub et des abonnements **hebdomadaires** de 4 à 10 $ par semaine (soit 200 à 500 $ par an), souvent avec un essai gratuit qui bascule automatiquement en payant. Même le rachat « sans pub » ne supprime pas toujours les pubs d'indices (Happy Color : *« Remove ads (hint ads stay) »*).
 - **Les plaintes récurrentes** portent sur la pub excessive, les abonnements chers ou piégeux, la progression perdue (pas de sauvegarde ni de synchro), les crashs pendant les pubs, les nuances trop proches pour les daltoniens ou les seniors, et la répétitivité du contenu.
-- **Le positionnement de FingerPaint :** *« le coloriage pixel qu'on peut recommander à sa mère »*. Zéro pub, zéro tracking, 100 % hors ligne, un achat unique honnête, de l'accessibilité de série, et un pont entre « colorier » et « créer ses propres pixel arts » que personne ne fait bien aujourd'hui. Les apps de création (Pixaki, Resprite, dotpict) et celles de coloriage forment deux mondes séparés.
+- **Le positionnement de PixelJoy :** *« le coloriage pixel qu'on peut recommander à sa mère »*. Zéro pub, zéro tracking, 100 % hors ligne, un achat unique honnête, de l'accessibilité de série, et un pont entre « colorier » et « créer ses propres pixel arts » que personne ne fait bien aujourd'hui. Les apps de création (Pixaki, Resprite, dotpict) et celles de coloriage forment deux mondes séparés.
 - **Le pari business :** convertir moins d'utilisateurs, mais les garder plus longtemps. Le capital confiance et le bouche-à-oreille (Reddit, avis, communautés seniors et parents) remplacent les campagnes d'acquisition payantes.
 
 ---
@@ -96,9 +96,9 @@ Complexité : **S** = quelques jours, **M** = 1 à 3 semaines, **L** = plus d'un
 | Offre | Contenu | Prix suggéré | Justification |
 |---|---|---|---|
 | **Gratuit** | ~150 images de base, image du jour (gratuite, à conserver), éditeur de création (grille jusqu'à 32×32), tous les outils et indices, accessibilité complète | 0 € | Une vraie app utilisable, pas une démo. C'est la base du bouche-à-oreille. |
-| **FingerPaint Pro** (achat unique) | Tout le catalogue de base (~600+ images au lancement), photo → pixel, éditeur avancé (64×64 et plus, calques, symétrie, export GIF/timelapse HD), profils familiaux, palettes avancées | **9,99 €** (lancement à 6,99 €) | Proche du prix du retrait de pub de Happy Color (7,99 $) et de Vita (9,99 $), mais sans aucune pub et avec du contenu. Moins de la moitié de Pixaki ou Resprite à vie (20 à 29 $). Un argument simple : « le prix d'un livre de coloriage ». |
+| **PixelJoy Pro** (achat unique) | Tout le catalogue de base (~600+ images au lancement), photo → pixel, éditeur avancé (64×64 et plus, calques, symétrie, export GIF/timelapse HD), profils familiaux, palettes avancées | **9,99 €** (lancement à 6,99 €) | Proche du prix du retrait de pub de Happy Color (7,99 $) et de Vita (9,99 $), mais sans aucune pub et avec du contenu. Moins de la moitié de Pixaki ou Resprite à vie (20 à 29 $). Un argument simple : « le prix d'un livre de coloriage ». |
 | **Packs thématiques** (cosmétiques et contenu) | 30 à 50 images d'un thème ou d'un artiste invité, avec palettes dédiées | **1,99 à 3,99 €** chacun | Achat optionnel qui finance la production continue. Aucun impact sur la progression. |
-| **Club FingerPaint** (abonnement optionnel léger) | Tous les packs présents et futurs, et 1 nouvel album par mois. *Ne débloque aucun outil.* | **2,49 €/mois ou 19,99 €/an** | 2 à 4 fois moins cher que Lake (39,99 $/an) ou Pigment (59,99 $/an). Pour les gros consommateurs uniquement ; les packs déjà téléchargés restent en cas de résiliation. |
+| **Club PixelJoy** (abonnement optionnel léger) | Tous les packs présents et futurs, et 1 nouvel album par mois. *Ne débloque aucun outil.* | **2,49 €/mois ou 19,99 €/an** | 2 à 4 fois moins cher que Lake (39,99 $/an) ou Pigment (59,99 $/an). Pour les gros consommateurs uniquement ; les packs déjà téléchargés restent en cas de résiliation. |
 | **Soutien créateurs** (V2) | Pourboire de 0,99 à 4,99 €, ou partage de 50 % des revenus des packs d'artistes | Variable | Différenciation éthique ; s'inspire de Lake, qui rémunère ses artistes. |
 
 **Pourquoi ce modèle :** la demande n°1 relevée dans les avis est *« un achat unique plutôt qu'un abonnement récurrent »*. Un achat unique maîtrisé offre aussi une meilleure note sur les stores et de meilleures chances d'être mis en avant par Apple (qui valorise la confidentialité et l'absence de pub). L'abonnement reste un **raccourci de confort**, jamais une obligation. Pour la V1, se limiter à **Gratuit + Pro + 2 ou 3 packs** : c'est plus simple à valider côté stores et moins de SKU à gérer. Le Club arrive en V2, quand le flux de contenu est prouvé.
@@ -135,7 +135,7 @@ Complexité : **S** = quelques jours, **M** = 1 à 3 semaines, **L** = plus d'un
 
 **Monétisation et confiance**
 - Gratuit + Pro en achat unique + 2 ou 3 packs, restauration des achats.
-- Export et import de la sauvegarde (fichier `.fingerpaint` via la feuille de partage), qui remplace la synchro cloud en V1.
+- Export et import de la sauvegarde (fichier `.pixeljoy` via la feuille de partage), qui remplace la synchro cloud en V1.
 - Aucun SDK analytique tiers. Au mieux, des compteurs locaux anonymes et opt-in.
 - i18n FR/EN dès le départ.
 
@@ -144,7 +144,7 @@ Complexité : **S** = quelques jours, **M** = 1 à 3 semaines, **L** = plus d'un
 - Replay timelapse et export GIF/vidéo ; widget iOS/Android.
 - Partage d'image par QR ou fichier entre proches (défis).
 - Profils familiaux et contrôle parental.
-- Club FingerPaint (abonnement léger) et téléchargement de nouveaux packs (CDN statique, sans compte).
+- Club PixelJoy (abonnement léger) et téléchargement de nouveaux packs (CDN statique, sans compte).
 - Éditeur avancé : calques, animation simple sur 2 à 4 frames.
 
 ### V3 et au-delà

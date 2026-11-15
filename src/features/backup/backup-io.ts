@@ -47,10 +47,10 @@ export async function collectBackupData(): Promise<BackupData> {
 }
 
 export function backupFileName(date: Date): string {
-  return `fingerpaint-${toDayKey(date)}${BACKUP_EXTENSION}`;
+  return `pixeljoy-${toDayKey(date)}${BACKUP_EXTENSION}`;
 }
 
-/** Writes a `.fingerpaint` file to the cache and opens the share sheet. */
+/** Writes a `.pixeljoy` file to the cache and opens the share sheet. */
 export async function exportBackup(dialogTitle: string, now: () => Date = () => new Date()): Promise<'shared' | 'unavailable'> {
   const date = now();
   const text = serializeBackup(await collectBackupData(), date.getTime());
@@ -58,7 +58,7 @@ export async function exportBackup(dialogTitle: string, now: () => Date = () => 
   const uri = await writeFile('cache', 'backups', name, text);
   // Earlier exports are only temporary share copies: keep the latest one.
   pruneFolder('cache', 'backups', (file) => file !== name);
-  // `application/octet-stream` keeps the `.fingerpaint` extension on iOS (no type is appended).
+  // `application/octet-stream` keeps the `.pixeljoy` extension on iOS (no type is appended).
   const shared = await shareFile(uri, { mimeType: 'application/octet-stream', dialogTitle });
   return shared ? 'shared' : 'unavailable';
 }

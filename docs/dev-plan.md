@@ -1,4 +1,4 @@
-# FingerPaint : plan de développement V1
+# PixelJoy : plan de développement V1
 
 *Novembre 2026. Stack : Expo SDK 58, React Native 0.88, TypeScript strict, Expo Router, Skia, Reanimated 4, Gesture Handler 3, zustand, AsyncStorage, jest-expo. Sources : `docs/market-analysis.md`, `CLAUDE.md`.*
 
@@ -291,7 +291,7 @@ F01 (foundation) est en cours. La liste commence à F02.
 - **Périmètre :**
   - onglet « Mes œuvres » (terminées et en cours) ;
   - export PNG net sans filigrane (×8 à ×32, plafond 2 048 px) via une surface Skia hors écran, `expo-file-system` et `expo-sharing` ;
-  - `features/backup` : fichier `.fingerpaint` (JSON versionné avec checksum), import validé avec fusion (on garde le plus avancé par œuvre).
+  - `features/backup` : fichier `.pixeljoy` (JSON versionné avec checksum), import validé avec fusion (on garde le plus avancé par œuvre).
 - **Dépendance npm :** `expo-document-picker`.
 - **Critères d'acceptation :**
   - PNG net aux bonnes dimensions ;
@@ -325,7 +325,7 @@ F01 (foundation) est en cours. La liste commence à F02.
 - **Objectif :** une build iOS soumissible.
 - **Périmètre :**
   - `app.json` :
-    - `name` FingerPaint, `slug` et `scheme` fingerpaint ;
+    - `name` PixelJoy, `slug` fingerpaint (lié au projet EAS), `scheme` pixeljoy ;
     - `ios.bundleIdentifier` `com.krafting.pixeljoy` (placeholder) ;
     - `ITSAppUsesNonExemptEncryption: false` ;
     - `ios.privacyManifests` : pas de tracking, aucune donnée collectée, API déclarées (UserDefaults `CA92.1`, file timestamp `C617.1`) ;
@@ -352,5 +352,5 @@ F01 (foundation) est en cours. La liste commence à F02.
 - **Notifications :** rappel quotidien local optionnel (`expo-notifications`), exclu de la V1 pour n'avoir aucune demande de permission.
 - **Replay et partage :** timelapse, export GIF ou vidéo, mode point de croix ou perles.
 - **Synchro :** iCloud ou Drive. Profils familiaux.
-- **Contenu :** Club FingerPaint (abonnement léger), packs téléchargeables depuis un CDN statique, catalogue au-delà de 150 œuvres.
+- **Contenu :** Club PixelJoy (abonnement léger), packs téléchargeables depuis un CDN statique, catalogue au-delà de 150 œuvres.
 - **Autres :** défis par QR ou fichier, widgets, sons ASMR, remplissage automatique de zone, iPad et Apple Pencil, publication Play Store (Android reste compilable).

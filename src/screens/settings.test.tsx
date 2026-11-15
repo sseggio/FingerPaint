@@ -115,7 +115,7 @@ describe('SettingsScreen', () => {
   it('opens About from Settings', async () => {
     await render(<SettingsScreen />);
     expect(screen.getByRole('header', { name: 'About' })).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'About FingerPaint' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'About PixelJoy' }));
     expect(router.push).toHaveBeenCalledWith('/about');
     router.push.mockClear();
   });
@@ -173,7 +173,7 @@ describe('SettingsScreen', () => {
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
     });
-    expect(mockedExport).toHaveBeenCalledWith('Save your FingerPaint backup');
+    expect(mockedExport).toHaveBeenCalledWith('Save your PixelJoy backup');
     mockedExport.mockResolvedValueOnce('unavailable');
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));

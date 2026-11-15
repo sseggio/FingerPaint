@@ -7,7 +7,7 @@
  *   node scripts/generate-art.mjs --only fox,owl     # only these ids (manifest untouched)
  *   node scripts/generate-art.mjs --preview <dir>    # also write PNG previews + contact-sheet.png
  *
- * All artworks are original FingerPaint creations (see docs/content-credits.md). Files found
+ * All artworks are original PixelJoy creations (see docs/content-credits.md). Files found
  * under artworks/ that are not generated here (e.g. imported with png-to-artwork.mjs) are kept
  * and appended to the manifest.
  */

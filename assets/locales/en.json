@@ -1,8 +1,8 @@
 {
   "ios": {
-    "CFBundleDisplayName": "FingerPaint"
+    "CFBundleDisplayName": "PixelJoy"
   },
   "android": {
-    "app_name": "FingerPaint"
+    "app_name": "PixelJoy"
   }
 }
