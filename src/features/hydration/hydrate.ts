@@ -1,3 +1,4 @@
+import { useCatalogStore } from '@/features/catalog/catalog-store';
 import { useDailyStore } from '@/features/daily/daily-store';
 import { useEntitlementsStore } from '@/features/entitlements/entitlements-store';
 import { useProgressStore } from '@/features/progress/progress-store';
@@ -15,6 +16,8 @@ const defaultHydrators: readonly Hydrator[] = [
   () => useDailyStore.getState().hydrate(),
   // Cached purchases only (offline): the store refresh runs in the background afterwards.
   () => useEntitlementsStore.getState().hydrate(),
+  // Downloaded catalog artworks, from local files only (the network sync runs later).
+  () => useCatalogStore.getState().hydrate(),
 ];
 
 /**

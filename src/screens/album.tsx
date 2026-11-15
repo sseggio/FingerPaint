@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { FlatList, StyleSheet, useWindowDimensions, View, type ListRenderItem } from 'react-native';
 
 import { AppText, Badge, Button, Card, ProgressBar } from '@/components/ui';
-import { getRegistry } from '@/features/artwork/registry';
+import { useRegistry } from '@/features/artwork/use-registry';
 import { localizedTitle, useLocale, useT } from '@/features/i18n';
 import { AlbumMosaic } from '@/features/library/album-mosaic';
 import { ArtworkTile } from '@/features/library/artwork-tile';
@@ -45,7 +45,8 @@ function AlbumView({ album, accent }: { album: AlbumSource; accent: string }) {
   const { width } = useWindowDimensions();
   const { columns, tileWidth } = gridLayout(width);
   const index = useLibraryIndex();
-  const artworks = useMemo(() => getRegistry().listByAlbum(album.id), [album.id]);
+  const registry = useRegistry();
+  const artworks = useMemo(() => registry.listByAlbum(album.id), [album.id, registry]);
   const rows = useMemo(() => chunk(artworks, columns), [artworks, columns]);
   const progress = albumProgress(album.id, artworks, index);
   const title = localizedTitle(album.title, locale);
@@ -126,7 +127,7 @@ function Separator() {
 export function AlbumScreen({ albumId }: { albumId: unknown }) {
   const { colors } = useTheme();
   const id = parseContentIdParam(albumId);
-  const registry = getRegistry();
+  const registry = useRegistry();
   const albums = registry.listAlbums();
   const position = id ? albums.findIndex((a) => a.id === id) : -1;
   const album = position >= 0 ? albums[position] : undefined;

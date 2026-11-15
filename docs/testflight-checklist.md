@@ -62,6 +62,7 @@ Suivre `docs/iap-setup.md` : créer les 3 produits **Non-Consumable** (`com.kraf
 ## 6. App Privacy (étiquette de confidentialité)
 
 - [ ] App Store Connect › *App Privacy* › **« Données non collectées » / « Data Not Collected »**.
+  Le téléchargement du catalogue public de nouveaux dessins (`EXPO_PUBLIC_CATALOG_URL`) ne change rien : requêtes anonymes (aucun identifiant, aucun cookie), serveur sans journal d'accès.
 - [ ] *Privacy Policy URL* : héberger `docs/privacy-policy.md` (FR/EN) et coller l'URL.
 - [ ] Pas d'App Tracking Transparency (aucun pistage, pas d'IDFA).
 - [ ] Export compliance : `ITSAppUsesNonExemptEncryption = false` (seul le HTTPS du système est utilisé, par StoreKit) : pas de question à la soumission.
@@ -124,6 +125,7 @@ Suggestions (FR et EN, mode clair, une en sombre) :
 ## 9. Tests avant d'inviter des testeurs
 
 - [ ] **Mode avion** dès le lancement (installation fraîche puis relance) : bibliothèque, coloriage, sauvegarde automatique, image du jour, Mes œuvres, export PNG (feuille de partage), réglages, À propos fonctionnent ; la boutique affiche « Réessayer » sans bloquer ; les achats déjà faits restent débloqués.
+- [ ] Si `EXPO_PUBLIC_CATALOG_URL` est renseignée : avec réseau, les nouveaux dessins publiés apparaissent (badge « Nouveau ») ; puis en mode avion, ils restent coloriables ; une URL vide ou en `http://` désactive le catalogue sans erreur.
 - [ ] Achats sandbox (voir `docs/iap-setup.md` § 3) : achat, annulation, Ask to Buy, restauration après réinstallation.
 - [ ] Achat bloqué (feuille StoreKit ignorée, app mise en arrière-plan) : la boutique se libère (au retour au premier plan après ~10 s, ou au bout de 2 min) avec un message honnête.
 - [ ] VoiceOver sur Bibliothèque, Coloriage, Boutique, Réglages, À propos ; Dynamic Type au maximum.

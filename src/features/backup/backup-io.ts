@@ -20,7 +20,7 @@ import {
 } from './backup-format';
 import { planImport, type ImportPlan } from './backup-merge';
 
-/** Catalog lookup over the bundled content. */
+/** Catalog lookup: bundled content plus downloaded catalog artworks (including withdrawn ones kept for progress). */
 export const catalogLookup: CatalogLookup = (id) => {
   const artwork = getArtwork(id);
   return artwork ? { cellCount: artwork.cells.length, totalCells: artwork.totalCells } : undefined;

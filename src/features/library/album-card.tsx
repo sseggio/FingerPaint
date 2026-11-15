@@ -16,6 +16,8 @@ export interface AlbumCardProps {
   artworks: readonly ArtworkSource[];
   progress: AlbumProgress;
   accent: string;
+  /** Holds artworks downloaded since the previous visit. */
+  isNew?: boolean;
   onPress: (albumId: string) => void;
 }
 
@@ -34,22 +36,24 @@ export function albumCardPropsEqual(prev: AlbumCardProps, next: AlbumCardProps):
     prev.album === next.album &&
     prev.artworks === next.artworks &&
     prev.accent === next.accent &&
+    prev.isNew === next.isNew &&
     prev.onPress === next.onPress &&
     sameProgress(prev.progress, next.progress)
   );
 }
 
 /** Big colorful album card: meta-image mosaic, title, `x/y` progress. */
-export const AlbumCard = memo(function AlbumCard({ album, artworks, progress, accent, onPress }: AlbumCardProps) {
+export const AlbumCard = memo(function AlbumCard({ album, artworks, progress, accent, isNew = false, onPress }: AlbumCardProps) {
   const t = useT();
   const locale = useLocale();
   const { colors } = useTheme();
   const ink = readableTextOn(accent);
   const title = localizedTitle(album.title, locale);
   const { completed, total, complete } = progress;
-  const label = complete
+  const baseLabel = complete
     ? t('library.albumLabelComplete', { title, total })
     : t('library.albumLabel', { title, done: completed, total });
+  const label = isNew ? `${baseLabel}, ${t('library.badge.newLong')}` : baseLabel;
 
   return (
     <PressableScale
@@ -65,6 +69,7 @@ export const AlbumCard = memo(function AlbumCard({ album, artworks, progress, ac
       <AlbumMosaic artworks={artworks} revealed={complete} size={MOSAIC_SIZE} />
       <View style={styles.body}>
         <View style={styles.badges}>
+          {isNew ? <Badge label={t('library.badge.new')} color={palette.sun} /> : null}
           {album.pack ? <Badge label={t('library.badge.pack')} color={colors.surface} /> : null}
           {complete ? <Badge label={t('library.albumComplete')} color={palette.sun} /> : null}
         </View>

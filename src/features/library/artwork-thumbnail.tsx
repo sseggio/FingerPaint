@@ -2,7 +2,7 @@ import { Canvas, FilterMode, Image, MipmapMode, type SamplingOptions, type SkIma
 import { memo, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { getArtwork } from '@/features/artwork/registry';
+import { getArtwork, subscribeRegistry } from '@/features/artwork/registry';
 import { makeLayerImage } from '@/features/coloring/canvas/layer-image';
 import { useProgressStore } from '@/features/progress/progress-store';
 import type { Artwork } from '@/lib/artwork/types';
@@ -23,6 +23,9 @@ const cache = new LruCache<string, SkImage | null>(THUMBNAIL_CACHE_SIZE);
 export function clearThumbnailCache() {
   cache.clear();
 }
+
+// Downloaded catalog changed (a new revision may redraw an artwork): drop cached thumbnails.
+subscribeRegistry(clearThumbnailCache);
 
 /**
  * `progress`: the artwork's current state (filled cells in color). `reveal`: color only once

@@ -299,7 +299,10 @@
   function renderArtworks() {
     const list = $('#artwork-list');
     const albumTitle = new Map(state.albums.map((a) => [a.id, a.titleFr]));
-    $('#artworks-summary').textContent = `${state.artworks.length} œuvre(s) dans le catalogue en ligne · ${state.embeddedArtworkCount} œuvres embarquées dans l’app (ids réservés).`;
+    const collisions = state.embeddedCollisions ?? [];
+    $('#artworks-summary').textContent =
+      `${state.artworks.length} œuvre(s) dans le catalogue en ligne · ${state.embeddedArtworkCount} œuvres embarquées dans l’app (ids réservés).` +
+      (collisions.length ? ` ⚠ Ids aussi embarqués dans l’app (ignorés par l’app, à renommer) : ${collisions.join(', ')}.` : '');
     list.replaceChildren(
       ...state.artworks.map((a) =>
         h(

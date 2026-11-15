@@ -14,6 +14,8 @@ export const StorageKeys = {
   mockStore: 'fp:mock-store',
   /** Last errors caught on the device (F19), shown in "About". Never sent, never backed up. */
   diagnostics: 'fp:diagnostics',
+  /** Index of the downloaded online catalog (F22). Public content only: never backed up. */
+  catalog: 'fp:catalog',
 } as const;
 
 /** Subset of the AsyncStorage API we rely on (injectable for tests). */

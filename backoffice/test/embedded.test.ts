@@ -5,7 +5,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { findEmbeddedCollisions } from '../src/catalog';
 import { readConfig } from '../src/config';
+import { CatalogDb } from '../src/db';
 import { loadEmbedded, parseEmbedded } from '../src/embedded';
 
 describe('embedded content list', () => {
@@ -46,5 +48,27 @@ describe('config', () => {
     expect(cfg.publicUrl).toBe('https://catalog.example.com');
     expect(cfg.cookieSecure).toBe(true);
     expect(cfg.trustProxy).toBe(false);
+  });
+});
+
+describe('embedded collisions', () => {
+  it('lists catalog ids that are now also embedded in the app', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pj-col-'));
+    const db = new CatalogDb(join(dir, 'catalog.sqlite'));
+    try {
+      db.syncBuiltinAlbums({ artworkIds: [], albums: [{ id: 'garden', title: { fr: 'J', en: 'G' }, order: 0 }] }, '2026-01-01T00:00:00Z');
+      const base = {
+        album: 'garden', titleFr: 'T', titleEn: 'T', access: 'free', difficulty: 1 as const, w: 8, h: 8, colors: 2, cells: 64,
+        rev: 1, sha256: 'x', status: 'draft' as const, publishedAt: null, everPublished: false,
+        createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+      };
+      db.insertArtwork({ ...base, id: 'kite' });
+      db.insertArtwork({ ...base, id: 'comet' });
+      expect(findEmbeddedCollisions(db, ['comet', 'fox'])).toEqual(['comet']);
+      expect(findEmbeddedCollisions(db, ['fox'])).toEqual([]);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

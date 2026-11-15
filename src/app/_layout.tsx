@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { useCatalogSync } from '@/features/catalog/use-catalog-sync';
 import { installGlobalErrorHandler } from '@/features/diagnostics/global-error-handler';
 import { useFlushOnBackground, useHydration } from '@/features/hydration/use-hydration';
 import { useTheme } from '@/theme';
@@ -22,6 +23,7 @@ export default function RootLayout() {
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const hydrated = useHydration();
   useFlushOnBackground();
+  useCatalogSync(hydrated);
 
   useEffect(() => {
     if (hydrated) SplashScreen.hideAsync().catch(() => undefined);

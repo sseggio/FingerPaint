@@ -80,6 +80,16 @@ Ouvre `https://catalogue.example.com/admin` : la page de connexion s'affiche (le
 
 Le manifeste public est à `https://catalogue.example.com/catalog/v1/manifest.json`.
 
+### Brancher l'app sur le catalogue
+
+L'app lit l'adresse du catalogue dans la variable `EXPO_PUBLIC_CATALOG_URL`, **vide par défaut** (catalogue en ligne désactivé : l'app ne montre que le contenu embarqué et ne fait aucune requête). Une fois le domaine en ligne :
+
+1. Dans `eas.json` (à la racine du dépôt), renseigne `"EXPO_PUBLIC_CATALOG_URL": "https://catalogue.example.com"` dans `build.preview.env` et `build.production.env` (et `build.development.env` si tu veux tester en développement). Uniquement l'origine, sans `/catalog/...` ni `/` final. Seul `https://` est accepté : toute autre valeur désactive la fonctionnalité.
+2. En local : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start` (ou une ligne dans `.env.local`).
+3. Rebuild (`eas build`) : la variable est figée dans l'app au moment du build.
+
+L'app télécharge le manifeste au démarrage puis au retour au premier plan (au plus toutes les 6 h), et seulement les œuvres nouvelles ou modifiées (`rev` supérieure). Requêtes anonymes : aucun cookie, aucun identifiant, aucun en-tête personnalisé. Les fichiers sont vérifiés (SHA-256, 256 Ko max., mêmes règles de validation) et gardés sur l'appareil : tout reste coloriable hors ligne. Une œuvre dépubliée disparaît de la Bibliothèque mais reste dans « Mes œuvres » pour les joueurs qui l'ont commencée. Les URL des œuvres doivent être sur le **même hôte** que `EXPO_PUBLIC_CATALOG_URL` (`PUBLIC_URL` du back-office) : sinon l'app ignore tout le manifeste.
+
 ## 4. Utilisation du back-office
 
 1. **Nouvelle œuvre** : choisis un PNG (un pixel = une case, 8 à 128 px de côté, 1 Mo max., la transparence donne des cases vides) et le nombre maximal de couleurs, puis **Convertir**. Le serveur fusionne les couleurs trop proches (ΔE < 10) ou en surnombre et trie la palette du plus sombre au plus clair, exactement comme `scripts/png-to-artwork.mjs`.
@@ -87,7 +97,7 @@ Le manifeste public est à `https://catalogue.example.com/catalog/v1/manifest.js
 3. Renseigne l'identifiant (kebab-case, ex. `sea-otter`, définitif), les titres FR/EN, l'album (existant ou nouveau), la difficulté, l'accès (`Gratuit`, `Pro` ou `Pack` + id du pack, ex. `ocean`) et la publication (maintenant ou à une date).
 4. **Enregistrer en brouillon** ou **Publier**. L'œuvre est validée avec les mêmes règles que le contenu de l'app : en cas d'erreur, la liste s'affiche et rien n'est enregistré.
 
-Onglet **Œuvres** : statut (brouillon, planifiée, publiée), **Modifier** (titres, album, accès, difficulté, publication : un changement de contenu crée une révision `rev + 1`), **Dépublier**, **Supprimer** (seulement un brouillon jamais publié : un id publié reste réservé, des joueurs ont pu commencer l'œuvre).
+Onglet **Œuvres** : statut (brouillon, planifiée, publiée), **Modifier** (titres, album, accès, difficulté, publication : un changement de contenu crée une révision `rev + 1`), **Dépublier**, **Supprimer** (seulement un brouillon jamais visible : un id qui a été visible dans le catalogue reste réservé, des joueurs ont pu commencer l'œuvre ; une œuvre planifiée puis dépubliée avant sa date reste supprimable). **Publier maintenant** une œuvre déjà visible conserve sa date de publication d'origine.
 
 Onglet **Albums** : titres, accès et ordre d'affichage des albums du catalogue. Les albums embarqués dans l'app sont en lecture seule.
 
@@ -155,6 +165,8 @@ rm -rf /tmp/restore
 - « Invalid configuration » au démarrage : `ADMIN_PASSWORD_HASH` ou `SESSION_SECRET` manquant ou mal copié dans `.env`.
 - Mot de passe oublié : génère un nouveau hash, remplace-le dans `.env`, puis `docker compose up -d`.
 - Trop de tentatives de connexion : attends 15 minutes (limite anti-force brute).
+- Connexion impossible même avec le bon mot de passe (« trop de tentatives ») : la limite **globale** (50 essais / 15 min, tous clients confondus) a pu être atteinte par un robot qui essaie des mots de passe. C'est voulu (aucun robot ne peut deviner le mot de passe), mais tant que l'attaque continue, **toi aussi tu es bloqué**. Le catalogue public (`/catalog/*`) et l'app ne sont pas touchés. Solutions : attendre la fin de la fenêtre de 15 min ; redémarrer le conteneur (`docker compose restart app`, les compteurs sont en mémoire) puis te connecter aussitôt ; si ça se répète, restreindre `/admin` à ton adresse IP dans le `Caddyfile` (`@admin path /admin*` + `remote_ip`).
+- Un message « WARNING: catalog artwork ids also embedded in the app » au démarrage (`docker compose logs app`, également affiché dans la liste des œuvres) : une œuvre embarquée ajoutée à l'app depuis utilise le même id qu'une œuvre du catalogue. L'app ignore l'œuvre du catalogue ; recrée-la sous un autre id puis dépublie l'ancienne.
 
 ---
 
@@ -162,7 +174,7 @@ rm -rf /tmp/restore
 
 ### API publique (format consommé par l'app, F22)
 
-`GET /catalog/v1/manifest.json` — `Cache-Control: public, max-age=300`, `ETag` (requêtes conditionnelles `If-None-Match` → 304), gzip si `Accept-Encoding: gzip`, CORS `*`, aucun cookie.
+`GET /catalog/v1/manifest.json` — `Cache-Control: public, max-age=300`, `ETag` (requêtes conditionnelles `If-None-Match` → 304), gzip si `Accept-Encoding: gzip`, CORS `*`, aucun cookie. Caddy ne recompresse pas `/catalog/*` (matcher `@compressible` du `Caddyfile`) : l'ETag de l'app et les 304 sont transmis tels quels.
 
 ```jsonc
 {
@@ -196,7 +208,7 @@ rm -rf /tmp/restore
 - Mot de passe : hash scrypt (N = 2^15) dans `ADMIN_PASSWORD_HASH`, comparaison en temps constant.
 - Session : jeton aléatoire dans un cookie `__Host-pj_admin` `HttpOnly; Secure; SameSite=Strict` (12 h), seul son HMAC (`SESSION_SECRET`) est stocké en base.
 - CSRF : jeton par session exigé dans l'en-tête `X-CSRF-Token` + vérification de l'en-tête `Origin` sur toute requête qui modifie quelque chose (y compris la connexion).
-- Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
+- Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement ; la limite globale peut bloquer aussi l'admin pendant une attaque, voir Dépannage). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
 - `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS ajouté par Caddy.
 - Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..128 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
 - Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (seul Caddy est joignable).

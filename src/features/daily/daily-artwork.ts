@@ -1,4 +1,4 @@
-import { listArtworks } from '@/features/artwork/registry';
+import { listEmbeddedArtworks } from '@/features/artwork/registry';
 import { canAccess, DEFAULT_ENTITLEMENTS } from '@/features/entitlements/can-access';
 import type { ArtworkSource } from '@/lib/artwork/types';
 import { dailyArtworkId, type DayKey } from '@/lib/daily';
@@ -11,7 +11,11 @@ export function dailyPool(artworks: readonly ArtworkSource[]): ArtworkSource[] {
   return artworks.filter((a) => canAccess(a.access, DEFAULT_ENTITLEMENTS));
 }
 
-export function dailyArtwork(today: DayKey, artworks: readonly ArtworkSource[] = listArtworks()): ArtworkSource | undefined {
+/**
+ * Today's artwork. The pool is the bundled content only (not the downloaded catalog): every
+ * device then shows the same, deterministic sequence, whatever it has downloaded and when.
+ */
+export function dailyArtwork(today: DayKey, artworks: readonly ArtworkSource[] = listEmbeddedArtworks()): ArtworkSource | undefined {
   const pool = dailyPool(artworks);
   const id = dailyArtworkId(
     today,

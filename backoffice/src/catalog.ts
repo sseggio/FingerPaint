@@ -66,3 +66,16 @@ export function buildManifest(db: CatalogDb, publicUrl: string, now: Date): Mani
     })),
   };
 }
+
+/**
+ * Catalog artwork ids that are now also shipped inside the app (an embedded artwork added
+ * after the catalog one). The app ignores such catalog entries: the admin must rename one.
+ */
+export function findEmbeddedCollisions(db: CatalogDb, embeddedArtworkIds: readonly string[]): string[] {
+  const embedded = new Set(embeddedArtworkIds);
+  return db
+    .listArtworks()
+    .map((a) => a.id)
+    .filter((id) => embedded.has(id))
+    .sort();
+}

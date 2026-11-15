@@ -109,6 +109,46 @@ describe('update / unpublish / delete', () => {
     expect(env.db.getArtwork('just-draft')).toBeNull();
   });
 
+  it('keeps a scheduled artwork unpublished before its date deletable', async () => {
+    const del = () => env.app.request('/admin/api/artworks/later', authed(s, { method: 'DELETE' }));
+    await createArtwork(env, s, { id: 'later', publish: { mode: 'schedule', at: '2026-06-03T08:00:00Z' } });
+    await env.app.request('/admin/api/artworks/later/unpublish', authed(s, { method: 'POST' }));
+    expect(env.db.getArtwork('later')?.everPublished).toBe(false);
+    expect((await del()).status).toBe(200);
+  });
+
+  it('reserves a scheduled artwork once its date has passed, even without any edit', async () => {
+    await createArtwork(env, s, { id: 'later', publish: { mode: 'schedule', at: '2026-06-01T14:00:00Z' } });
+    // Sessions last 12 h: stay within the same session.
+    env.setNow(new Date('2026-06-01T15:00:00Z'));
+    const state = (await (await env.app.request('/admin/api/state', authed(s))).json()) as {
+      artworks: { id: string; everPublished: boolean }[];
+    };
+    expect(state.artworks.find((a) => a.id === 'later')?.everPublished).toBe(true);
+    expect((await env.app.request('/admin/api/artworks/later', authed(s, { method: 'DELETE' }))).status).toBe(409);
+    await env.app.request('/admin/api/artworks/later/unpublish', authed(s, { method: 'POST' }));
+    expect(env.db.getArtwork('later')?.everPublished).toBe(true);
+    expect((await env.app.request('/admin/api/artworks/later', authed(s, { method: 'DELETE' }))).status).toBe(409);
+  });
+
+  it('"publish now" on an already visible artwork keeps its original date', async () => {
+    await createArtwork(env, s);
+    env.setNow(new Date('2026-06-01T18:00:00Z'));
+    const res = await env.app.request(
+      '/admin/api/artworks/red-blue',
+      authed(s, { method: 'PATCH' }, { titleFr: 'Rouge', titleEn: 'Red', album: 'garden', difficulty: 1, access: 'free', publish: { mode: 'now' } }),
+    );
+    expect(res.status).toBe(200);
+    expect(env.db.getArtwork('red-blue')).toMatchObject({ rev: 2, publishedAt: '2026-06-01T12:00:00.000Z' });
+    // A draft published "now" gets the current date.
+    await createArtwork(env, s, { id: 'drafty', publish: { mode: 'draft' } });
+    await env.app.request(
+      '/admin/api/artworks/drafty',
+      authed(s, { method: 'PATCH' }, { titleFr: 'R', titleEn: 'R', album: 'garden', difficulty: 1, access: 'free', publish: { mode: 'now' } }),
+    );
+    expect(env.db.getArtwork('drafty')).toMatchObject({ publishedAt: '2026-06-01T18:00:00.000Z', everPublished: true });
+  });
+
   it('serves an authenticated preview of stored artworks', async () => {
     await createArtwork(env, s);
     expect((await env.app.request('/admin/api/artworks/red-blue/preview.png')).status).toBe(401);

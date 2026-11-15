@@ -17,7 +17,7 @@ import type { ArtworkSource } from './artwork-lib';
 import { decode, formatIssue, validateArtwork } from './artwork-lib';
 import type { RateLimitOptions } from './auth';
 import { LoginRateLimiter, safeEqual, SESSION_COOKIE, SESSION_TTL_MS, SessionManager } from './auth';
-import { buildManifest, CHANGED_AT_KEY } from './catalog';
+import { buildManifest, CHANGED_AT_KEY, findEmbeddedCollisions } from './catalog';
 import { convertPng, ConvertError, MAX_PNG_BYTES } from './convert';
 import type { AlbumRecord, ArtworkRecord, CatalogDb } from './db';
 import type { EmbeddedContent } from './embedded';
@@ -117,10 +117,23 @@ function albumJson(a: AlbumRecord, counts: Map<string, number>) {
   return { ...a, artworkCount: counts.get(a.id) ?? 0 };
 }
 
+/** True when the artwork is (or would be) listed in the public manifest at `nowIso`. */
+export function isVisible(a: Pick<ArtworkRecord, 'status' | 'publishedAt'>, nowIso: string): boolean {
+  return a.status === 'published' && a.publishedAt !== null && a.publishedAt <= nowIso;
+}
+
+/**
+ * An id is reserved forever once players could have seen it: when it was actually visible
+ * (published with a date in the past), not merely scheduled. A scheduled artwork unpublished
+ * before its date was never served, so it stays deletable.
+ */
+function wasEverVisible(a: ArtworkRecord, nowIso: string): boolean {
+  return a.everPublished || isVisible(a, nowIso);
+}
+
 function artworkJson(a: ArtworkRecord, nowIso: string) {
-  const state =
-    a.status === 'draft' ? 'draft' : a.publishedAt && a.publishedAt <= nowIso ? 'published' : 'scheduled';
-  return { ...a, state };
+  const state = a.status === 'draft' ? 'draft' : isVisible(a, nowIso) ? 'published' : 'scheduled';
+  return { ...a, everPublished: wasEverVisible(a, nowIso), state };
 }
 
 export function createApp(cfg: AppConfig) {
@@ -299,6 +312,8 @@ export function createApp(cfg: AppConfig) {
       albums: cfg.db.listAlbums().map((a) => albumJson(a, counts)),
       artworks: artworks.map((a) => artworkJson(a, nowIso)),
       embeddedArtworkCount: embeddedIds.size,
+      /** Catalog ids that collide with artworks embedded since (the app ignores them). */
+      embeddedCollisions: findEmbeddedCollisions(cfg.db, cfg.embedded.artworkIds),
       maxUploadBytes: MAX_PNG_BYTES,
     };
   }
@@ -432,7 +447,7 @@ export function createApp(cfg: AppConfig) {
         sha256: hash,
         status: input.publication.status,
         publishedAt: input.publication.publishedAt,
-        everPublished: input.publication.status === 'published',
+        everPublished: isVisible(input.publication, nowIso),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -459,6 +474,10 @@ export function createApp(cfg: AppConfig) {
       throw e;
     }
     if (keep) input.publication = { status: current.status, publishedAt: current.publishedAt };
+    // "Publish now" on an artwork that is already visible keeps its original publication date
+    // (the manifest order and the app's "New" badge rely on it).
+    const nowMode = isRecord(raw) && isRecord(raw.publish) && raw.publish.mode === 'now';
+    if (nowMode && isVisible(current, nowIso)) input.publication = { status: 'published', publishedAt: current.publishedAt };
     const { errors, albumIds } = checkAlbum(input);
     if (errors.length) return fieldErrors(c, errors, 409);
     const old = store.readSource(current.id, current.rev);
@@ -489,7 +508,7 @@ export function createApp(cfg: AppConfig) {
         sha256: hash,
         status: input.publication.status,
         publishedAt: input.publication.publishedAt,
-        everPublished: current.everPublished || input.publication.status === 'published',
+        everPublished: wasEverVisible(current, nowIso) || isVisible(input.publication, nowIso),
         updatedAt: nowIso,
       };
       cfg.db.updateArtwork(rec);
@@ -504,7 +523,13 @@ export function createApp(cfg: AppConfig) {
     const current = isValidId(id) ? cfg.db.getArtwork(id) : null;
     if (!current) return c.json({ error: 'not_found' }, 404);
     const nowIso = now().toISOString();
-    const rec: ArtworkRecord = { ...current, status: 'draft', publishedAt: null, updatedAt: nowIso };
+    const rec: ArtworkRecord = {
+      ...current,
+      status: 'draft',
+      publishedAt: null,
+      everPublished: wasEverVisible(current, nowIso),
+      updatedAt: nowIso,
+    };
     transaction(() => {
       cfg.db.updateArtwork(rec);
       touch();
@@ -516,7 +541,7 @@ export function createApp(cfg: AppConfig) {
     const id = c.req.param('id');
     const current = isValidId(id) ? cfg.db.getArtwork(id) : null;
     if (!current) return c.json({ error: 'not_found' }, 404);
-    if (current.everPublished) {
+    if (wasEverVisible(current, now().toISOString())) {
       return c.json(
         { error: 'published', message: 'Une œuvre déjà publiée ne peut pas être supprimée (les joueurs peuvent l’avoir commencée) : dépublie-la.' },
         409,

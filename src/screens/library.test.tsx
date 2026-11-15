@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
-import { listArtworks, listByAlbum } from '@/features/artwork/registry';
+import { listArtworks, listByAlbum, setRemoteContent } from '@/features/artwork/registry';
+import { useCatalogStore } from '@/features/catalog/catalog-store';
 import type { ProgressSummary } from '@/features/progress/progress-schema';
 import { useDailyStore } from '@/features/daily/daily-store';
 import { dailyArtwork, dailyPool } from '@/features/daily/daily-artwork';
@@ -122,6 +123,74 @@ describe('LibraryScreen', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Clear filters' }));
     expect(screen.getByRole('header', { name: 'Albums' })).toBeTruthy();
+  });
+
+  describe('downloaded catalog', () => {
+    const strawberry = listArtworks().find((a) => a.id === 'strawberry')!;
+    const kitten = { ...strawberry, id: 'kitten', album: 'pets', title: { fr: 'Chaton', en: 'Kitten' } };
+    const puppy = { ...strawberry, id: 'puppy', album: 'pets', access: 'pro' as const, title: { fr: 'Chiot', en: 'Puppy' } };
+    const tulip = { ...strawberry, id: 'tulip', album: 'garden', title: { fr: 'Tulipe', en: 'Tulip' } };
+    const catalogEntry = (id: string, album: string, addedAt: number) => ({
+      id,
+      album,
+      rev: 1,
+      sha256: 'a'.repeat(64),
+      publishedAt: '2026-11-15T10:00:00.000Z',
+      addedAt,
+      retired: false,
+    });
+
+    beforeEach(() => {
+      setRemoteContent({
+        albums: [{ id: 'pets', title: { fr: 'Animaux de compagnie', en: 'Pets' }, access: 'free', order: 1 }],
+        artworks: [kitten, puppy, tulip],
+        retired: [],
+      });
+      useCatalogStore.setState({
+        newSince: 1_000,
+        index: {
+          ...useCatalogStore.getState().index,
+          entries: {
+            kitten: catalogEntry('kitten', 'pets', 5_000),
+            puppy: catalogEntry('puppy', 'pets', 0),
+            tulip: catalogEntry('tulip', 'garden', 500),
+          },
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await act(async () => {
+        setRemoteContent(undefined);
+        useCatalogStore.setState({ newSince: 0, index: { ...useCatalogStore.getState().index, entries: {} } });
+      });
+    });
+
+    it('adds remote albums and artworks, with a discreet "New" badge', async () => {
+      await render(<LibraryScreen />);
+      const pets = screen.getByRole('button', { name: 'Album Pets, 0 of 2 finished, new since your last visit' });
+      expect(within(pets).getByText('New')).toBeTruthy();
+      // The bundled album got a new artwork, added before the last visit: no badge.
+      expect(screen.getByRole('button', { name: 'Album Garden, 0 of 9 finished' })).toBeTruthy();
+
+      await fireEvent.press(screen.getByRole('radio', { name: 'Easy' }));
+      const tile = screen.getByRole('button', { name: 'Open “Kitten”, not started, new since your last visit' });
+      expect(within(tile).getByText('New')).toBeTruthy();
+      expect(within(tile).getByText('Just arrived')).toBeTruthy();
+      // Pro catalog artworks stay locked without a purchase.
+      expect(screen.getByRole('button', { name: '“Puppy”, included with Pro. See the shop' })).toBeTruthy();
+    });
+
+    it('updates the library when the catalog changes, and keeps the daily pick on bundled artworks', async () => {
+      const today = dailyArtwork('2026-11-14');
+      await render(<LibraryScreen now={() => new Date(2026, 10, 14, 9, 0)} />);
+      expect(screen.getByRole('button', { name: /^Album Pets/ })).toBeTruthy();
+      await act(async () => setRemoteContent(undefined));
+      expect(screen.queryByRole('button', { name: /^Album Pets/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Album Garden, 0 of 8 finished' })).toBeTruthy();
+      expect(['kitten', 'puppy', 'tulip']).not.toContain(today?.id);
+      expect(screen.getByRole('button', { name: /^Artwork of the day/ }).props.accessibilityLabel).toContain(today?.title.en);
+    });
   });
 
   describe('artwork of the day', () => {

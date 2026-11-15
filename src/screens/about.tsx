@@ -4,6 +4,7 @@ import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText, Button, SettingsSection } from '@/components/ui';
 import { CONTACT_EMAIL, getAppVersion } from '@/features/about/app-info';
 import { OPEN_SOURCE_CREDITS } from '@/features/about/licenses';
+import { useCatalogStore } from '@/features/catalog/catalog-store';
 import { DiagnosticsSection } from '@/features/diagnostics';
 import { useT } from '@/features/i18n';
 import { funAccents, palette, radius, spacing, useTheme } from '@/theme';
@@ -25,6 +26,7 @@ export function AboutScreen() {
   const t = useT();
   const { colors } = useTheme();
   const { version, build } = getAppVersion();
+  const catalogEnabled = useCatalogStore((s) => s.enabled);
 
   return (
     <ScrollView
@@ -51,6 +53,7 @@ export function AboutScreen() {
         <View style={styles.block}>
           <Bullet accent={palette.mint} text={t('about.privacy.none')} />
           <Bullet accent={palette.sky} text={t('about.privacy.device')} />
+          {catalogEnabled ? <Bullet accent={palette.orange} text={t('about.privacy.catalog')} /> : null}
           <Bullet accent={palette.pink} text={t('about.privacy.ads')} />
           <Bullet accent={palette.violet} text={t('about.privacy.purchases')} />
         </View>
