@@ -30,7 +30,7 @@ import {
   type CellRange,
   type Size,
 } from '@/lib/geometry';
-import { TOUCH_SLOP } from '@/lib/touch-intent';
+import { VIEWPORT_PAN_GESTURE } from '@/lib/touch-intent';
 
 /** Breathing room around the grid at the minimum zoom (points). */
 export const VIEWPORT_PADDING = 12;
@@ -149,8 +149,8 @@ export function useViewport({
   const pan = usePanGesture({
     testID: 'viewport-pan',
     enabled: measured,
-    minPointers: 1,
-    minDistance: TOUCH_SLOP,
+    minPointers: VIEWPORT_PAN_GESTURE.minPointers,
+    minDistance: VIEWPORT_PAN_GESTURE.minDistance,
     onBegin: () => {
       stopAnimations();
       panHeld.set(false);
@@ -164,6 +164,8 @@ export function useViewport({
         panHeld.set(true);
         return;
       }
+      // A second finger ended the stroke and now pans / pinches: a real pan again, with momentum.
+      if (e.numberOfPointers > 1) panHeld.set(false);
       panning.set(true);
       const { grid: g, view: v } = geometry;
       const s = scale.get();

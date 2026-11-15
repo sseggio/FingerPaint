@@ -29,7 +29,7 @@ import {
 } from 'react-native-reanimated';
 
 import type { Artwork } from '@/lib/artwork/types';
-import { previewStart, type StrokeState } from '@/lib/fill-stroke';
+import { groupByValue, previewCells } from '@/lib/fill-preview';
 import { maxVisibleCells, numberThreshold as thresholdFor, type CellRange, type Size } from '@/lib/geometry';
 import { canvasThemes, type CanvasThemeColors } from '@/theme';
 
@@ -38,6 +38,7 @@ import { glyphSpriteIndex, glyphSpriteRect } from './glyph-layout';
 import { makeLayerImage } from './layer-image';
 import { buildBackgroundPixels, buildHighlightPixels, numberInks } from './layers';
 import { useFillGestures, type FillHandler } from './use-fill-gestures';
+import { useFillPreview } from './use-fill-preview';
 import { FOCUS_TIMING, useViewport } from './use-viewport';
 
 /** Cells are magnified: never blur them. */
@@ -145,28 +146,40 @@ const NumberGlyphs = memo(function NumberGlyphs({ atlas, cells, inks, gridWidth,
   return <Atlas image={image} sprites={sprites} transforms={transforms} sampling={SMOOTH} />;
 });
 
+interface PreviewCellsProps {
+  /** Previewed cells per palette value (1-based). */
+  groups: SharedValue<Record<number, number[]>>;
+  value: number;
+  /** Target color of the cells of `value`: the very color the color layer paints them in. */
+  color: string;
+  gridWidth: number;
+}
+
 /**
- * Live drag-to-fill preview: the cells collected by the running stroke, as unit squares. Only
- * the cells not yet painted in the color layer are drawn (see `previewStart`), so each update
- * costs at most ~2 × DRAG_BATCH_MAX rects however long the drag.
+ * Live fill preview of one palette color: the previewed cells as unit squares, opaque and without
+ * anti-aliasing, so they look exactly like the same cells in the color layer (nearest-sampled
+ * image). Kept until the color layer shows them (F16): no flash when the finger lifts.
  */
-function useStrokePath(stroke: SharedValue<StrokeState>, gridWidth: number) {
-  return useDerivedValue(() => {
+const PreviewCells = memo(function PreviewCells({ groups, value, color, gridWidth }: PreviewCellsProps) {
+  const path = useDerivedValue(() => {
     const builder = Skia.PathBuilder.Make();
-    const state = stroke.get();
-    const { cells } = state;
-    for (let k = previewStart(state); k < cells.length; k++) {
-      const i = cells[k];
-      builder.addRect(Skia.XYWHRect(i % gridWidth, Math.floor(i / gridWidth), 1, 1));
+    const cells = groups.get()[value];
+    if (cells) {
+      for (let k = 0; k < cells.length; k++) {
+        const i = cells[k];
+        builder.addRect(Skia.XYWHRect(i % gridWidth, Math.floor(i / gridWidth), 1, 1));
+      }
     }
     return builder.detach();
   });
-}
+  return <Path path={path} color={color} antiAlias={false} />;
+});
 
 /**
  * The coloring canvas: one Skia `<Canvas>` whose world group is transformed by shared values.
  * Layers (back to front): grayscale background, active-color highlight, numbers, color layer
- * (opaque over filled cells, so their numbers and highlight disappear), drag preview, grid, "Find" marker,
+ * (opaque over filled cells, so their numbers and highlight disappear), fill preview (same look as
+ * the color layer, until it shows the cells), grid, "Find" marker,
  * continuous-fill ring around the cell under the finger.
  */
 export function PixelCanvas({
@@ -195,7 +208,8 @@ export function PixelCanvas({
   }, []);
 
   const background = useMemo(() => makeLayerImage(buildBackgroundPixels(artwork), width, height), [artwork, width, height]);
-  // Rebuilt once per revision; the screen coalesces revisions to at most one per frame.
+  // Rebuilt once per revision; the screen coalesces revisions to at most one per frame. Drawn
+  // through `useFillPreview`, in sync with the fill preview.
   const colorLayer = useMemo(
     () => makeLayerImage(colorPixels, width, height),
     // colorRevision signals in-place changes of colorPixels.
@@ -291,6 +305,7 @@ export function PixelCanvas({
   }, [activeColor, activeValue]);
   const noop = useCallback<FillHandler>(() => undefined, []);
   const noopStart = useCallback(() => undefined, []);
+  const { preview, layer, onBatch } = useFillPreview({ colorPixels, colorLayer, cells, onFill: onFill ?? noop });
   const fill = useFillGestures({
     grid,
     cells,
@@ -302,16 +317,13 @@ export function PixelCanvas({
     ty,
     filling,
     panning,
-    onFill: onFill ?? noop,
+    preview,
+    onBatch,
     onFillStart: onFillStart ?? noopStart,
   });
-  const { clearPreview } = fill;
-  // Painted cells now show in the color layer: drop the stroke preview drawn over them.
-  useEffect(() => {
-    clearPreview();
-  }, [colorRevision, clearPreview]);
-  const strokePath = useStrokePath(fill.stroke, width);
-  const { fingerCell, ring } = fill;
+  const { stroke, fingerCell, ring } = fill;
+  /** Previewed cells (pending batches + the running stroke) per palette value. */
+  const groups = useDerivedValue(() => groupByValue(previewCells(preview.get(), stroke.get()), cells));
   const fingerRect = useDerivedValue(() => {
     const i = fingerCell.get();
     if (i < 0) return Skia.XYWHRect(-10, -10, 0, 0);
@@ -321,6 +333,7 @@ export function PixelCanvas({
   const fingerStroke = useDerivedValue(() => 2 / Math.max(1, scale.get()));
   const fingerHalo = useDerivedValue(() => 5 / Math.max(1, scale.get()));
   const activeHex = activeColor === null ? undefined : artwork.palette.colors[activeColor]?.hex;
+  const paletteHexes = artwork.palette.colors.map((c) => c.hex);
   // All simultaneous; the conflicts (tap vs pan vs long press, second finger) are settled by the
   // activation criteria of `@/lib/touch-intent` and the `filling` / `panning` shared values.
   const gesture = useSimultaneousGestures(...gestures, fill.tap, fill.longPress);
@@ -351,8 +364,10 @@ export function PixelCanvas({
                   range={glyphRange}
                 />
               ) : null}
-              <Image image={colorLayer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
-              {activeHex ? <Path path={strokePath} color={activeHex} /> : null}
+              <Image image={layer} x={0} y={0} width={width} height={height} sampling={NEAREST} />
+              {paletteHexes.map((hex, k) => (
+                <PreviewCells key={k} groups={groups} value={k + 1} color={hex} gridWidth={width} />
+              ))}
               <Path
                 path={gridPath}
                 style="stroke"

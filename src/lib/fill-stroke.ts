@@ -12,7 +12,7 @@ import { cellsOnLine, type Size } from './geometry';
 export const DRAG_BATCH_MAX = 512;
 
 export interface StrokeState {
-  /** Every cell collected by the current stroke, in order (also drawn as the live preview). */
+  /** Every cell collected by the current stroke, in order (the ones not sent yet are previewed). */
   cells: number[];
   /** Cells already collected (dedup). */
   seen: Record<number, true>;
@@ -75,14 +75,4 @@ export function takeBatch(state: StrokeState): number[] | null {
   const batch = state.cells.slice(state.sent);
   state.sent = state.cells.length;
   return batch;
-}
-
-/**
- * First cell of the live preview. Cells sent more than one batch ago are already painted in the
- * color layer, so the preview only draws the previous batch (painted within a frame or two) and
- * the pending cells: its cost stays bounded (≈ 2 × DRAG_BATCH_MAX rects) however long the drag.
- */
-export function previewStart(state: StrokeState): number {
-  'worklet';
-  return Math.max(0, state.sent - DRAG_BATCH_MAX);
 }

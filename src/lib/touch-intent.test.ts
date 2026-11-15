@@ -1,4 +1,13 @@
-import { classifyTouch, LONG_PRESS_MS, TAP_MAX_MS, TOUCH_SLOP, type TouchSample } from './touch-intent';
+import {
+  classifyTouch,
+  LONG_PRESS_FILL_GESTURE,
+  LONG_PRESS_MS,
+  TAP_GESTURE,
+  TAP_MAX_MS,
+  TOUCH_SLOP,
+  VIEWPORT_PAN_GESTURE,
+  type TouchSample,
+} from './touch-intent';
 
 const base: TouchSample = { elapsedMs: 0, maxDistance: 0, pointers: 1, released: false, longPressFill: true };
 const touch = (s: Partial<TouchSample>) => classifyTouch({ ...base, ...s });
@@ -46,5 +55,28 @@ describe('one-finger touch model', () => {
     expect(touch({ pointers: 2 })).toBe('pinch');
     expect(touch({ pointers: 2, elapsedMs: 400 })).toBe('pinch');
     expect(touch({ pointers: 2, maxDistance: 50 })).toBe('pinch');
+  });
+});
+
+describe('gesture configs (shared with the gesture handlers)', () => {
+  it('use exactly the thresholds of the reference model', () => {
+    // Tap: released within the slop and before the tap delay.
+    expect(TAP_GESTURE.maxDistance).toBe(TOUCH_SLOP);
+    expect(TAP_GESTURE.maxDuration).toBe(TAP_MAX_MS);
+    expect(touch({ elapsedMs: TAP_GESTURE.maxDuration - 1, maxDistance: TAP_GESTURE.maxDistance, released: true })).toBe(
+      'tap',
+    );
+    expect(touch({ elapsedMs: TAP_GESTURE.maxDuration, released: true, longPressFill: false })).toBe('none');
+    // Long press: one finger, held for the long-press delay.
+    expect(LONG_PRESS_FILL_GESTURE.maxPointers).toBe(1);
+    expect(LONG_PRESS_FILL_GESTURE.activateAfterLongPress).toBe(LONG_PRESS_MS);
+    expect(touch({ elapsedMs: LONG_PRESS_FILL_GESTURE.activateAfterLongPress })).toBe('fill');
+    expect(touch({ elapsedMs: LONG_PRESS_FILL_GESTURE.activateAfterLongPress - 1 })).toBe('pending');
+    expect(touch({ pointers: LONG_PRESS_FILL_GESTURE.maxPointers + 1 })).toBe('pinch');
+    // Pan: past the slop.
+    expect(VIEWPORT_PAN_GESTURE.minDistance).toBe(TOUCH_SLOP);
+    expect(VIEWPORT_PAN_GESTURE.minPointers).toBe(1);
+    expect(touch({ maxDistance: VIEWPORT_PAN_GESTURE.minDistance + 1 })).toBe('pan');
+    expect(touch({ maxDistance: VIEWPORT_PAN_GESTURE.minDistance })).toBe('pending');
   });
 });

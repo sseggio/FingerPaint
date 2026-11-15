@@ -1,10 +1,11 @@
 import { usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import { useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
-import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import { scheduleOnRN } from 'react-native-worklets';
 
+import { addBatch, type PreviewState } from '@/lib/fill-preview';
 import { DRAG_BATCH_MAX, emptyStroke, pendingCount, strokeTo, takeBatch, type StrokeState } from '@/lib/fill-stroke';
 import { screenToCell, type Size } from '@/lib/geometry';
-import { LONG_PRESS_MS, TAP_MAX_MS, TOUCH_SLOP } from '@/lib/touch-intent';
+import { LONG_PRESS_FILL_GESTURE, TAP_GESTURE } from '@/lib/touch-intent';
 
 export type FillSource = 'tap' | 'drag';
 
@@ -31,7 +32,13 @@ export interface FillGestureOptions {
   filling: SharedValue<boolean>;
   /** True while the viewport pans: a long press can no longer start continuous fill. */
   panning: SharedValue<boolean>;
-  onFill: FillHandler;
+  /** Fill preview (F16): batches sent to the JS runtime stay drawn until the color layer shows them. */
+  preview: SharedValue<PreviewState>;
+  /**
+   * Receives the batches on the JS runtime, with the id of their preview batch (-1 when nothing
+   * is previewed, e.g. a tap on a cell of another color).
+   */
+  onBatch: (batch: number[], source: FillSource, id: number) => void;
   /** Continuous fill just started (light haptic on the JS side). */
   onFillStart: () => void;
 }
@@ -42,7 +49,9 @@ export interface FillGestureOptions {
  * (deduplicated, gaps filled) and crosses to the JS runtime once, when the finger lifts (or every
  * DRAG_BATCH_MAX cells on a very long stroke): no per-frame `scheduleOnRN`, no React state during
  * the gesture. Correctness (wrong color, already filled) is decided on the JS side by the coloring
- * session; the UI side only keeps cells of the active color for the preview.
+ * session; the UI side only keeps cells of the active color for the preview. Every batch sent
+ * (taps included) is added to the fill preview in the same UI task, and stays drawn until the
+ * color layer shows it (see `@/lib/fill-preview`, F16).
  */
 export function useFillGestures({
   grid,
@@ -55,7 +64,8 @@ export function useFillGestures({
   ty,
   filling,
   panning,
-  onFill,
+  preview,
+  onBatch,
   onFillStart,
 }: FillGestureOptions) {
   const stroke = useSharedValue<StrokeState>(emptyStroke());
@@ -82,10 +92,21 @@ export function useFillGestures({
     }, true);
   };
 
+  /** Moves cells to the preview batches (same UI task: the preview never loses them) and sends them. */
+  const sendPreviewed = (batch: number[], source: FillSource) => {
+    'worklet';
+    // `get()` is the state object itself on the UI runtime: mutate it, then notify the readers.
+    const id = addBatch(preview.get(), batch);
+    preview.modify((p) => p, true);
+    scheduleOnRN(onBatch, batch, source, id);
+  };
+
   const send = () => {
     'worklet';
     const batch = takeBatch(stroke.get());
-    if (batch) scheduleOnRN(onFill, batch, 'drag');
+    if (!batch) return;
+    stroke.modify((s) => s, true);
+    sendPreviewed(batch, 'drag');
   };
 
   /** Ends continuous fill: the collected cells are kept and sent. */
@@ -100,15 +121,19 @@ export function useFillGestures({
   const tap = useTapGesture({
     testID: 'fill-tap',
     enabled,
-    maxDuration: TAP_MAX_MS,
-    maxDistance: TOUCH_SLOP,
+    // Explicit fields: the Worklets plugin does not accept spreads in gesture configs.
+    maxDuration: TAP_GESTURE.maxDuration,
+    maxDistance: TAP_GESTURE.maxDistance,
     onActivate: (e) => {
       if (filling.get()) return;
       const cell = cellAt(e.x, e.y);
       if (!cell) return;
       const index = cell.row * grid.width + cell.col;
       if (cells[index] === 0) return;
-      scheduleOnRN(onFill, [index], 'tap');
+      // A cell of the active color shows painted at once, like a stroke; another one is only
+      // reported (wrong-color feedback).
+      if (cells[index] === activeValue.get()) sendPreviewed([index], 'tap');
+      else scheduleOnRN(onBatch, [index], 'tap', -1);
     },
   });
 
@@ -117,8 +142,8 @@ export function useFillGestures({
   const longPress = usePanGesture({
     testID: 'fill-long-press',
     enabled: enabled && longPressFill,
-    maxPointers: 1,
-    activateAfterLongPress: LONG_PRESS_MS,
+    maxPointers: LONG_PRESS_FILL_GESTURE.maxPointers,
+    activateAfterLongPress: LONG_PRESS_FILL_GESTURE.activateAfterLongPress,
     onActivate: (e) => {
       if (panning.get()) return;
       filling.set(true);
@@ -146,13 +171,5 @@ export function useFillGestures({
     },
   });
 
-  /** Clears the live preview once the JS side has painted the cells (called after a revision). */
-  const clearPreview = () => {
-    scheduleOnUI(() => {
-      'worklet';
-      if (!filling.get() && stroke.get().cells.length > 0) stroke.set(emptyStroke());
-    });
-  };
-
-  return { tap, longPress, stroke, fingerCell, ring, clearPreview };
+  return { tap, longPress, stroke, fingerCell, ring };
 }
