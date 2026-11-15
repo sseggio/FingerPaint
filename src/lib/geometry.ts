@@ -68,16 +68,42 @@ export function scaleBounds(grid: Size, view: Size, padding = 0, maxCellPt = MAX
 }
 
 /**
- * Bounds one translation axis: content smaller than the view is centered, larger content
- * cannot leave a gap at either edge.
+ * Pan overscroll (F20): once the zoomed grid overflows the view, its edge may be dragged in up to
+ * this fraction of the view size on that axis (0.5 = the edge reaches the middle of the screen),
+ * so edge and corner cells can be brought to the center of the screen.
  */
-export function clampTranslation(t: number, contentSize: number, viewSize: number): number {
-  'worklet';
-  if (contentSize <= viewSize) return (viewSize - contentSize) / 2;
-  return clamp(t, viewSize - contentSize, 0);
+export const PAN_MARGIN_RATIO = 0.5;
+
+export interface PanRange {
+  min: number;
+  max: number;
 }
 
-/** Clamps scale into `bounds` and translation so the grid stays in view. */
+/**
+ * Allowed translations on one axis. Content smaller than the view is centered (min === max).
+ * Larger content may leave a gap of `margin` at either edge, where the margin grows with the
+ * overflow (`content - view`) up to PAN_MARGIN_RATIO × view: continuous at the boundary (an
+ * overflow of 0 gives [0, 0], the centered position), so zooming past the fit never jumps.
+ */
+export function panRange(contentSize: number, viewSize: number): PanRange {
+  'worklet';
+  const overflow = contentSize - viewSize;
+  if (overflow <= 0) {
+    const centered = (viewSize - contentSize) / 2;
+    return { min: centered, max: centered };
+  }
+  const margin = Math.min(overflow, Math.max(0, viewSize) * PAN_MARGIN_RATIO);
+  return { min: -overflow - margin, max: margin };
+}
+
+/** Bounds one translation axis into `panRange` (centered small content, margins on large content). */
+export function clampTranslation(t: number, contentSize: number, viewSize: number): number {
+  'worklet';
+  const r = panRange(contentSize, viewSize);
+  return clamp(t, r.min, r.max);
+}
+
+/** Clamps scale into `bounds` and translation into the pan range (see `panRange`). */
 export function clampViewport(v: Viewport, grid: Size, view: Size, bounds: ScaleBounds): Viewport {
   'worklet';
   const scale = clamp(v.scale, bounds.min, bounds.max);

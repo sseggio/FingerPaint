@@ -13,6 +13,8 @@ import {
   focusCellViewport,
   FOCUS_CELL_PT,
   maxVisibleCells,
+  panRange,
+  PAN_MARGIN_RATIO,
   MAX_CELL_PT,
   rangeFromKey,
   rangeKey,
@@ -54,21 +56,67 @@ describe('clamp', () => {
     expect(clamp(2, 0, 3)).toBe(2);
   });
 
-  it('centers small content and blocks gaps on large content', () => {
+  it('centers content smaller than the view', () => {
     expect(clampTranslation(50, 100, 300)).toBe(100);
-    expect(clampTranslation(20, 600, 300)).toBe(0);
-    expect(clampTranslation(-500, 600, 300)).toBe(-300);
+    expect(clampTranslation(-999, 100, 300)).toBe(100);
+    expect(panRange(100, 300)).toEqual({ min: 100, max: 100 });
+  });
+
+  it('lets large content overscroll until its edge reaches the middle of the view (F20)', () => {
+    expect(PAN_MARGIN_RATIO).toBe(0.5);
+    // Overflow 300 > half the view (150): full margin of 150 on each side.
+    expect(panRange(600, 300)).toEqual({ min: -450, max: 150 });
+    expect(clampTranslation(20, 600, 300)).toBe(20);
+    expect(clampTranslation(500, 600, 300)).toBe(150);
+    expect(clampTranslation(-9999, 600, 300)).toBe(-450);
     expect(clampTranslation(-120, 600, 300)).toBe(-120);
+    // Small overflow: the margin grows with it (no jump when zooming past the fit).
+    expect(panRange(340, 300)).toEqual({ min: -80, max: 40 });
+  });
+
+  it('is continuous between the centered and the overscroll regimes', () => {
+    const viewSize = 300;
+    let previous = panRange(viewSize - 1, viewSize);
+    for (let content = viewSize - 1; content <= viewSize * 3; content += 0.5) {
+      const r = panRange(content, viewSize);
+      expect(Math.abs(r.min - previous.min)).toBeLessThanOrEqual(1.5);
+      expect(Math.abs(r.max - previous.max)).toBeLessThanOrEqual(1.5);
+      expect(r.min).toBeLessThanOrEqual(r.max);
+      // The edge of the content never goes past the middle of the view.
+      expect(r.max).toBeLessThanOrEqual(viewSize / 2);
+      expect(r.min + content).toBeGreaterThanOrEqual(viewSize / 2);
+      previous = r;
+    }
+    expect(panRange(viewSize, viewSize)).toEqual({ min: 0, max: 0 });
+    const eps = panRange(viewSize + 1e-6, viewSize);
+    expect(eps.min).toBeCloseTo(0, 5);
+    expect(eps.max).toBeCloseTo(0, 5);
   });
 
   it('clamps a whole viewport', () => {
     const bounds = scaleBounds(grid, view);
     expect(clampViewport({ scale: 1, tx: 99, ty: 99 }, grid, view, bounds)).toEqual(fitViewport(grid, view));
+    // 32 × 16 cells at 48 pt = 1536 × 768 in a 320 × 640 view: x margin 160 (half the view),
+    // y overflow 128 so a margin of 128.
     expect(clampViewport({ scale: 100, tx: 50, ty: -9999 }, grid, view, bounds)).toEqual({
       scale: MAX_CELL_PT,
-      tx: 0,
-      ty: view.height - grid.height * MAX_CELL_PT,
+      tx: 50,
+      ty: view.height - grid.height * MAX_CELL_PT - 128,
     });
+    expect(clampViewport({ scale: MAX_CELL_PT, tx: 9999, ty: 9999 }, grid, view, bounds)).toEqual({
+      scale: MAX_CELL_PT,
+      tx: view.width / 2,
+      ty: 128,
+    });
+  });
+
+  it('a touch in the margin hits no cell', () => {
+    const bounds = scaleBounds(grid, view);
+    const v = clampViewport({ scale: MAX_CELL_PT, tx: 9999, ty: 9999 }, grid, view, bounds);
+    expect(screenToCell(v.tx - 1, v.ty + 10, v, grid)).toBeNull();
+    expect(screenToCell(v.tx + 10, v.ty - 1, v, grid)).toBeNull();
+    expect(screenToCell(10, 10, v, grid)).toBeNull();
+    expect(screenToCell(v.tx + 1, v.ty + 1, v, grid)).toEqual({ col: 0, row: 0 });
   });
 });
 
@@ -219,10 +267,27 @@ describe('focusCellViewport (Find hint)', () => {
     expect(viewCenter(target, view)).toEqual({ x: 16.5, y: 8 });
   });
 
-  it('keeps corner cells inside the pan bounds', () => {
+  it('centers a corner cell thanks to the pan margins (F20)', () => {
     const target = focusCellViewport(fitViewport(grid, view), 0, 0, grid, view, bounds);
-    expect(target.tx).toBeLessThanOrEqual(0);
-    expect(screenToCell(1, view.height / 2, target, grid)?.col).toBe(0);
+    // Horizontally the corner cell is centered; vertically the grid still fits, so it stays centered.
+    expect(viewCenter(target, view)).toEqual({ x: 0.5, y: 8 });
+    expect(clampViewport(target, grid, view, bounds)).toEqual(target);
+  });
+
+  it.each([
+    [0, 0],
+    [127, 0],
+    [0, 127],
+    [127, 127],
+  ])('centers corner cell (%i, %i) of a big artwork on both axes', (col, row) => {
+    const big = { width: 128, height: 128 };
+    const phone = { width: 384, height: 700 };
+    const b = scaleBounds(big, phone, 12);
+    const target = focusCellViewport(fitViewport(big, phone, 12), col, row, big, phone, b);
+    const c = viewCenter(target, phone);
+    expect(c.x).toBeCloseTo(col + 0.5, 10);
+    expect(c.y).toBeCloseTo(row + 0.5, 10);
+    expect(screenToCell(phone.width / 2, phone.height / 2, target, big)).toEqual({ col, row });
   });
 });
 

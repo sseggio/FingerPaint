@@ -21,6 +21,7 @@ import {
   EMPTY_RANGE,
   fitViewport,
   focusCellViewport,
+  panRange,
   rangeFromKey,
   rangeKey,
   scaleBounds,
@@ -255,11 +256,11 @@ export function useViewport({
         if (e.canceled || panHeld.get() || filling.get()) return;
         const { grid: g, view: v } = geometry;
         const s = scale.get();
-        const contentW = g.width * s;
-        const contentH = g.height * s;
-        // Momentum, bounded by the same limits as the drag itself.
-        if (contentW > v.width) tx.set(withDecay({ velocity: e.velocityX, clamp: [v.width - contentW, 0] }));
-        if (contentH > v.height) ty.set(withDecay({ velocity: e.velocityY, clamp: [v.height - contentH, 0] }));
+        // Momentum, bounded by the same limits as the drag itself (margins included, F20).
+        const rx = panRange(g.width * s, v.width);
+        const ry = panRange(g.height * s, v.height);
+        if (rx.max > rx.min) tx.set(withDecay({ velocity: e.velocityX, clamp: [rx.min, rx.max] }));
+        if (ry.max > ry.min) ty.set(withDecay({ velocity: e.velocityY, clamp: [ry.min, ry.max] }));
       } catch (error) {
         reportWorkletError('viewportPan.onDeactivate', error);
       }
