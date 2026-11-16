@@ -1,15 +1,37 @@
-# Manual deployment of the catalog back-office to the VPS over SSH (see backoffice/README.md).
-# Required repository secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY and VPS_KNOWN_HOSTS (the server's
-# public host key line(s), e.g. from `ssh-keyscan <host>` run once from a trusted machine). The job
-# fails when one is missing: the host key is never fetched blindly at deploy time.
+# Fully automated deployment of the catalog back-office to the VPS (see backoffice/README.md,
+# « Déploiement automatique depuis GitHub »). Manual trigger only (Actions tab or workflow_dispatch API).
+#
+# The VPS never needs access to GitHub: the runner builds an archive of exactly what
+# backoffice/Dockerfile copies (backoffice/scripts/build-deploy-archive.sh), streams it over SSH into
+# <path>/releases/<sha>, then backoffice/scripts/deploy-remote.sh (run on the VPS) checks Docker,
+# creates <path>/shared/.env on the first run, builds, switches the <path>/current symlink and runs
+# `docker compose up -d --build` (fixed project name: the data volumes persist across releases).
+# Finally the runner checks https://<domain>/catalog/v1/manifest.json and /admin.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   VPS_HOST                   IP or host name of the VPS (e.g. 151.80.155.198)
+#   VPS_USER                   SSH user on the VPS, member of the docker group (e.g. deploy)
+#   VPS_SSH_KEY                private key dedicated to deployments (its public key is in
+#                              ~VPS_USER/.ssh/authorized_keys on the VPS)
+#   VPS_KNOWN_HOSTS            the VPS host key line(s), checked strictly: never fetched at deploy time
+#   BACKOFFICE_ADMIN_PASSWORD  admin password (12+ characters). Only its scrypt hash leaves the
+#                              runner, and only on the first deployment or with rotate_password.
 name: Backoffice deploy
 on:
   workflow_dispatch:
     inputs:
+      domain:
+        description: Domain of the back-office (DNS A record pointing to the VPS)
+        required: true
+        default: admin.pixeljoy.krafting.be
       path:
-        description: Repository path on the VPS
+        description: Deployment folder on the VPS (relative to the SSH user's home, or absolute)
         required: true
         default: ~/pixeljoy
+      rotate_password:
+        description: Replace ADMIN_PASSWORD_HASH on the VPS with the hash of BACKOFFICE_ADMIN_PASSWORD
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -18,32 +40,144 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
+      - name: Validate inputs and secrets
+        env:
+          INPUT_DOMAIN: ${{ inputs.domain }}
+          INPUT_PATH: ${{ inputs.path }}
+          INPUT_ROTATE: ${{ inputs.rotate_password }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          BACKOFFICE_ADMIN_PASSWORD: ${{ secrets.BACKOFFICE_ADMIN_PASSWORD }}
+        run: |
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_KNOWN_HOSTS BACKOFFICE_ADMIN_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; exit 1; fi
+          done
+          if [ "${#BACKOFFICE_ADMIN_PASSWORD}" -lt 12 ]; then
+            echo "::error::BACKOFFICE_ADMIN_PASSWORD must be at least 12 characters"; exit 1
+          fi
+          if ! [[ "$VPS_HOST" =~ ^[A-Za-z0-9.:-]+$ ]]; then echo "::error::Invalid VPS_HOST"; exit 1; fi
+          if ! [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then echo "::error::Invalid VPS_USER"; exit 1; fi
+          if ! [[ "$INPUT_DOMAIN" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; then
+            echo "::error::Invalid domain (lowercase host name expected, e.g. admin.example.com)"; exit 1
+          fi
+          # "~/x" means x relative to the SSH user's home (where ssh commands start).
+          deploy_path=${INPUT_PATH#\~/}
+          if ! [[ "$deploy_path" =~ ^/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || [[ "$deploy_path" == *..* ]]; then
+            echo "::error::Invalid path (letters, digits, . _ - and / only, e.g. ~/pixeljoy)"; exit 1
+          fi
+          if [ "$INPUT_ROTATE" != "true" ] && [ "$INPUT_ROTATE" != "false" ]; then
+            echo "::error::Invalid rotate_password"; exit 1
+          fi
+          {
+            echo "DEPLOY_DOMAIN=$INPUT_DOMAIN"
+            echo "DEPLOY_PATH=$deploy_path"
+            echo "DEPLOY_ROTATE=$INPUT_ROTATE"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backoffice/package-lock.json
+
+      - name: Hash the admin password (on the runner)
+        working-directory: backoffice
+        env:
+          BACKOFFICE_ADMIN_PASSWORD: ${{ secrets.BACKOFFICE_ADMIN_PASSWORD }}
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/build.mjs
+          # The clear password only goes through a pipe: never written to disk, never printed.
+          line=$(printf '%s' "$BACKOFFICE_ADMIN_PASSWORD" | node dist/hash-password.mjs)
+          hash=${line#ADMIN_PASSWORD_HASH=}
+          if ! [[ "$hash" =~ ^scrypt:[0-9]+:[0-9]+:[0-9]+:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$ ]]; then
+            echo "::error::Could not hash BACKOFFICE_ADMIN_PASSWORD"; exit 1
+          fi
+          echo "::add-mask::$hash"
+          umask 077
+          printf '%s\n' "$hash" > "$RUNNER_TEMP/admin-hash"
+
       - name: Configure SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
-          for name in VPS_HOST VPS_SSH_KEY VPS_KNOWN_HOSTS; do
-            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; exit 1; fi
-          done
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          (umask 077; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key)
           printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Pull, rebuild and restart
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          DEPLOY_PATH: ${{ inputs.path }}
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $VPS_HOST
+            User $VPS_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            BatchMode yes
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
+          chmod 600 ~/.ssh/config
+          ssh vps true || { echo "::error::SSH connection failed (check VPS_HOST, VPS_USER, VPS_SSH_KEY and VPS_KNOWN_HOSTS)"; exit 1; }
+
+      - name: Upload the release archive
+        id: upload
         run: |
-          if [ -z "$VPS_USER" ]; then echo "::error::Missing repository secret VPS_USER"; exit 1; fi
-          case "$DEPLOY_PATH" in
-            *[!A-Za-z0-9._/~-]*) echo "invalid path"; exit 1 ;;
-          esac
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
-            "set -e; cd $DEPLOY_PATH && git pull --ff-only && cd backoffice && docker compose up -d --build && docker image prune -f && docker compose ps"
+          backoffice/scripts/build-deploy-archive.sh "$RUNNER_TEMP/release.tar.gz" "$GITHUB_SHA"
+          # DEPLOY_PATH and GITHUB_SHA were validated (no quote or shell metacharacter), so they can
+          # be expanded here, on the runner, into the remote command.
+          # shellcheck disable=SC2029
+          ssh vps "set -eu; mkdir -p '$DEPLOY_PATH/releases'; cd '$DEPLOY_PATH/releases';
+            rm -rf '$GITHUB_SHA.partial'; mkdir '$GITHUB_SHA.partial';
+            tar -xzf - -C '$GITHUB_SHA.partial';
+            rm -rf '$GITHUB_SHA'; mv '$GITHUB_SHA.partial' '$GITHUB_SHA'" < "$RUNNER_TEMP/release.tar.gz"
+
+      - name: Preflight, configure, build and start on the VPS
+        run: |
+          # shellcheck disable=SC2029
+          ssh vps bash "'$DEPLOY_PATH/releases/$GITHUB_SHA/backoffice/scripts/deploy-remote.sh'" \
+            activate "'$DEPLOY_PATH'" "$GITHUB_SHA" "$DEPLOY_DOMAIN" "$DEPLOY_ROTATE" < "$RUNNER_TEMP/admin-hash"
+
+      - name: Smoke test
+        run: |
+          deadline=$((SECONDS + 180))
+          while :; do
+            manifest_ok=false
+            admin_code=000
+            if body=$(curl -fsS --max-time 10 "https://$DEPLOY_DOMAIN/catalog/v1/manifest.json" 2>/dev/null) &&
+              printf '%s' "$body" | jq -e '.v == 1' >/dev/null 2>&1; then
+              manifest_ok=true
+            fi
+            # /admin redirects to /admin/ (login page).
+            admin_code=$(curl -sS -L --max-time 10 -o /dev/null -w '%{http_code}' "https://$DEPLOY_DOMAIN/admin" 2>/dev/null) || admin_code=000
+            if [ "$manifest_ok" = true ] && [ "$admin_code" = 200 ]; then
+              echo "OK: https://$DEPLOY_DOMAIN/catalog/v1/manifest.json (v=1) and https://$DEPLOY_DOMAIN/admin (200)"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Smoke test failed after 3 minutes (manifest ok: $manifest_ok, /admin: HTTP $admin_code)"
+              exit 1
+            fi
+            echo "waiting for https://$DEPLOY_DOMAIN (manifest ok: $manifest_ok, /admin: HTTP $admin_code)..."
+            sleep 10
+          done
+
+      - name: Diagnostics (docker compose ps and last 100 log lines)
+        if: failure() && steps.upload.outcome == 'success'
+        run: |
+          # shellcheck disable=SC2029
+          ssh vps bash "'$DEPLOY_PATH/releases/$GITHUB_SHA/backoffice/scripts/deploy-remote.sh'" diagnose "'$DEPLOY_PATH'" || true
+
       - name: Clean up
         if: always()
-        run: rm -f ~/.ssh/deploy_key
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/config "$RUNNER_TEMP/admin-hash" "$RUNNER_TEMP/release.tar.gz"

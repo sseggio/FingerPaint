@@ -35,7 +35,110 @@ Chez ton registrar, crée un **enregistrement A** pour le sous-domaine choisi, p
 
 Vérifie la propagation (quelques minutes à quelques heures) : `ping catalogue.example.com` doit répondre avec l'IP du VPS.
 
-## 3. Installation
+## 3. Déploiement automatique depuis GitHub (recommandé)
+
+Le workflow GitHub **Backoffice deploy** (`.github/workflows/backoffice-deploy.yml`) fait tout le déploiement pour toi, sans que le VPS ait besoin d'accéder à GitHub (le dépôt peut rester privé) :
+
+1. il prépare une archive contenant uniquement ce qu'il faut pour construire le serveur (`backoffice/`, `src/lib/artwork`, `src/lib/color.ts`, `src/lib/symbols.ts`, `src/content/albums.json`, `src/content/artworks` : la liste est lue dans le `Dockerfile`) et l'envoie en SSH dans `~/pixeljoy/releases/<commit>` ;
+2. au **premier** déploiement, il crée `~/pixeljoy/shared/.env` (droits `600`) avec `DOMAIN`, un `SESSION_SECRET` aléatoire tiré sur le VPS et le hash de ton mot de passe admin (calculé sur GitHub : le mot de passe en clair n'est jamais envoyé au VPS ni écrit nulle part) ;
+3. il vérifie que Docker est installé et que les ports 80/443 sont libres, construit l'image, bascule le lien `~/pixeljoy/current` vers la nouvelle version (les 3 dernières sont gardées) et lance `docker compose up -d --build` ;
+4. il vérifie enfin que `https://<domaine>/catalog/v1/manifest.json` et `https://<domaine>/admin` répondent (3 minutes max.), sinon il affiche l'état des conteneurs et leurs 100 dernières lignes de logs, et le job échoue.
+
+Les données (base et œuvres) sont dans des volumes Docker nommés (`pixeljoy-catalog_catalog-data`, …) : elles ne dépendent pas du dossier de la version et survivent à chaque déploiement.
+
+Il faut préparer le VPS **une seule fois**. Dans les commandes ci-dessous, remplace `151.80.155.198` par l'IP de ton VPS si elle est différente.
+
+### 3.1 Installer Docker sur le VPS
+
+Connecte-toi au VPS avec ton compte habituel (`ssh <ton-utilisateur>@151.80.155.198`), puis installe Docker avec le script officiel :
+
+```sh
+curl -fsSL https://get.docker.com | sudo sh
+docker compose version     # doit afficher une version 2.x
+```
+
+### 3.2 Créer un utilisateur `deploy` dédié
+
+Toujours sur le VPS :
+
+```sh
+sudo adduser --disabled-password --gecos "" deploy   # pas de mot de passe : connexion par clé uniquement
+sudo usermod -aG docker deploy                        # le droit d'utiliser Docker
+sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+```
+
+(Être dans le groupe `docker` revient à avoir les droits administrateur sur le VPS : cette clé ne doit servir qu'au déploiement.)
+
+### 3.3 Créer une paire de clés SSH dédiée, sur TON ordinateur
+
+Sur ton ordinateur (pas sur le VPS), dans un terminal :
+
+```sh
+ssh-keygen -t ed25519 -f pixeljoy_deploy -N "" -C pixeljoy-deploy
+```
+
+Cela crée deux fichiers dans le dossier courant : `pixeljoy_deploy` (clé **privée**, pour GitHub) et `pixeljoy_deploy.pub` (clé **publique**, pour le VPS).
+
+Affiche la clé publique (`cat pixeljoy_deploy.pub`), copie la ligne `ssh-ed25519 AAAA… pixeljoy-deploy`, puis sur le VPS :
+
+```sh
+echo 'ssh-ed25519 AAAA…colle-ta-ligne-ici… pixeljoy-deploy' | sudo tee /home/deploy/.ssh/authorized_keys
+sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
+```
+
+Vérifie depuis ton ordinateur : `ssh -i pixeljoy_deploy deploy@151.80.155.198 docker ps` doit afficher un tableau (vide), sans demander de mot de passe.
+
+### 3.4 Récupérer l'empreinte du VPS (`VPS_KNOWN_HOSTS`)
+
+GitHub doit savoir à l'avance à quel serveur il parle (sinon quelqu'un pourrait se faire passer pour ton VPS). Depuis ton ordinateur :
+
+```sh
+ssh-keyscan -t ed25519 151.80.155.198
+```
+
+La commande affiche une ligne `151.80.155.198 ssh-ed25519 AAAA…` : c'est la valeur du secret. **Vérifie-la** : sur le VPS, `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` affiche une empreinte `SHA256:…` ; sur ton ordinateur, `ssh-keyscan -t ed25519 151.80.155.198 | ssh-keygen -lf -` doit afficher **exactement** la même. (Autre méthode sans réseau : sur le VPS, `echo "151.80.155.198 $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"` affiche directement la bonne ligne.)
+
+### 3.5 Ajouter les 5 secrets dans GitHub
+
+Sur la page du dépôt GitHub : *Settings › Secrets and variables › Actions › New repository secret*, crée :
+
+| Secret | Valeur |
+| --- | --- |
+| `VPS_HOST` | `151.80.155.198` |
+| `VPS_USER` | `deploy` |
+| `VPS_SSH_KEY` | tout le contenu du fichier `pixeljoy_deploy` (clé privée), lignes `-----BEGIN…` et `-----END…` comprises |
+| `VPS_KNOWN_HOSTS` | la ligne vérifiée à l'étape 3.4 |
+| `BACKOFFICE_ADMIN_PASSWORD` | ton mot de passe admin (12 caractères minimum, une phrase de passe c'est très bien) |
+
+Ensuite, supprime la clé privée de ton ordinateur si tu n'en as plus besoin (`rm pixeljoy_deploy`) : elle est dans GitHub, et tu peux toujours en refaire une.
+
+### 3.6 Ouvrir les ports 80 et 443
+
+Caddy en a besoin pour obtenir le certificat HTTPS (Let's Encrypt). Dans le pare-feu de ton hébergeur (s'il y en a un d'activé) et, si `ufw` est utilisé sur le VPS :
+
+```sh
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 443/udp
+```
+
+Aucun autre programme ne doit déjà utiliser ces ports (un Apache ou Nginx installé par défaut, par exemple : `sudo ss -ltnp 'sport = :80'` montre lequel). Le workflow affiche un avertissement dans ce cas.
+
+### 3.7 Lancer le déploiement
+
+Sur GitHub : onglet *Actions › Backoffice deploy › Run workflow*. Paramètres :
+
+- `domain` : le sous-domaine (par défaut `admin.pixeljoy.krafting.be`, l'enregistrement DNS A doit pointer vers le VPS) ;
+- `path` : le dossier sur le VPS (par défaut `~/pixeljoy`, dans le dossier personnel de `deploy`) ;
+- `rotate_password` : laisse décoché. Coche-le uniquement pour **changer le mot de passe admin** : modifie d'abord le secret `BACKOFFICE_ADMIN_PASSWORD`, puis relance le workflow avec la case cochée (seul `ADMIN_PASSWORD_HASH` est remplacé dans `shared/.env`).
+
+Pour mettre à jour le serveur plus tard, relance simplement le workflow. Après le premier déploiement, `shared/.env` n'est plus jamais réécrit (sauf `rotate_password`) : pour changer de domaine, modifie `DOMAIN` dans `~/pixeljoy/shared/.env` sur le VPS puis relance le workflow avec le nouveau `domain`.
+
+Sur le VPS, la version en ligne est dans `~/pixeljoy/current/backoffice` : c'est le dossier où lancer les commandes `docker compose …` et `./scripts/backup.sh` des sections suivantes (les sauvegardes vont dans `~/pixeljoy/shared/backups`, conservé entre les versions). Pour revenir à une version précédente : `cd ~/pixeljoy && ln -sfn releases/<commit> current && cd "$(readlink -f current)/backoffice" && docker compose up -d`.
+
+## 3 bis. Installation manuelle (alternative)
 
 Sur le VPS :
 
@@ -115,23 +218,12 @@ Les images de base (`node:22-alpine`, `caddy:2-alpine`) sont **épinglées par d
 
 Les données (base + fichiers d'œuvres) sont dans le volume Docker `catalog-data` : elles survivent aux mises à jour et aux redémarrages. La liste des ids embarqués est régénérée à chaque build depuis `src/content`.
 
-Déploiement en un clic (optionnel) : le workflow GitHub **Backoffice deploy** (`.github/workflows/backoffice-deploy.yml`, lancement manuel) se connecte au VPS en SSH et exécute ces commandes. Ajoute dans *Settings › Secrets and variables › Actions* :
-
-| Secret | Contenu |
-| --- | --- |
-| `VPS_HOST` | IP ou nom du VPS |
-| `VPS_USER` | utilisateur SSH (membre du groupe `docker`) |
-| `VPS_SSH_KEY` | clé privée SSH dédiée au déploiement (sa clé publique dans `~/.ssh/authorized_keys` du VPS) |
-| `VPS_KNOWN_HOSTS` | **obligatoire** : la ou les lignes de clé d'hôte du VPS, pour vérifier son identité (le job échoue si ce secret est vide) |
-
-Pour obtenir `VPS_KNOWN_HOSTS` sans risque : sur le VPS lui-même, lance `for f in /etc/ssh/ssh_host_*_key.pub; do echo "<ip-du-vps> $(cut -d' ' -f1,2 "$f")"; done` et copie la sortie. (Depuis ton ordinateur, `ssh-keyscan <ip-du-vps>` fonctionne aussi si tu compares l'empreinte avec celle affichée par `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` sur le VPS.)
-
-Le chemin du dépôt sur le VPS est un paramètre du workflow (par défaut `~/pixeljoy`).
+Avec le déploiement automatique (section 3), une mise à jour = relancer le workflow **Backoffice deploy** ; les commandes ci-dessus concernent l'installation manuelle.
 
 ## 6. Sauvegarde
 
 ```sh
-cd ~/pixeljoy/backoffice
+cd ~/pixeljoy/backoffice          # déploiement automatique : cd ~/pixeljoy/current/backoffice
 ./scripts/backup.sh
 ```
 
@@ -141,6 +233,7 @@ Crée `backups/pixeljoy-AAAAMMJJ-HHMMSS.tar.gz` (copie cohérente de la base SQL
 crontab -e
 # ajoute la ligne :
 0 3 * * * cd $HOME/pixeljoy/backoffice && ./scripts/backup.sh >/dev/null 2>&1
+# (déploiement automatique : cd $HOME/pixeljoy/current/backoffice, les archives vont dans ~/pixeljoy/shared/backups)
 ```
 
 Copie régulièrement le dossier `backups/` ailleurs que sur le VPS (ton ordinateur, un stockage externe).
@@ -148,7 +241,7 @@ Copie régulièrement le dossier `backups/` ailleurs que sur le VPS (ton ordinat
 ### Restaurer une sauvegarde
 
 ```sh
-cd ~/pixeljoy/backoffice
+cd ~/pixeljoy/backoffice          # déploiement automatique : cd ~/pixeljoy/current/backoffice
 docker compose stop app
 mkdir -p /tmp/restore && tar -xzf backups/pixeljoy-AAAAMMJJ-HHMMSS.tar.gz -C /tmp/restore
 mv /tmp/restore/backup.sqlite /tmp/restore/catalog.sqlite
@@ -160,6 +253,7 @@ rm -rf /tmp/restore
 
 ## 7. Dépannage
 
+- Le workflow **Backoffice deploy** échoue : ouvre le job dans l'onglet *Actions*, le message `Error` indique l'étape. « Missing repository secret » : un secret de la section 3.5 manque. « SSH connection failed » : vérifie `VPS_HOST`, `VPS_USER`, la clé publique dans `/home/deploy/.ssh/authorized_keys` et `VPS_KNOWN_HOSTS` (à refaire si le VPS a été réinstallé). « docker is not installed » / « cannot talk to the Docker daemon » : section 3.1 et 3.2 (puis relance). « Smoke test failed » : regarde l'étape *Diagnostics* (état des conteneurs et logs) ; le plus souvent DNS pas encore propagé ou ports 80/443 fermés ou déjà utilisés.
 - `docker compose logs app` : messages du serveur (jamais d'IP ni de requête : il n'y a pas de journal d'accès).
 - `docker compose logs caddy` : problème de certificat → vérifie le DNS et les ports 80/443.
 - « Invalid configuration » au démarrage : `ADMIN_PASSWORD_HASH` ou `SESSION_SECRET` manquant ou mal copié dans `.env`.
