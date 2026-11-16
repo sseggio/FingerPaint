@@ -113,6 +113,8 @@ Sur la page du dépôt GitHub : *Settings › Secrets and variables › Actions 
 
 Ensuite, supprime la clé privée de ton ordinateur si tu n'en as plus besoin (`rm pixeljoy_deploy`) : elle est dans GitHub, et tu peux toujours en refaire une.
 
+**Optionnel, plus strict** : le job de déploiement utilise l'environnement GitHub `production` (créé automatiquement au premier lancement). Pour que seuls les déploiements depuis la branche d'intégration puissent lire les secrets : *Settings › Environments › production* ; dans *Deployment branches and tags*, choisis *Selected branches and tags* et ajoute `claude/trusting-turing-c692ne` ; puis recrée les 5 secrets dans *Environment secrets* et supprime-les des *Repository secrets*. N'active **pas** *Required reviewers* : le déploiement doit rester déclenchable sans approbation manuelle (bouton *Run workflow* ou API). Lance alors le workflow sur cette branche.
+
 ### 3.6 Ouvrir les ports 80 et 443
 
 Caddy en a besoin pour obtenir le certificat HTTPS (Let's Encrypt). Dans le pare-feu de ton hébergeur (s'il y en a un d'activé) et, si `ufw` est utilisé sur le VPS :

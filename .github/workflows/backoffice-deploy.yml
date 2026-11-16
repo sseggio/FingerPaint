@@ -8,7 +8,8 @@
 # `docker compose up -d --build` (fixed project name: the data volumes persist across releases).
 # Finally the runner checks https://<domain>/catalog/v1/manifest.json and /admin.
 #
-# Required repository secrets (Settings > Secrets and variables > Actions):
+# Required secrets (Settings > Secrets and variables > Actions; repository secrets, or secrets of the
+# "production" environment used by the job):
 #   VPS_HOST                   IP or host name of the VPS (e.g. 151.80.155.198)
 #   VPS_USER                   SSH user on the VPS, member of the docker group (e.g. deploy)
 #   VPS_SSH_KEY                private key dedicated to deployments (its public key is in
@@ -41,6 +42,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Created automatically by GitHub on the first run. Optional hardening (README, section 3.5):
+    # restrict it to the integration branch and move the secrets into it. No required reviewers,
+    # so the deployment stays triggerable through the workflow_dispatch API.
+    environment: production
     steps:
       - name: Validate inputs and secrets
         env:
@@ -78,23 +83,29 @@ jobs:
             echo "DEPLOY_ROTATE=$INPUT_ROTATE"
           } >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backoffice/package-lock.json
 
+      # Dependencies and build scripts run WITHOUT any secret in their environment.
+      - name: Build the password hashing tool
+        working-directory: backoffice
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/build.mjs
+
+      # Only this step receives the admin password: it runs nothing but the bundled hash script.
       - name: Hash the admin password (on the runner)
         working-directory: backoffice
         env:
           BACKOFFICE_ADMIN_PASSWORD: ${{ secrets.BACKOFFICE_ADMIN_PASSWORD }}
         run: |
-          npm ci --no-audit --no-fund
-          node scripts/build.mjs
           # The clear password only goes through a pipe: never written to disk, never printed.
           line=$(printf '%s' "$BACKOFFICE_ADMIN_PASSWORD" | node dist/hash-password.mjs)
           hash=${line#ADMIN_PASSWORD_HASH=}
