@@ -14,13 +14,15 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_IAP_PROVIDER": "storekit"
+        "EXPO_PUBLIC_IAP_PROVIDER": "storekit",
+        "EXPO_PUBLIC_CATALOG_URL": "https://admin.pixeljoy.krafting.be"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_IAP_PROVIDER": "storekit"
+        "EXPO_PUBLIC_IAP_PROVIDER": "storekit",
+        "EXPO_PUBLIC_CATALOG_URL": "https://admin.pixeljoy.krafting.be"
       }
     }
   },
