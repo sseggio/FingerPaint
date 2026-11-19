@@ -2,9 +2,21 @@
 
 Un seul **Traefik** (en conteneur) tient les ports **80** et **443** du VPS et sert **tous** les projets Docker : chaque projet déclare lui-même son domaine avec quelques **labels Docker** et rejoint le réseau Docker partagé `edge`. Traefik obtient et renouvelle seul les certificats Let's Encrypt. Aucun projet ne dépend d'un autre, et cette pile ne connaît aucun projet.
 
-Cette pile est **indépendante de PixelJoy** : le workflow GitHub de PixelJoy ne la déploie jamais (l'utilisateur de déploiement n'a pas sudo). Tu l'installes une fois, à la main, avec ton compte sudo.
+Cette pile est **indépendante des applications** (y compris de l'app PixelJoy) et ne connaît aucun projet. Les autres projets du VPS s'y branchent en suivant **[CONTRACT.md](CONTRACT.md)** (réseau, labels, exemples, ordre de bascule).
 
-> Le VPS sert aujourd'hui ses sites avec le Nginx de l'hôte ? Ne démarre pas cette pile directement : suis **[MIGRATION.md](MIGRATION.md)** (ordre sûr, retour arrière).
+## Déploiement automatique : workflow *Edge deploy*
+
+`.github/workflows/edge-deploy.yml` (*Actions › Edge deploy › Run workflow*, entrée `environment` : `Staging` par défaut ou `production`) installe et met à jour la pile **sans sudo**, avec l'utilisateur SSH de déploiement (groupe `docker`) et les mêmes secrets que *Backoffice deploy* (`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`), plus **`ACME_EMAIL`** (email du compte Let's Encrypt, **obligatoire au premier lancement** : la configuration de Traefik refuse un email vide ; ensuite facultatif).
+
+- envoie `infra/edge` (sans `examples/`) dans `~/edge/releases/<sha>`, bascule le lien `~/edge/current` de façon atomique (5 versions gardées) ;
+- crée `~/edge/shared/.env` au premier lancement (lien `.env` dans chaque version), puis ne le touche plus ;
+- vérifie Docker, crée le réseau `edge` s'il manque (`172.30.0.0/24`) ou s'arrête s'il a un autre sous-réseau, valide la configuration, `docker compose pull` (projet compose fixe `edge` : le volume `edge_acme` des certificats persiste) ;
+- **si Traefik tourne déjà, ou si 80 ET 443 sont libres** : `docker compose up -d --wait`, puis vérifie `https://admin.pixeljoy.krafting.be/catalog/v1/manifest.json` (JSON `v=1`, certificat Let's Encrypt hors *staging*, jusqu'à 3 minutes) ;
+- **sinon** (Nginx de l'hôte encore actif) : Traefik n'est **pas** démarré ; le workflow réussit avec l'avertissement « ports 80/443 encore utilisés (Nginx hôte) : Traefik prêt, sera démarré au prochain lancement une fois les autres projets migrés ».
+
+Il ne touche jamais à Nginx, à `/etc` ni aux autres projets. Démarrage à la main possible : `cd ~pixeljoy/edge/current && docker compose up -d --wait`. Arrêt / retour arrière : `docker compose -p edge down` (jamais `-v`).
+
+> Le VPS sert aujourd'hui ses sites avec le Nginx de l'hôte ? Suis l'ordre de bascule de **[CONTRACT.md](CONTRACT.md)** ; guide détaillé avec Affiny en exemple : [MIGRATION.md](MIGRATION.md).
 
 ## Ce que fait la pile
 
@@ -24,7 +36,9 @@ Cette pile est **indépendante de PixelJoy** : le workflow GitHub de PixelJoy ne
 | Adresse fixe | Traefik a toujours l'adresse **`172.30.0.2`** sur `edge` (sous-réseau fixe `172.30.0.0/24`) : les applis ne font confiance à `X-Forwarded-For` que venant de cette adresse (PixelJoy : `TRUSTED_PROXIES=172.30.0.2`) |
 | Santé | `traefik healthcheck --ping` sur un point d'entrée `ping` dédié, lié à `127.0.0.1:8082` **dans** le conteneur : ni publié, ni joignable par les autres conteneurs de `edge`. Les routeurs sans entrypoint explicite vont sur `websecure` seulement (`asDefault`). Le proxy de socket a son propre healthcheck |
 
-## Installation pas à pas
+## Installation manuelle (alternative au workflow)
+
+Tu peux aussi l'installer à la main, comme décrit ci-dessous (dans ce cas, n'utilise pas en plus le workflow : un seul projet compose `edge` doit exister).
 
 Avec ton compte sudo (pas l'utilisateur de déploiement `pixeljoy`), sur le VPS.
 
@@ -147,6 +161,8 @@ Traefik transmet l'IP du client dans `X-Forwarded-For` (et supprime toute valeur
 Tout conteneur branché sur `edge` peut joindre les autres conteneurs de ce réseau (en contournant Traefik) : n'y branche que les services web de tes propres projets, et que chaque appli ne fasse confiance qu'à `172.30.0.2`.
 
 ## Mise à jour
+
+Avec le workflow : relance simplement *Edge deploy* après la fusion de la mise à jour (il fait `pull` puis `up -d --wait` si Traefik tourne). À la main :
 
 Les images sont épinglées par digest ; Dependabot (`.github/dependabot.yml`, dossier `/infra/edge`) propose les nouvelles versions. Pour appliquer : remplace `docker-compose.yml` sur le VPS par la nouvelle version, puis :
 

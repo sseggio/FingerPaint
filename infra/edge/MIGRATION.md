@@ -1,5 +1,7 @@
 # Migration : du Nginx de l'hôte vers Traefik partagé (pile `edge`)
 
+> **Référence principale : [CONTRACT.md](CONTRACT.md).** Ce dépôt ne modifie plus les autres projets du VPS : chacun applique lui-même le contrat (réseau `edge`, labels), puis suit l'**ordre de bascule** de CONTRACT.md. La pile `edge` est installée et mise à jour par le workflow GitHub **Edge deploy** (`.github/workflows/edge-deploy.yml`, utilisateur `pixeljoy`, sans sudo) : il ne démarre Traefik que lorsque les ports 80/443 sont libres. Le document ci-dessous reste un guide détaillé, avec Affiny comme exemple ([`examples/affiny/`](examples/affiny/)) ; ses étapes A et C (installation dans `/opt/edge`, `docker compose up` de la pile) sont remplacées par ce workflow (dossier `~pixeljoy/edge/current`, projet compose `edge`).
+
 Situation de départ sur le VPS (151.80.155.198) : le **Nginx de l'hôte** (paquet Ubuntu, nginx 1.28) tient les ports 80/443, avec des certificats Certbot, et sert :
 
 - **Affiny** (préproduction, `/opt/affiny/deploy/preprod`) : `api.affiny.krafting.be` (API sur `127.0.0.1:13000`, Socket.IO sur `127.0.0.1:13004`) et `admin.affiny.krafting.be` (fichiers statiques du back-office Vite, servis par Nginx depuis le disque), conf `nginx/affiny-preprod.conf` ;
