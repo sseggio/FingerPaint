@@ -9,7 +9,7 @@
 # Finally the runner checks https://<domain>/catalog/v1/manifest.json and /admin.
 #
 # Required secrets (Settings > Secrets and variables > Actions; repository secrets, or secrets of the
-# "production" environment used by the job):
+# GitHub environment chosen with the `environment` input, "Staging" by default):
 #   VPS_HOST                   IP or host name of the VPS (e.g. 151.80.155.198)
 #   VPS_USER                   SSH user on the VPS, member of the docker group (e.g. deploy)
 #   VPS_SSH_KEY                private key dedicated to deployments (its public key is in
@@ -29,6 +29,13 @@ on:
         description: Deployment folder on the VPS (relative to the SSH user's home, or absolute)
         required: true
         default: ~/pixeljoy
+      environment:
+        description: GitHub environment holding the deployment secrets
+        type: choice
+        options:
+          - Staging
+          - production
+        default: Staging
       rotate_password:
         description: Replace ADMIN_PASSWORD_HASH on the VPS with the hash of BACKOFFICE_ADMIN_PASSWORD
         type: boolean
@@ -45,7 +52,7 @@ jobs:
     # Created automatically by GitHub on the first run. Optional hardening (README, section 3.5):
     # restrict it to the integration branch and move the secrets into it. No required reviewers,
     # so the deployment stays triggerable through the workflow_dispatch API.
-    environment: production
+    environment: ${{ inputs.environment }}
     steps:
       - name: Validate inputs and secrets
         env:
