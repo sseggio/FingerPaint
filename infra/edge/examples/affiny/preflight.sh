@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Read-only checks before switching Affiny pre-production to the shared Traefik (MIGRATION.md, B/C).
 # Run from /opt/affiny/deploy/preprod, next to docker-compose.yml and docker-compose.traefik.yml:
-#   bash preflight.sh
+#   bash preflight.sh                                   (before the switch)
+#   EXPECT_DOMAIN=affiny.krafting.be bash preflight.sh  (also checks the value of PREPROD_DOMAIN)
+# Run it again right after adding COMPOSE_FILE to .env (MIGRATION.md, C.2): it then also checks the
+# plain "docker compose --env-file .env config" used by Affiny's deployments.
 # Changes nothing. Exit code 0 = ready.
 set -euo pipefail
 
@@ -34,11 +37,39 @@ for f in docker-compose.yml docker-compose.traefik.yml backoffice-nginx.conf .en
 done
 [ -d backoffice ] || fail "./backoffice (static build of the back-office) missing in $(pwd)"
 [ -f backoffice/index.html ] || echo "WARN: ./backoffice/index.html missing (admin site will answer 404)"
-merged=$(docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env config) ||
-  fail "docker compose config failed"
-if echo "$merged" | grep -q 'published: "1300[04]"'; then
-  fail "ports 13000/13004 still published in the merged configuration"
+# 4. .env intact: one PREPROD_DOMAIN line holding a bare domain (a line appended to a .env without a
+# final newline would be glued to it: "PREPROD_DOMAIN=a.bCOMPOSE_FILE=...").
+[ -z "$(tail -c1 .env)" ] || fail ".env does not end with a newline: fix it before appending anything (echo >> .env)"
+count=$(grep -c '^PREPROD_DOMAIN=' .env || true)
+[ "$count" = 1 ] || fail ".env must contain exactly one PREPROD_DOMAIN= line (found $count)"
+domain=$(sed -n 's/^PREPROD_DOMAIN=//p' .env | tr -d '"'"'"'\r')
+echo "$domain" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' ||
+  fail "PREPROD_DOMAIN='$domain' is not a plain domain name"
+if [ -n "${EXPECT_DOMAIN:-}" ] && [ "$domain" != "$EXPECT_DOMAIN" ]; then
+  fail "PREPROD_DOMAIN='$domain' instead of '$EXPECT_DOMAIN'"
 fi
-echo "$merged" | grep -q 'affiny-ws.rule: Host(`api\.' || fail "Traefik labels not found (PREPROD_DOMAIN?)"
-ok "docker compose config (base + traefik override)"
+ok "PREPROD_DOMAIN=$domain"
+
+check_config() { # $1 = label, then the docker compose arguments
+  label=$1; shift
+  out=$(docker compose "$@" config) || fail "docker compose config failed ($label)"
+  if echo "$out" | grep -Eq 'published: "?1300[04]"?'; then
+    fail "ports 13000/13004 still published ($label)"
+  fi
+  echo "$out" | grep -Fq "affiny-api.rule: Host(\`api.$domain\`)" || fail "router affiny-api for api.$domain not found ($label)"
+  echo "$out" | grep -Fq "affiny-admin.rule: Host(\`admin.$domain\`)" || fail "router affiny-admin for admin.$domain not found ($label)"
+  ok "docker compose config: $label"
+}
+check_config "base + traefik override" -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env
+
+# 5. COMPOSE_FILE (after the switch): exact value, and the deployment's own command applies the override.
+cf=$(grep -c '^COMPOSE_FILE=' .env || true)
+if [ "$cf" != 0 ]; then
+  [ "$cf" = 1 ] || fail ".env contains $cf COMPOSE_FILE= lines"
+  grep -qx 'COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml' .env ||
+    fail "unexpected COMPOSE_FILE line: $(grep '^COMPOSE_FILE=' .env)"
+  check_config "docker compose --env-file .env (Affiny's deployment command)" --env-file .env
+else
+  echo "INFO: no COMPOSE_FILE in .env yet (added at the switch, MIGRATION.md C.2)"
+fi
 echo "Ready."

@@ -95,14 +95,19 @@ docker compose version            # Docker Compose version v2.24.4 ou plus (v2.3
 ```sh
 cd /opt/affiny/deploy/preprod
 ls docker-compose.yml .env backoffice/index.html          # le compose de préproduction et le build du back-office
+ls -ld . .env backoffice                                  # propriétaire : si ce n'est pas toi, préfixe les commandes
+#   qui écrivent ici (scp vers un dossier temporaire puis cp, chmod, édition de .env) par
+#   "sudo -u <propriétaire>" (ou "sudo"), et garde ce propriétaire pour les fichiers ajoutés
 # copie depuis ce dépôt (ton ordinateur) :
 #   scp infra/edge/examples/affiny/{docker-compose.traefik.yml,backoffice-nginx.conf,preflight.sh} \
 #       <ton-utilisateur>@151.80.155.198:/opt/affiny/deploy/preprod/
 chmod 644 docker-compose.traefik.yml backoffice-nginx.conf
 chmod o+rx backoffice && find backoffice -type d -exec chmod o+rx {} + && find backoffice -type f -exec chmod o+r {} +
 #   (le nginx du conteneur tourne en uid 101 : il doit pouvoir lire le build ; c'est un site public)
-grep -q '^PREPROD_DOMAIN=' .env && echo "PREPROD_DOMAIN présent"
+find backoffice ! -perm -o=r -print | head                # doit ne rien afficher
 ```
+
+Les déploiements suivants d'Affiny doivent laisser le build **lisible par tous** (`o+r` sur les fichiers, `o+rx` sur les dossiers) : c'est le cas avec un `umask` 022 (défaut) ou un `rsync` qui recopie des fichiers en 644. Après le premier déploiement d'Affiny qui suit la bascule, relance `find backoffice ! -perm -o=r -print | head` (rien attendu) ; sinon, ajoute `--chmod=D755,F644` au `rsync` du workflow d'Affiny (ou un `chmod -R o+rX backoffice` après la synchro). Un fichier illisible donne une erreur 403/404 sur `admin.` sans autre symptôme.
 
 Les chemins relatifs de l'override (`./backoffice`, `./backoffice-nginx.conf`) sont résolus depuis le dossier du **premier** fichier compose, `/opt/affiny/deploy/preprod` : c'est bien le dossier statique que Nginx sert aujourd'hui. Le nom du projet compose ne change pas (`preprod`, nom du dossier) : les conteneurs existants sont **recréés**, pas dupliqués.
 
@@ -110,9 +115,17 @@ Les chemins relatifs de l'override (`./backoffice`, `./backoffice-nginx.conf`) s
 
 Le workflow de déploiement d'Affiny lance `docker compose --env-file .env up -d --build` **sans** `-f` : après la bascule, il recréerait `api` sans les labels et avec ses ports, et l'API disparaîtrait de Traefik. Deux possibilités :
 
+Vérifie d'abord, **dans le dépôt d'Affiny**, si son workflow écrit `.env` sur le serveur :
+
+```sh
+grep -nE '\.env' .github/workflows/*        # dans une copie locale du dépôt d'Affiny
+#   une ligne qui crée ou remplace .env (">", "cat <<EOF > .env", scp/rsync de .env, "envsubst … > .env")
+#   → option 2 obligatoire ; seulement "--env-file .env" → option 1 possible
+```
+
 - **sans toucher au dépôt d'Affiny** : ajoute à `/opt/affiny/deploy/preprod/.env`, **au moment de la bascule** (étape C), la ligne
   `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`
-  Compose la lit dans le fichier passé par `--env-file` : la commande habituelle applique alors les deux fichiers (vérifié avec `docker compose --env-file .env config`). Un `-f` explicite reste prioritaire (c'est ce qu'utilise le retour arrière). Si le workflow **réécrit** `.env`, utilise plutôt :
+  Compose la lit dans le fichier passé par `--env-file` : la commande habituelle applique alors les deux fichiers (vérifié avec `docker compose --env-file .env config`). Un `-f` explicite reste prioritaire (c'est ce qu'utilise le retour arrière). Si le workflow **réécrit** `.env` (la ligne serait perdue au déploiement suivant, et `api` sortirait de Traefik), utilise plutôt :
 - **dans le workflow d'Affiny** : `docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d --build` (à fusionner juste après la bascule).
 
 Tant que la ligne `COMPOSE_FILE` n'est pas dans `.env`, un déploiement d'Affiny avant la bascule ne change rien (ports conservés pour Nginx).
@@ -123,14 +136,14 @@ Une fois le réseau `edge` créé (étape A) :
 
 ```sh
 cd /opt/affiny/deploy/preprod
-bash preflight.sh                                           # doit finir par "Ready."
+EXPECT_DOMAIN=affiny.krafting.be bash preflight.sh         # doit finir par "Ready." (".env does not end with a newline" : echo >> .env)
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env config -q && echo "config OK"
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env config | grep -E 'published|traefik.http.routers'
 #   → aucune ligne "published" ; les routeurs affiny-api, affiny-ws, affiny-admin avec les bons domaines
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env build api   # image prête : pas de build pendant la coupure
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d --no-deps backoffice
-#   démarre SEUL le nouveau service backoffice (api et redis ne sont pas touchés, Nginx sert toujours admin.affiny)
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env ps backoffice   # "healthy"
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d --wait --no-deps backoffice
+#   démarre SEUL le nouveau service backoffice et attend qu'il soit "healthy" (api et redis ne sont pas
+#   touchés, Nginx sert toujours admin.affiny)
 ```
 
 ### B.6 PixelJoy
@@ -143,9 +156,10 @@ Lance *Actions › Backoffice deploy › Run workflow* avec `proxy=traefik` (val
 
 - [ ] **edge prêt** : `/opt/edge/.env` rempli (`ACME_EMAIL`), `cd /opt/edge && docker compose config -q` OK, images téléchargées (`docker compose pull`, étape A) ;
 - [ ] **réseau** : `docker network inspect edge --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'` affiche `172.30.0.0/24` ;
-- [ ] **override Affiny** en place et validé : `bash preflight.sh` → `Ready.` (dont `docker compose … config`), image `api` construite, conteneur `backoffice` `healthy` (B.5) ;
+- [ ] **Nginx ne sert QUE les domaines migrés** : `sudo nginx -T 2>/dev/null | grep -E '^\s*server_name' | sort -u` ne doit lister que `api.affiny.krafting.be`, `admin.affiny.krafting.be` (et `_`, ainsi que `admin.pixeljoy.krafting.be` si un site PixelJoy a été créé). **Tout autre nom = NE PAS basculer** : arrêter Nginx couperait ce site. Note les sites restants, migre chacun d'abord (service Docker avec le modèle générique de labels de la section « Brancher un projet » de [README.md](README.md) : `traefik.enable`, `traefik.docker.network: edge`, `routers.<nom>.rule: Host(...)`, `entrypoints: websecure`, `tls.certresolver: letsencrypt`, `services.<nom>.loadbalancer.server.port`, ou petit conteneur `nginx` statique comme le `backoffice` d'Affiny), puis reprends cette liste ;
+- [ ] **override Affiny** en place et validé : `EXPECT_DOMAIN=affiny.krafting.be bash preflight.sh` → `Ready.` (dont `docker compose … config`), image `api` construite, conteneur `backoffice` `healthy` (B.5) ;
 - [ ] **PixelJoy déployé** en `proxy=traefik` (B.6) : `docker ps --filter network=edge` le liste avec le `backoffice` d'Affiny ;
-- [ ] **DNS** des 3 domaines vers le VPS : `for d in api.affiny.krafting.be admin.affiny.krafting.be admin.pixeljoy.krafting.be; do echo "$d $(dig +short A "$d") $(dig +short AAAA "$d")"; done` → `151.80.155.198` partout (et pas d'AAAA vers une autre machine) ;
+- [ ] **DNS** des 3 domaines vers le VPS : `for d in api.affiny.krafting.be admin.affiny.krafting.be admin.pixeljoy.krafting.be; do echo "== $d"; getent ahosts "$d" | awk '{print $1}' | sort -u; done` → uniquement `151.80.155.198` (et l'IPv6 du VPS s'il en a une, jamais l'adresse d'une autre machine) ;
 - [ ] **pare-feu** : 80/tcp, 443/tcp, 443/udp ouverts (README.md, étape 4) ;
 - [ ] **retour arrière prêt** : `sudo nginx -t` OK, ce document ouvert à la section E.
 
@@ -177,23 +191,29 @@ Si l'essai échoue (certificat non obtenu, appli qui ne répond pas) : retour ar
 | --- | --- | --- |
 | 0:00 | `sudo systemctl stop nginx` | **début de la coupure** (api et admin d'Affiny) |
 | 0:05 | `cd /opt/edge && docker compose up -d` | Traefik démarre (~10 s jusqu'à `healthy`), voit PixelJoy et le `backoffice` d'Affiny, demande leurs certificats |
-| 0:15 | Affiny : ajout de `COMPOSE_FILE` dans `.env` puis `up -d` (sans `--build`, l'image est prête) | `api` recréé sans ports, sur `edge` ; Traefik demande le certificat de `api.` |
+| 0:15 | Affiny : sauvegarde de `.env`, ajout de `COMPOSE_FILE`, `preflight.sh`, puis `up -d --wait` (sans `--build`, l'image est prête) | `api` recréé sans ports, sur `edge` ; Traefik demande le certificat de `api.` |
 | 0:20–0:45 | attente : `api` `healthy` (son healthcheck), certificats obtenus (TLS-ALPN, quelques secondes chacun) | admin.affiny et admin.pixeljoy répondent déjà |
 | ~1:00 | vérifications (C.3) | **fin de la coupure** |
 
 ```sh
 # 0:00 — libérer 80/443
 sudo nginx -t && sudo systemctl stop nginx
-sudo ss -ltnp 'sport = :80' ; sudo ss -ltnp 'sport = :443'   # ne doit plus rien afficher
+sudo ss -ltnp 'sport = :80' ; sudo ss -ltnp 'sport = :443'   # aucune ligne sous l'en-tête "State Recv-Q …"
 
 # 0:05 — Traefik
-cd /opt/edge && docker compose up -d && docker compose ps
+cd /opt/edge && docker compose up -d --wait            # rend la main quand traefik et socket-proxy sont "healthy"
 
 # 0:15 — Affiny (préproduction)
 cd /opt/affiny/deploy/preprod
+cp -p .env .env.bak-traefik                                   # sauvegarde (restaurée par le retour arrière)
+[ -z "$(tail -c1 .env)" ] || echo >> .env                     # garantit le saut de ligne final avant d'ajouter
 grep -q '^COMPOSE_FILE=' .env || echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml' >> .env
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env ps   # api "healthy", backoffice "healthy", redis "running"
+grep -nE '^(PREPROD_DOMAIN|COMPOSE_FILE)=' .env               # 2 lignes distinctes : PREPROD_DOMAIN=affiny.krafting.be et COMPOSE_FILE=…
+EXPECT_DOMAIN=affiny.krafting.be bash preflight.sh            # "Ready." OBLIGATOIRE avant le up : vérifie PREPROD_DOMAIN intact et que
+#   "docker compose --env-file .env config" (commande des déploiements d'Affiny) contient Host(`api.affiny.krafting.be`)
+#   En cas de FAIL : cp -p .env.bak-traefik .env, corrige, recommence (Nginx est arrêté : ou retour arrière, section E).
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d --wait
+#   rend la main quand api et backoffice sont "healthy" (redis : "running")
 sudo ss -ltnp | grep -E ':1300[04]\b' || echo "ports 13000/13004 libérés"
 ```
 
@@ -252,6 +272,7 @@ sudo systemctl disable nginx        # ne redémarre plus au boot ; la conf /etc/
 
 Puis, quand tu n'envisages plus de retour arrière :
 
+- supprime la sauvegarde `/opt/affiny/deploy/preprod/.env.bak-traefik` (elle contient les secrets d'Affiny) ;
 - arrête les renouvellements Certbot devenus inutiles : `sudo certbot delete --cert-name <nom>` pour chaque certificat (liste : `sudo certbot certificates`) ;
 - éventuellement `sudo apt remove nginx` (la conf dans `/etc/nginx` reste tant que tu n'utilises pas `purge`).
 
@@ -265,8 +286,9 @@ cd /opt/edge && docker compose down          # sans -v : les certificats Traefik
 
 # 2. Affiny : retirer l'override (sinon le prochain déploiement le réappliquerait), remettre ses ports
 cd /opt/affiny/deploy/preprod
-sed -i '/^COMPOSE_FILE=/d' .env
-docker compose -f docker-compose.yml --env-file .env up -d          # api recréé avec 127.0.0.1:13000/13004, sans edge
+[ -f .env.bak-traefik ] && cp -p .env.bak-traefik .env     # .env d'avant la bascule (sans COMPOSE_FILE)
+grep -c '^COMPOSE_FILE=' .env                                # 0 attendu (sinon : sed -i '/^COMPOSE_FILE=/d' .env)
+docker compose -f docker-compose.yml --env-file .env up -d --wait   # api recréé avec 127.0.0.1:13000/13004, sans edge
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env rm -sf backoffice   # optionnel : arrête le nginx du back-office
 #   (le "-f docker-compose.yml" seul l'aurait laissé tourner, en simple conteneur orphelin)
 sudo ss -ltnp | grep -E '127.0.0.1:1300[04]\b'                       # les deux ports sont de nouveau écoutés

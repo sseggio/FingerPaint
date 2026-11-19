@@ -382,4 +382,39 @@ describe.skipIf(!hasCompose)('docker compose config', () => {
     expect(bo.labels?.['traefik.http.services.affiny-admin.loadbalancer.server.port']).toBe('8080');
     expect(c.services.redis.networks).toEqual({ default: null });
   });
+
+  it('infra/edge/examples/affiny/preflight.sh: rejects a glued or damaged .env, checks COMPOSE_FILE', () => {
+    const dir = join(root, 'affiny', 'deploy', 'preprod');
+    mkdirSync(join(dir, 'backoffice'), { recursive: true });
+    writeFileSync(join(dir, 'backoffice', 'index.html'), '<!doctype html>');
+    writeFileSync(join(dir, 'docker-compose.yml'), AFFINY_PREPROD);
+    const example = join(REPO, 'infra', 'edge', 'examples', 'affiny');
+    for (const f of ['docker-compose.traefik.yml', 'backoffice-nginx.conf']) copyFileSync(join(example, f), join(dir, f));
+    // docker = the real CLI, except "docker network inspect edge" (no daemon needed).
+    const bin = join(root, 'preflight-bin');
+    mkdirSync(bin, { recursive: true });
+    const realDocker = spawnSync('sh', ['-c', 'command -v docker'], { encoding: 'utf8' }).stdout.trim();
+    writeFileSync(join(bin, 'docker'), `#!/bin/sh\n[ "$1" = network ] && { echo 172.30.0.0/24; exit 0; }\nexec "${realDocker}" "$@"\n`);
+    chmodSync(join(bin, 'docker'), 0o755);
+    const run = (env: string) => {
+      writeFileSync(join(dir, '.env'), env);
+      return spawnSync('bash', [join(example, 'preflight.sh')], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { PATH: `${bin}:${process.env.PATH ?? '/usr/bin:/bin'}`, HOME: root, EXPECT_DOMAIN: 'affiny.example.com' },
+      });
+    };
+    const CF = 'COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml';
+    expect(run('PREPROD_DOMAIN=affiny.example.com\n').status).toBe(0);
+    const after = run(`PREPROD_DOMAIN=affiny.example.com\n${CF}\n`);
+    expect(after.stdout).toMatch(/Affiny's deployment command/);
+    expect(after.status).toBe(0);
+    // ">> .env" on a file without a final newline: the domain gets glued to COMPOSE_FILE.
+    const glued = run(`PREPROD_DOMAIN=affiny.example.com${CF}\n`);
+    expect(glued.stderr).toMatch(/not a plain domain name/);
+    expect(glued.status).not.toBe(0);
+    expect(run('PREPROD_DOMAIN=affiny.example.com').stderr).toMatch(/does not end with a newline/);
+    expect(run('PREPROD_DOMAIN=other.example.com\n').stderr).toMatch(/instead of 'affiny\.example\.com'/);
+    expect(run('PREPROD_DOMAIN=affiny.example.com\nCOMPOSE_FILE=docker-compose.yml\n').stderr).toMatch(/unexpected COMPOSE_FILE/);
+  });
 });
