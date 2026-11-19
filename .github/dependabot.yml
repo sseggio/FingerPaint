@@ -15,6 +15,11 @@ updates:
     directory: /infra/edge
     schedule:
       interval: weekly
+  # Example override for the other project of the VPS (nginx image of its static back-office).
+  - package-ecosystem: docker-compose
+    directory: /infra/edge/examples/affiny
+    schedule:
+      interval: weekly
   - package-ecosystem: npm
     directory: /backoffice
     schedule:

@@ -1,0 +1,89 @@
+# Affiny pre-production behind the shared Traefik of the VPS (infra/edge). OVERRIDE file: copy it,
+# with backoffice-nginx.conf, NEXT TO /opt/affiny/deploy/preprod/docker-compose.yml (which stays
+# untouched) and run, from /opt/affiny/deploy/preprod:
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env up -d --build
+# (or put COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml in .env so that the usual
+#  "docker compose --env-file .env up -d --build" of Affiny's deployment applies it too).
+# Requires Docker Compose >= v2.24.4 ("!reset"); check with: docker compose version
+# Full procedure: infra/edge/MIGRATION.md, section B.
+#
+# Replaces the host's Nginx (nginx/affiny-preprod.conf):
+#   api.<domain>/socket.io/  -> api:3004 (WebSocket; Traefik handles the Upgrade natively)
+#   api.<domain>/            -> api:3000 (compressed)
+#   admin.<domain>           -> backoffice: static Vite build of ./backoffice, served by nginx
+
+services:
+  api:
+    # No more host ports: Traefik reaches the container on the "edge" network. Rollback (host Nginx
+    # on 127.0.0.1:13000/13004): run the base file alone, docker compose -f docker-compose.yml ...
+    ports: !reset []
+    # TRUST_PROXY "1" (base file) stays right: Express trusts exactly one hop, the TCP peer, which
+    # is Traefik (172.30.0.2). Traefik (forwardedHeaders.insecure=false) drops any X-Forwarded-For
+    # sent by the client and sends "X-Forwarded-For: <client IP>", so req.ip = the real client.
+    # See MIGRATION.md, "Adresse IP des clients d'Affiny".
+    networks:
+      - default     # redis
+      - edge
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: edge
+      # HTTP API (port 3000), gzip like the old Nginx (JSON). Router and service names are unique
+      # on the whole VPS.
+      traefik.http.routers.affiny-api.rule: Host(`api.${PREPROD_DOMAIN:?set PREPROD_DOMAIN in .env}`)
+      traefik.http.routers.affiny-api.entrypoints: websecure
+      traefik.http.routers.affiny-api.tls.certresolver: letsencrypt
+      traefik.http.routers.affiny-api.service: affiny-api
+      traefik.http.routers.affiny-api.middlewares: affiny-compress
+      traefik.http.middlewares.affiny-compress.compress: "true"
+      traefik.http.services.affiny-api.loadbalancer.server.port: "3000"
+      # Socket.IO (port 3004). Explicit priority above affiny-api; no compression (WebSocket
+      # frames are compressed, if ever, by the permessage-deflate extension, end to end).
+      traefik.http.routers.affiny-ws.rule: Host(`api.${PREPROD_DOMAIN}`) && PathPrefix(`/socket.io/`)
+      traefik.http.routers.affiny-ws.priority: "100"
+      traefik.http.routers.affiny-ws.entrypoints: websecure
+      traefik.http.routers.affiny-ws.tls.certresolver: letsencrypt
+      traefik.http.routers.affiny-ws.service: affiny-ws
+      traefik.http.services.affiny-ws.loadbalancer.server.port: "3004"
+
+  # Back-office (static Vite build). Affiny's deployment keeps syncing the files into
+  # /opt/affiny/deploy/preprod/backoffice: they are served at once (bind mount), no restart.
+  backoffice:
+    # Pinned by digest (stable branch; to update: docker buildx imagetools inspect nginx:<version>-alpine).
+    image: nginx:1.30.7-alpine@sha256:bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598
+    restart: unless-stopped
+    # Runs nginx directly (no /docker-entrypoint.sh scripts, which try to edit the read-only conf).
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    user: "101:101"   # "nginx" user of the image; listens on 8080 (no privileged port)
+    volumes:
+      # Relative to the project directory (/opt/affiny/deploy/preprod).
+      - ./backoffice:/srv/backoffice:ro
+      - ./backoffice-nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - edge        # only Traefik needs to reach it
+    read_only: true
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=0700
+      - /var/cache/nginx:uid=101,gid=101,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: edge
+      traefik.http.routers.affiny-admin.rule: Host(`admin.${PREPROD_DOMAIN}`)
+      traefik.http.routers.affiny-admin.entrypoints: websecure
+      traefik.http.routers.affiny-admin.tls.certresolver: letsencrypt
+      traefik.http.routers.affiny-admin.service: affiny-admin
+      traefik.http.services.affiny-admin.loadbalancer.server.port: "8080"
+
+networks:
+  # Shared network of the VPS, created once (infra/edge/README.md, step 3).
+  edge:
+    external: true
+    name: edge
