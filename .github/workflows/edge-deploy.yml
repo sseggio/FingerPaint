@@ -1,0 +1,165 @@
+# Installs / updates the shared Traefik of the VPS (infra/edge, compose project "edge") as the SSH
+# deployment user (docker group, NO sudo). Manual trigger only (Actions tab or workflow_dispatch API).
+# It never touches the host's Nginx, /etc or any other project of the VPS.
+#
+# The runner streams `git archive` of infra/edge (without examples/) over SSH into
+# ~/edge/releases/<sha>, then infra/edge/scripts/edge-remote.sh (on the VPS) checks Docker and the
+# "edge" network (fixed subnet 172.30.0.0/24, created if missing), creates ~/edge/shared/.env on the
+# first run, validates the configuration, pulls the images and switches ~/edge/current atomically.
+#   - Traefik already runs, or ports 80 AND 443 are free: `docker compose up -d --wait`, then the
+#     public https://admin.pixeljoy.krafting.be/catalog/v1/manifest.json must answer (v=1) with a
+#     Let's Encrypt certificate.
+#   - Ports 80/443 still held (host Nginx): Traefik is NOT started; the run succeeds with a warning.
+#     Run it again once every project of the VPS is ready (infra/edge/CONTRACT.md, « Ordre de bascule »).
+#
+# Secrets (repository, or the GitHub environment chosen with the `environment` input):
+#   VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_KNOWN_HOSTS   same as Backoffice deploy (known_hosts strict)
+#   ACME_EMAIL   email of the Let's Encrypt account. Required on the FIRST run only (Traefik's
+#                configuration refuses an empty ACME_EMAIL); afterwards ~/edge/shared/.env is kept.
+name: Edge deploy
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment holding the deployment secrets
+        type: choice
+        options:
+          - Staging
+          - production
+        default: Staging
+permissions:
+  contents: read
+concurrency:
+  group: edge-deploy
+  cancel-in-progress: false
+env:
+  EDGE_PATH: edge
+  CHECK_HOST: admin.pixeljoy.krafting.be
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Validate inputs and secrets
+        env:
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+        run: |
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then echo "::error::Missing secret $name"; exit 1; fi
+          done
+          if ! [[ "$INPUT_ENVIRONMENT" =~ ^(Staging|production)$ ]]; then echo "::error::Invalid environment"; exit 1; fi
+          if ! [[ "$VPS_HOST" =~ ^[A-Za-z0-9.:-]+$ ]]; then echo "::error::Invalid VPS_HOST"; exit 1; fi
+          if ! [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then echo "::error::Invalid VPS_USER"; exit 1; fi
+          if [ -n "$ACME_EMAIL" ] && ! [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,63}$ ]]; then
+            echo "::error::ACME_EMAIL is not a valid email address"; exit 1
+          fi
+          if [ -z "$ACME_EMAIL" ]; then
+            echo "::notice::No ACME_EMAIL secret: fine if ~/edge/shared/.env already exists on the VPS, required on the first run"
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key)
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $VPS_HOST
+            User $VPS_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            BatchMode yes
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
+          chmod 600 ~/.ssh/config
+          ssh vps true || { echo "::error::SSH connection failed (check VPS_HOST, VPS_USER, VPS_SSH_KEY and VPS_KNOWN_HOSTS)"; exit 1; }
+
+      - name: Upload infra/edge (without examples/)
+        id: upload
+        run: |
+          if ! [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::Unexpected GITHUB_SHA"; exit 1; fi
+          git archive --format=tar.gz -o "$RUNNER_TEMP/edge.tar.gz" "$GITHUB_SHA:infra/edge" -- . ':(exclude)examples'
+          # EDGE_PATH (fixed) and GITHUB_SHA (validated) contain no quote or shell metacharacter.
+          # Written into <sha>.partial first. Re-run of the CURRENT release (same commit = same files):
+          # the existing directory is kept, never removed under the running stack. Any other existing
+          # copy of <sha> is replaced.
+          # shellcheck disable=SC2029
+          ssh vps "set -eu; mkdir -p '$EDGE_PATH/releases'; cd '$EDGE_PATH/releases';
+            rm -rf '$GITHUB_SHA.partial'; mkdir '$GITHUB_SHA.partial';
+            tar -xzf - -C '$GITHUB_SHA.partial';
+            if [ -d '$GITHUB_SHA' ] && [ \"\$(readlink ../current 2>/dev/null || true)\" = 'releases/$GITHUB_SHA' ]; then
+              rm -rf '$GITHUB_SHA.partial'; echo 'release $GITHUB_SHA is the current one: kept as is';
+            else
+              rm -rf '$GITHUB_SHA'; mv '$GITHUB_SHA.partial' '$GITHUB_SHA';
+            fi" < "$RUNNER_TEMP/edge.tar.gz"
+
+      - name: Check, configure, pull and (if ports 80/443 are free) start on the VPS
+        id: activate
+        env:
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+        run: |
+          set -o pipefail
+          # The email only goes through stdin (never on a command line).
+          # shellcheck disable=SC2029
+          printf '%s\n' "$ACME_EMAIL" | ssh vps bash "'$EDGE_PATH/releases/$GITHUB_SHA/scripts/edge-remote.sh'" \
+            activate "'$EDGE_PATH'" "$GITHUB_SHA" | tee "$RUNNER_TEMP/activate.log"
+          status=$(sed -n 's/^EDGE_STATUS=//p' "$RUNNER_TEMP/activate.log" | tail -n 1)
+          if ! [[ "$status" =~ ^(started|deferred)$ ]]; then echo "::error::No EDGE_STATUS from the VPS"; exit 1; fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" = deferred ]; then
+            echo "::warning::ports 80/443 encore utilisés (Nginx hôte) : Traefik prêt, sera démarré au prochain lancement une fois les autres projets migrés (infra/edge/CONTRACT.md, « Ordre de bascule »)"
+          fi
+
+      - name: Public HTTPS check (manifest v=1, Let's Encrypt certificate)
+        if: steps.activate.outputs.status == 'started'
+        run: |
+          deadline=$((SECONDS + 180))
+          while :; do
+            manifest_ok=false
+            if body=$(curl -fsS --max-time 10 "https://$CHECK_HOST/catalog/v1/manifest.json" 2>/dev/null) &&
+              printf '%s' "$body" | jq -e '.v == 1' >/dev/null 2>&1; then
+              manifest_ok=true
+            fi
+            issuer=$(echo | openssl s_client -connect "$CHECK_HOST:443" -servername "$CHECK_HOST" 2>/dev/null |
+              openssl x509 -noout -issuer 2>/dev/null) || issuer=""
+            cert_ok=false
+            if [[ "$issuer" == *"Let's Encrypt"* ]] && [[ "$issuer" != *STAGING* ]]; then cert_ok=true; fi
+            if [ "$manifest_ok" = true ] && [ "$cert_ok" = true ]; then
+              echo "OK: https://$CHECK_HOST/catalog/v1/manifest.json (v=1), $issuer"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::After 3 minutes: manifest ok: $manifest_ok, certificate: ${issuer:-none} (Traefik runs; see the diagnostics step)"
+              exit 1
+            fi
+            echo "waiting for https://$CHECK_HOST (manifest ok: $manifest_ok, certificate ok: $cert_ok)..."
+            sleep 10
+          done
+
+      - name: Diagnostics (docker compose ps, Traefik logs, ports)
+        if: failure() && steps.upload.outcome == 'success'
+        run: |
+          # shellcheck disable=SC2029
+          ssh vps bash "'$EDGE_PATH/releases/$GITHUB_SHA/scripts/edge-remote.sh'" diagnose "'$EDGE_PATH'" || true
+
+      - name: Clean up
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/config "$RUNNER_TEMP/edge.tar.gz" "$RUNNER_TEMP/activate.log"

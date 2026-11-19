@@ -88,13 +88,16 @@ services:
       - --providers.docker.network=edge
       # Shared middlewares (dynamic/middlewares.yml).
       - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
       - acme:/acme
-      - ./dynamic:/etc/traefik/dynamic:ro
+      # Shared middlewares. Edge deploy workflow: EDGE_DYNAMIC_DIR = ~/edge/shared/dynamic, a stable
+      # real directory (never a release directory, which can be pruned). Manual install: ./dynamic.
+      - ${EDGE_DYNAMIC_DIR:-./dynamic}:/etc/traefik/dynamic:ro
     networks:
       # Fixed address: the applications trust X-Forwarded-For from this peer only
       # (PixelJoy: TRUSTED_PROXIES=172.30.0.2). Outside the dynamic --ip-range of the network.
