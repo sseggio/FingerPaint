@@ -1,0 +1,131 @@
+# Shared reverse proxy of the VPS ("edge" stack), independent from every application.
+# Traefik owns ports 80/443, gets the Let's Encrypt certificates and routes each domain to the
+# container that declares it with Docker labels (traefik.enable=true + a Host(`...`) rule) on the
+# external network "edge". See README.md (setup) and MIGRATION.md (switch from the host's Nginx).
+#   cp .env.example .env
+#   docker network create --subnet 172.30.0.0/24 --gateway 172.30.0.1 --ip-range 172.30.0.128/25 edge
+#   docker compose up -d
+name: edge
+
+services:
+  # Traefik never sees the Docker socket: it talks to this proxy, which only allows read-only
+  # (GET/HEAD) calls to /containers, /events, /version and /_ping. Not on the "edge" network:
+  # application containers cannot reach it.
+  socket-proxy:
+    # Pinned by digest (updated by Dependabot, see README.md).
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      VERSION: "1"
+      PING: "1"
+      POST: "0"
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+  traefik:
+    # Pinned by digest (updated by Dependabot, see README.md).
+    image: traefik:v3.7.19@sha256:a6c0194dda77bcb804824580f36fa7edc56e315b1acfe933366c8b52844a78a4
+    restart: unless-stopped
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+    # Static configuration: command line only (Traefik reads a single static source).
+    command:
+      # No phone-home, no usage statistics (product rule: no tracking).
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      # General log: warnings and errors only. No access log (accesslog is not enabled): no IP
+      # address or request is ever written. No API / dashboard.
+      - --log.level=WARN
+      # Healthcheck endpoint on a dedicated entrypoint bound to the container's loopback: not
+      # published, and unreachable from the other containers of the "edge" network.
+      - --ping=true
+      - --ping.entryPoint=ping
+      - --entryPoints.ping.address=127.0.0.1:8082
+      # HTTP: global permanent redirection to HTTPS, for every domain.
+      - --entryPoints.web.address=:80
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.web.http.redirections.entryPoint.scheme=https
+      - --entryPoints.web.http.redirections.entryPoint.permanent=true
+      # HTTPS (+ HTTP/3 on 443/udp). Every router on it gets TLS with the Let's Encrypt resolver
+      # and the minimal security headers, unless it overrides them.
+      - --entryPoints.websecure.address=:443
+      # Routers that name no entrypoint attach to websecure only (never to ping).
+      - --entryPoints.websecure.asDefault=true
+      - --entryPoints.websecure.http3=true
+      - --entryPoints.websecure.http.tls.certResolver=letsencrypt
+      - --entryPoints.websecure.http.middlewares=security-headers@file
+      # X-Forwarded-* sent by clients are never trusted (this is Traefik's default, written out):
+      # Traefik drops them and sets X-Forwarded-For to the address of the TCP peer.
+      - --entryPoints.web.forwardedHeaders.insecure=false
+      - --entryPoints.websecure.forwardedHeaders.insecure=false
+      # Let's Encrypt, TLS-ALPN-01 challenge on port 443. acme.json lives in the acme volume.
+      - --certificatesResolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesResolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesResolvers.letsencrypt.acme.caServer=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --certificatesResolvers.letsencrypt.acme.tlsChallenge=true
+      # Docker provider through the socket proxy; only containers labelled traefik.enable=true,
+      # reached on the "edge" network.
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=edge
+      # Shared middlewares (dynamic/middlewares.yml).
+      - --providers.file.directory=/etc/traefik/dynamic
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - acme:/acme
+      - ./dynamic:/etc/traefik/dynamic:ro
+    networks:
+      # Fixed address: the applications trust X-Forwarded-For from this peer only
+      # (PixelJoy: TRUSTED_PROXIES=172.30.0.2). Outside the dynamic --ip-range of the network.
+      edge:
+        ipv4_address: 172.30.0.2
+      socket: {}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Same ping settings as the command (the healthcheck reads only its own flags).
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entryPoint=ping", "--entryPoints.ping.address=127.0.0.1:8082"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+networks:
+  # Shared with the applications. Created once, outside this stack, with a FIXED subnet
+  # (Traefik = 172.30.0.2; containers of the projects get dynamic addresses in .128-.255 only):
+  #   docker network create --subnet 172.30.0.0/24 --gateway 172.30.0.1 --ip-range 172.30.0.128/25 edge
+  edge:
+    external: true
+    name: edge
+  # Traefik <-> socket proxy only; no Internet access.
+  socket:
+    internal: true
+
+volumes:
+  acme:

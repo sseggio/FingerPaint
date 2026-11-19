@@ -9,10 +9,17 @@
 #   deploy-remote.sh preflight   <path> [proxy] [app_port]
 #   deploy-remote.sh activate    <path> <sha> <domain> <rotate:true|false> [proxy] [app_port]
 #                                (stdin: password hash)
-#   deploy-remote.sh local-check <path> <app_port>    prints the manifest served on 127.0.0.1
+#   deploy-remote.sh local-check <path> <app_port> [proxy]
+#                                prints the manifest served by the app (nginx: on 127.0.0.1:<app_port>;
+#                                traefik: inside the app container, which has no host port)
 #   deploy-remote.sh diagnose    <path> [proxy] [app_port]
 #
-# proxy (default caddy):
+# proxy (default caddy; the workflow passes it explicitly, its default is traefik):
+#   traefik the shared Traefik of infra/edge (separate compose stack "edge", never deployed nor
+#          modified here) owns 80/443 and gets the certificate. The app joins the external Docker
+#          network "edge" with Traefik labels and publishes no port (docker-compose.traefik.yml).
+#          The "edge" network must exist (infra/edge/README.md). Caddy containers of the project and
+#          the 127.0.0.1:<app_port> publication of the nginx mode are removed (volumes kept).
 #   caddy  the bundled Caddy container owns ports 80/443 and gets the certificate itself;
 #   nginx  the VPS already runs Nginx on 80/443 (other sites, managed by root: this script never
 #          touches Nginx nor /etc). No Caddy container; the app is published on
@@ -26,6 +33,12 @@ set -euo pipefail
 
 PROJECT=pixeljoy-catalog
 KEEP_RELEASES=3
+EDGE_NETWORK=edge
+# Fixed subnet of the edge network and Traefik's address on it: the app trusts X-Forwarded-For
+# from that address only (TRUSTED_PROXIES in docker-compose.traefik.yml, infra/edge/README.md).
+EDGE_SUBNET=172.30.0.0/24
+EDGE_TRAEFIK_IP=172.30.0.2
+EDGE_HINT='the shared Traefik is installed once, outside this workflow: see infra/edge/README.md (docker network create edge, then docker compose up -d in infra/edge)'
 INSTALL_HINT='see backoffice/README.md, section "Déploiement automatique depuis GitHub" (curl -fsSL https://get.docker.com | sudo sh)'
 
 die() { echo "::error::$*"; exit 1; }
@@ -49,7 +62,7 @@ app_port=8787
 set_proxy() {
   proxy=${1:-caddy}
   app_port=${2:-8787}
-  [[ "$proxy" =~ ^(nginx|caddy)$ ]] || die "invalid proxy mode (nginx or caddy expected)"
+  [[ "$proxy" =~ ^(traefik|nginx|caddy)$ ]] || die "invalid proxy mode (traefik, nginx or caddy expected)"
   [[ "$app_port" =~ ^[1-9][0-9]{3,4}$ ]] && [ "$app_port" -ge 1024 ] && [ "$app_port" -le 65535 ] ||
     die "invalid app port (1024-65535 expected)"
 }
@@ -61,6 +74,9 @@ compose() {
   if [ "$proxy" = nginx ]; then
     [ -f "$dir/docker-compose.nginx.yml" ] || die "this release has no docker-compose.nginx.yml (nginx mode unavailable)"
     files+=(-f "$dir/docker-compose.nginx.yml")
+  elif [ "$proxy" = traefik ]; then
+    [ -f "$dir/docker-compose.traefik.yml" ] || die "this release has no docker-compose.traefik.yml (traefik mode unavailable)"
+    files+=(-f "$dir/docker-compose.traefik.yml")
   fi
   APP_PORT=$app_port docker compose -p "$PROJECT" --project-directory "$dir" "${files[@]}" --env-file "$env_file" "$@"
 }
@@ -91,11 +107,11 @@ preflight() {
     die "user $(id -un) cannot talk to the Docker daemon (is it running? is $(id -un) in the 'docker' group? sudo usermod -aG docker $(id -un))"
   command -v tar >/dev/null 2>&1 || die "tar is not installed on the VPS"
 
-  if [ "$proxy" = nginx ]; then
-    preflight_nginx
-  else
-    preflight_caddy
-  fi
+  case "$proxy" in
+    traefik) preflight_traefik ;;
+    nginx) preflight_nginx ;;
+    *) preflight_caddy ;;
+  esac
   echo "preflight: proxy $proxy, docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'), $(docker compose version --short 2>/dev/null || echo 'compose ?')"
 }
 
@@ -134,6 +150,47 @@ preflight_nginx() {
   fi
   if [ -n "$(project_containers caddy)" ]; then
     echo "preflight: a PixelJoy Caddy container exists, it will be removed (volumes kept)"
+  fi
+}
+
+# Published host bindings of the app's port 8080 ("127.0.0.1:8787", ...), one per line.
+app_published_ports() {
+  local id
+  for id in $(project_containers app); do
+    docker port "$id" 8080/tcp 2>/dev/null || true
+  done
+}
+
+preflight_traefik() {
+  # The edge stack (Traefik) is managed outside this workflow; only its network is required here.
+  docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 ||
+    die "the Docker network '$EDGE_NETWORK' does not exist on the VPS, so the shared Traefik is not installed: $EDGE_HINT. Or deploy with proxy=nginx / proxy=caddy."
+  local subnets
+  subnets=$(docker network inspect "$EDGE_NETWORK" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true)
+  case " $subnets " in
+    *" $EDGE_SUBNET "*) ;;
+    *) die "the Docker network '$EDGE_NETWORK' uses subnet '${subnets% }' instead of $EDGE_SUBNET: the app only trusts X-Forwarded-For from Traefik at $EDGE_TRAEFIK_IP. Recreate the network with the fixed subnet (infra/edge/README.md, « Le réseau edge existe déjà sans le bon sous-réseau »)" ;;
+  esac
+  # Informative: is a Traefik container attached to it, at the expected address? (The app starts
+  # anyway and will be served as soon as the edge stack runs.)
+  local id image found=""
+  while read -r id image; do
+    [ -n "$id" ] || continue
+    case "$image" in *traefik*) ;; *) continue ;; esac
+    found=yes
+    local ip
+    ip=$(docker inspect --format '{{with index .NetworkSettings.Networks "'"$EDGE_NETWORK"'"}}{{.IPAddress}}{{end}}' "$id" 2>/dev/null || true)
+    [ "$ip" = "$EDGE_TRAEFIK_IP" ] ||
+      warn "the Traefik container on '$EDGE_NETWORK' has address '$ip', not $EDGE_TRAEFIK_IP: the app will not trust its X-Forwarded-For (all clients then share one login rate limit). Update the edge stack (infra/edge/docker-compose.yml)."
+  done < <(docker ps --filter "network=$EDGE_NETWORK" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)
+  if [ -z "$found" ]; then
+    warn "no running Traefik container on the '$EDGE_NETWORK' network: the app will start but stays unreachable from the Internet until the edge stack runs ($EDGE_HINT)"
+  fi
+  if [ -n "$(project_containers caddy)" ]; then
+    echo "preflight: a PixelJoy Caddy container exists, it will be removed (volumes kept)"
+  fi
+  if [ -n "$(app_published_ports)" ]; then
+    echo "preflight: the app container publishes a host port (nginx mode), it will be recreated without it"
   fi
 }
 
@@ -198,13 +255,15 @@ sync_proxy_env() {
       if (ENVIRON["PROXY"] == "nginx") {
         print "COMPOSE_FILE=docker-compose.yml:docker-compose.nginx.yml"
         print "APP_PORT=" ENVIRON["PORT"]
+      } else if (ENVIRON["PROXY"] == "traefik") {
+        print "COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml"
       }
     }
   ' "$env_file" | write_private "$env_file"
 }
 
-# nginx mode: removes the project's Caddy container(s) left by a previous caddy-mode deployment
-# (possibly failing on ports 80/443 held by Nginx). `docker rm` without -v: the named volumes
+# nginx/traefik modes: removes the project's Caddy container(s) left by a previous caddy-mode
+# deployment (possibly failing on ports 80/443 held by Nginx or Traefik). `docker rm` without -v: the named volumes
 # (caddy-data, caddy-config, catalog-data) are kept.
 remove_caddy() {
   local ids
@@ -212,7 +271,17 @@ remove_caddy() {
   [ -n "$ids" ] || return 0
   # shellcheck disable=SC2086 # container ids
   docker rm -f $ids >/dev/null
-  echo "cleanup: removed the PixelJoy Caddy container (nginx mode, volumes kept)"
+  echo "cleanup: removed the PixelJoy Caddy container ($proxy mode, volumes kept)"
+}
+
+# traefik mode: the app must not keep the 127.0.0.1:<app_port> binding of a previous nginx-mode
+# deployment. `up -d` normally recreates it (the configuration changed); this enforces it.
+ensure_no_app_port() {
+  local live=$1
+  [ -n "$(app_published_ports)" ] || return 0
+  echo "cleanup: the app still publishes a host port, recreating it without (traefik mode)"
+  compose "$live" up -d --force-recreate --no-deps app
+  [ -z "$(app_published_ports)" ] || die "the app container still publishes a host port in traefik mode"
 }
 
 activate() {
@@ -248,8 +317,9 @@ activate() {
   # so Caddy is recreated with the new Caddyfile and never keeps a file from a pruned release.
   local live
   live="$(readlink -f "$base/current")/backoffice"
-  [ "$proxy" = nginx ] && remove_caddy
+  if [ "$proxy" != caddy ]; then remove_caddy; fi
   compose "$live" up -d --build --remove-orphans
+  if [ "$proxy" = traefik ]; then ensure_no_app_port "$live"; fi
   docker image prune -f >/dev/null || true
   compose "$live" ps
 
@@ -275,6 +345,16 @@ diagnose() {
     echo "local check: http://127.0.0.1:$app_port/catalog/v1/manifest.json"
     fetch_local "$app_port" | head -c 300 || echo "(no answer on 127.0.0.1:$app_port)"
     echo
+  elif [ "$proxy" = traefik ]; then
+    echo "local check (inside the app container): http://127.0.0.1:8080/catalog/v1/manifest.json"
+    fetch_in_container "$live" | head -c 300 || echo "(no answer inside the app container)"
+    echo
+    if docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1; then
+      echo "edge network: containers attached:"
+      docker ps --filter "network=$EDGE_NETWORK" --format '  {{.Names}} ({{.Image}}, {{.Status}})' || true
+    else
+      echo "edge network: missing ($EDGE_HINT)"
+    fi
   fi
   # Server and Caddy logs contain no secret (no access log, configuration values are never printed).
   compose "$live" logs --no-color --tail=100 || true
@@ -292,6 +372,12 @@ fetch_local() {
   fi
 }
 
+# traefik mode: the app has no host port; GET the manifest from inside its container (wget is in
+# the image, it is what the healthcheck uses). Body on stdout.
+fetch_in_container() {
+  compose "$1" exec -T app wget -q -T 10 -O - http://127.0.0.1:8080/catalog/v1/manifest.json
+}
+
 case "$cmd" in
   preflight)
     set_proxy "${3:-}" "${4:-}"
@@ -302,8 +388,13 @@ case "$cmd" in
     activate "${3:-}" "${4:-}" "${5:-}"
     ;;
   local-check)
-    set_proxy nginx "${3:-}"
-    fetch_local "$app_port"
+    set_proxy "${4:-nginx}" "${3:-}"
+    if [ "$proxy" = traefik ]; then
+      [ -L "$base/current" ] || die "no current release"
+      fetch_in_container "$(readlink -f "$base/current")/backoffice"
+    else
+      fetch_local "$app_port"
+    fi
     ;;
   diagnose)
     set_proxy "${3:-}" "${4:-}"

@@ -2,6 +2,8 @@
 import { join, resolve } from 'node:path';
 
 import { parsePasswordHash } from './password';
+import type { TrustedEntry } from './trusted-proxies';
+import { parseTrustedProxies } from './trusted-proxies';
 
 export interface ServerConfig {
   port: number;
@@ -13,7 +15,8 @@ export interface ServerConfig {
   passwordHash: string;
   sessionSecret: string;
   cookieSecure: boolean;
-  trustProxy: boolean;
+  /** TRUSTED_PROXIES, parsed (empty = X-Forwarded-For is never read). */
+  trustedProxies: TrustedEntry[];
 }
 
 export function readConfig(env: NodeJS.ProcessEnv, baseDir: string): ServerConfig {
@@ -33,6 +36,12 @@ export function readConfig(env: NodeJS.ProcessEnv, baseDir: string): ServerConfi
   }
   const port = Number(env.PORT ?? 8080);
   if (!Number.isInteger(port) || port < 1 || port > 65535) errors.push('PORT must be a valid TCP port.');
+  let trustedProxies: TrustedEntry[] = [];
+  try {
+    trustedProxies = parseTrustedProxies(env.TRUSTED_PROXIES);
+  } catch (e) {
+    errors.push((e as Error).message);
+  }
   if (errors.length) throw new Error(`Invalid configuration:\n- ${errors.join('\n- ')}`);
   return {
     port,
@@ -44,6 +53,6 @@ export function readConfig(env: NodeJS.ProcessEnv, baseDir: string): ServerConfi
     passwordHash,
     sessionSecret,
     cookieSecure: env.COOKIE_SECURE !== 'false',
-    trustProxy: env.TRUST_PROXY === 'true',
+    trustedProxies,
   };
 }

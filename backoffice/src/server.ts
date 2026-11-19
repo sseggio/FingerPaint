@@ -1,5 +1,6 @@
 /** Server entry point (bundled to dist/server.mjs). */
-import { mkdirSync } from 'node:fs';
+import { lookup } from 'node:dns/promises';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +12,7 @@ import { CHANGED_AT_KEY, findEmbeddedCollisions } from './catalog';
 import { readConfig } from './config';
 import { CatalogDb } from './db';
 import { loadEmbedded } from './embedded';
+import { parseDefaultGateway, TrustedProxies } from './trusted-proxies';
 
 const baseDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 let config;
@@ -32,6 +34,18 @@ if (collisions.length > 0) {
   );
 }
 
+// Reverse proxies allowed to set X-Forwarded-For. Host names (`caddy`) and `gateway` are resolved
+// now and every 15 s (a proxy container may start after the app or get a new address).
+const trustedProxies = new TrustedProxies(config.trustedProxies, {
+  resolve: async (host) => (await lookup(host, { all: true })).map((r) => r.address),
+  gateway: () => parseDefaultGateway(readFileSync('/proc/net/route', 'utf8')),
+});
+await trustedProxies.refresh();
+setInterval(() => void trustedProxies.refresh(), 15_000).unref();
+if (trustedProxies.empty && process.env.TRUST_PROXY === 'true') {
+  console.warn('[backoffice] TRUST_PROXY is no longer used: set TRUSTED_PROXIES (X-Forwarded-For is ignored meanwhile).');
+}
+
 const app = createApp({
   db,
   dataDir: config.dataDir,
@@ -41,7 +55,7 @@ const app = createApp({
   publicUrl: config.publicUrl,
   publicDir: config.publicDir,
   cookieSecure: config.cookieSecure,
-  trustProxy: config.trustProxy,
+  trustedProxies,
   remoteAddress: (c) => getConnInfo(c).remote.address,
 });
 

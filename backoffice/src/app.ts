@@ -26,6 +26,7 @@ import { accessToSource, InputError, isRecord, isValidId, parseAlbum, parseArtwo
 import { verifyPassword } from './password';
 import { renderPreview } from './preview';
 import { ArtworkStore } from './store';
+import type { TrustedProxies } from './trusted-proxies';
 
 export interface AppConfig {
   db: CatalogDb;
@@ -39,11 +40,12 @@ export interface AppConfig {
   publicDir: string;
   cookieSecure: boolean;
   /**
-   * Behind a reverse proxy (Caddy or the host's Nginx): the client address is the right-most
-   * X-Forwarded-For entry (memory only), but only when the TCP peer is the local proxy
-   * (loopback / private address, see isTrustedProxyPeer).
+   * Reverse proxies allowed to set X-Forwarded-For (TRUSTED_PROXIES: the shared Traefik's fixed
+   * address, the Caddy service, or the bridge gateway relaying the host's Nginx). When the TCP
+   * peer is one of them, the client address is the right-most X-Forwarded-For entry (memory only).
+   * Undefined or empty = no proxy trusted: the client is the TCP peer.
    */
-  trustProxy: boolean;
+  trustedProxies?: TrustedProxies;
   rateLimit?: RateLimitOptions;
   /** Password verifications allowed in parallel (default MAX_LOGIN_CHECKS). */
   maxConcurrentLogins?: number;
@@ -77,23 +79,6 @@ const STATIC_FILES: Record<string, string> = {
 
 /** Sent by the app itself (whatever the proxy) when the public URL is https. */
 export const HSTS_VALUE = 'max-age=31536000; includeSubDomains';
-
-/**
- * TCP peers allowed to set X-Forwarded-For: loopback, private IPv4 (RFC 1918, the Docker networks:
- * Caddy's container, or docker-proxy relaying the host's Nginx on 127.0.0.1:<port>) and IPv6 ULA /
- * link-local. A public peer reached the app directly: its X-Forwarded-For is ignored.
- */
-export function isTrustedProxyPeer(address: string): boolean {
-  let a = address.trim().toLowerCase();
-  if (a.startsWith('::ffff:') && a.includes('.')) a = a.slice(7);
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(a);
-  if (v4) {
-    const [o1, o2] = [Number(v4[1]), Number(v4[2])];
-    return o1 === 127 || o1 === 10 || (o1 === 172 && o2 >= 16 && o2 <= 31) || (o1 === 192 && o2 === 168);
-  }
-  if (a === '::1') return true;
-  return /^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a);
-}
 
 const ARTWORK_FILE_RE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.([1-9]\d{0,5})\.json$/;
 
@@ -166,7 +151,7 @@ export function createApp(cfg: AppConfig) {
   const sessions = new SessionManager(cfg.db, cfg.sessionSecret);
   const maxLoginChecks = cfg.maxConcurrentLogins ?? MAX_LOGIN_CHECKS;
   let loginChecks = 0;
-  const limiter = new LoginRateLimiter(cfg.rateLimit ?? { perClient: 5, global: 50, windowMs: 15 * 60 * 1000 });
+  const limiter = new LoginRateLimiter(cfg.rateLimit ?? { perClient: 5, perPeer: 20, global: 50, windowMs: 15 * 60 * 1000 });
   const embeddedIds = new Set(cfg.embedded.artworkIds);
   const cookieName = cfg.cookieSecure ? SESSION_COOKIE : SESSION_COOKIE.replace('__Host-', '');
   const staticFiles = new Map<string, Buffer>();
@@ -176,17 +161,24 @@ export function createApp(cfg: AppConfig) {
 
   const touch = () => cfg.db.setMeta(CHANGED_AT_KEY, now().toISOString());
 
-  const hsts = new URL(cfg.publicUrl).protocol === 'https:';
+  const publicHttps = new URL(cfg.publicUrl).protocol === 'https:';
+  const hsts = publicHttps;
 
-  function clientId(c: Context): string {
+  /**
+   * Rate-limit identity of a request: `client` (right-most X-Forwarded-For entry when the TCP peer
+   * is a trusted proxy, else the peer) and `peer` (set only when the client came from
+   * X-Forwarded-For, so the proxy peer gets its own, larger budget too).
+   */
+  function clientId(c: Context): { client: string; peer?: string } {
     const peer = cfg.remoteAddress?.(c);
+    const proxies = cfg.trustedProxies;
     // `peer` is undefined only in tests (app.request without a socket).
-    if (cfg.trustProxy && (peer === undefined || isTrustedProxyPeer(peer))) {
+    if (proxies && !proxies.empty && (peer === undefined || proxies.has(peer))) {
       const xff = c.req.header('x-forwarded-for');
       const last = xff?.split(',').pop()?.trim();
-      if (last) return last;
+      if (last) return { client: last, peer: peer ?? 'proxy' };
     }
-    return peer ?? 'unknown';
+    return { client: peer ?? 'unknown' };
   }
 
   function sameOrigin(c: Context): boolean {
@@ -200,6 +192,8 @@ export function createApp(cfg: AppConfig) {
     } catch {
       return false;
     }
+    // Behind TLS (public URL in https), an http:// origin is never the admin page.
+    if (publicHttps && new URL(origin).protocol !== 'https:') return false;
     const expected = new Set<string>([new URL(cfg.publicUrl).host]);
     const reqHost = c.req.header('host');
     if (reqHost) expected.add(reqHost);
@@ -290,9 +284,9 @@ export function createApp(cfg: AppConfig) {
     if (loginChecks >= maxLoginChecks) {
       return c.json({ error: 'rate_limited', retryAfter: 1 }, 429, { 'Retry-After': '1' });
     }
-    const client = clientId(c);
+    const { client, peer } = clientId(c);
     const t = now().getTime();
-    const wait = limiter.reserve(client, t);
+    const wait = limiter.reserve(client, t, peer);
     if (wait > 0) {
       const seconds = String(Math.ceil(wait / 1000));
       return c.json({ error: 'rate_limited', retryAfter: Number(seconds) }, 429, { 'Retry-After': seconds });
@@ -305,7 +299,7 @@ export function createApp(cfg: AppConfig) {
       loginChecks--;
     }
     if (!ok) return c.json({ error: 'bad_password' }, 401);
-    limiter.refund(client);
+    limiter.refund(client, peer);
     const session = sessions.create(t);
     setCookie(c, cookieName, session.token, {
       httpOnly: true,

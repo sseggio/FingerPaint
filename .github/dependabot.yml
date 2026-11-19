@@ -1,5 +1,5 @@
-# Keeps the back-office base images (pinned by digest), its npm dependencies and the GitHub Actions
-# (pinned by commit SHA) up to date.
+# Keeps the back-office and infra/edge images (pinned by digest), the back-office npm dependencies
+# and the GitHub Actions (pinned by commit SHA) up to date.
 version: 2
 updates:
   - package-ecosystem: docker
@@ -8,6 +8,11 @@ updates:
       interval: weekly
   - package-ecosystem: docker-compose
     directory: /backoffice
+    schedule:
+      interval: weekly
+  # Shared reverse proxy of the VPS (Traefik + docker-socket-proxy, pinned by digest).
+  - package-ecosystem: docker-compose
+    directory: /infra/edge
     schedule:
       interval: weekly
   - package-ecosystem: npm

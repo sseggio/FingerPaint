@@ -6,8 +6,11 @@
 # `docker compose ...` in current/backoffice uses this file too).
 services:
   app:
-    # Loopback only: reachable by the host's Nginx, never from the Internet. TRUST_PROXY stays
-    # "true" (docker-compose.yml): X-Forwarded-For is only honoured from local/private peers.
+    # Loopback only: reachable by the host's Nginx, never from the Internet. Nginx's connections
+    # reach the container from the bridge gateway (docker-proxy): only that peer (and loopback)
+    # may set X-Forwarded-For.
+    environment:
+      TRUSTED_PROXIES: "127.0.0.1, ::1, gateway"
     ports:
       - "127.0.0.1:${APP_PORT:-8787}:8080"
 
