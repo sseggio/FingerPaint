@@ -8,6 +8,7 @@ import { createApp } from '../src/app';
 import { CatalogDb } from '../src/db';
 import type { EmbeddedContent } from '../src/embedded';
 import { hashPassword } from '../src/password';
+import { parseTrustedProxies, TrustedProxies } from '../src/trusted-proxies';
 
 export type Rgba = [number, number, number, number];
 
@@ -37,6 +38,8 @@ export function samplePng(): Buffer {
 
 export const PASSWORD = 'correct horse battery staple';
 export const ORIGIN = 'https://catalog.test';
+/** Nginx mode: bridge gateway seen by the app; traefik mode: Traefik's fixed address on edge. */
+export const DEFAULT_TRUSTED_PROXIES = '172.18.0.1, 172.30.0.2';
 export const EMBEDDED: EmbeddedContent = {
   artworkIds: ['strawberry', 'fox'],
   albums: [
@@ -52,6 +55,8 @@ export interface SetupOptions {
   /** Simulated TCP peer of every request (e.g. the local reverse proxy); undefined = no socket. */
   remoteAddress?: string;
   publicUrl?: string;
+  /** TRUSTED_PROXIES (default: the Nginx bridge gateway and the shared Traefik of the tests). */
+  trustedProxies?: string;
 }
 
 export async function setup(opts: SetupOptions = {}) {
@@ -70,8 +75,8 @@ export async function setup(opts: SetupOptions = {}) {
     publicUrl: opts.publicUrl ?? ORIGIN,
     publicDir: join(import.meta.dirname, '..', 'public', 'admin'),
     cookieSecure: true,
-    trustProxy: true,
-    rateLimit: { perClient: 3, global: 10, windowMs: 60_000 },
+    trustedProxies: new TrustedProxies(parseTrustedProxies(opts.trustedProxies ?? DEFAULT_TRUSTED_PROXIES)),
+    rateLimit: { perClient: 3, perPeer: 6, global: 10, windowMs: 60_000 },
     now,
     remoteAddress: opts.remoteAddress === undefined ? undefined : () => opts.remoteAddress,
   });

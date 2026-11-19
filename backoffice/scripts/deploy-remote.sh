@@ -34,6 +34,10 @@ set -euo pipefail
 PROJECT=pixeljoy-catalog
 KEEP_RELEASES=3
 EDGE_NETWORK=edge
+# Fixed subnet of the edge network and Traefik's address on it: the app trusts X-Forwarded-For
+# from that address only (TRUSTED_PROXIES in docker-compose.traefik.yml, infra/edge/README.md).
+EDGE_SUBNET=172.30.0.0/24
+EDGE_TRAEFIK_IP=172.30.0.2
 EDGE_HINT='the shared Traefik is installed once, outside this workflow: see infra/edge/README.md (docker network create edge, then docker compose up -d in infra/edge)'
 INSTALL_HINT='see backoffice/README.md, section "Déploiement automatique depuis GitHub" (curl -fsSL https://get.docker.com | sudo sh)'
 
@@ -161,9 +165,25 @@ preflight_traefik() {
   # The edge stack (Traefik) is managed outside this workflow; only its network is required here.
   docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 ||
     die "the Docker network '$EDGE_NETWORK' does not exist on the VPS, so the shared Traefik is not installed: $EDGE_HINT. Or deploy with proxy=nginx / proxy=caddy."
-  # Informative: is a Traefik container attached to it? (The app starts anyway and will be
-  # served as soon as the edge stack runs.)
-  if ! docker ps --filter "network=$EDGE_NETWORK" --format '{{.Image}}' 2>/dev/null | grep -q 'traefik'; then
+  local subnets
+  subnets=$(docker network inspect "$EDGE_NETWORK" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true)
+  case " $subnets " in
+    *" $EDGE_SUBNET "*) ;;
+    *) die "the Docker network '$EDGE_NETWORK' uses subnet '${subnets% }' instead of $EDGE_SUBNET: the app only trusts X-Forwarded-For from Traefik at $EDGE_TRAEFIK_IP. Recreate the network with the fixed subnet (infra/edge/README.md, « Le réseau edge existe déjà sans le bon sous-réseau »)" ;;
+  esac
+  # Informative: is a Traefik container attached to it, at the expected address? (The app starts
+  # anyway and will be served as soon as the edge stack runs.)
+  local id image found=""
+  while read -r id image; do
+    [ -n "$id" ] || continue
+    case "$image" in *traefik*) ;; *) continue ;; esac
+    found=yes
+    local ip
+    ip=$(docker inspect --format '{{with index .NetworkSettings.Networks "'"$EDGE_NETWORK"'"}}{{.IPAddress}}{{end}}' "$id" 2>/dev/null || true)
+    [ "$ip" = "$EDGE_TRAEFIK_IP" ] ||
+      warn "the Traefik container on '$EDGE_NETWORK' has address '$ip', not $EDGE_TRAEFIK_IP: the app will not trust its X-Forwarded-For (all clients then share one login rate limit). Update the edge stack (infra/edge/docker-compose.yml)."
+  done < <(docker ps --filter "network=$EDGE_NETWORK" --format '{{.ID}} {{.Image}}' 2>/dev/null || true)
+  if [ -z "$found" ]; then
     warn "no running Traefik container on the '$EDGE_NETWORK' network: the app will start but stays unreachable from the Internet until the edge stack runs ($EDGE_HINT)"
   fi
   if [ -n "$(project_containers caddy)" ]; then

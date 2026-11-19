@@ -47,7 +47,7 @@ describe('config', () => {
     );
     expect(cfg.publicUrl).toBe('https://catalog.example.com');
     expect(cfg.cookieSecure).toBe(true);
-    expect(cfg.trustProxy).toBe(false);
+    expect(cfg.trustedProxies).toEqual([]);
   });
 });
 

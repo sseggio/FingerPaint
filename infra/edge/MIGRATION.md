@@ -21,10 +21,14 @@ sudo mkdir -p /opt/edge && sudo chown "$USER": /opt/edge
 cd /opt/edge
 cp .env.example .env && chmod 600 .env
 nano .env                                  # ACME_EMAIL=…
-docker network inspect edge >/dev/null 2>&1 || docker network create edge
+docker network inspect edge >/dev/null 2>&1 ||
+  docker network create --subnet 172.30.0.0/24 --gateway 172.30.0.1 --ip-range 172.30.0.128/25 edge
+docker network inspect edge --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'   # doit afficher 172.30.0.0/24
 docker compose config -q && echo "configuration OK"
 docker compose pull                        # télécharge les images maintenant, pas pendant la coupure
 ```
+
+Si le réseau `edge` existait déjà avec un autre sous-réseau, recrée-le maintenant (rien n'y est encore branché) : `docker network rm edge` puis la commande `docker network create` ci-dessus (détails : README.md, « Le réseau edge existe déjà sans le bon sous-réseau »). Sous-réseau fixe = Traefik toujours en `172.30.0.2`, seule adresse dont les applis acceptent `X-Forwarded-For`.
 
 Ne lance **pas** `docker compose up` ici : les ports 80/443 sont encore tenus par Nginx.
 
@@ -50,6 +54,8 @@ services:
     networks:
       - default                     # garde ses réseaux existants (base de données…)
       - edge
+    # Pas d'ipv4_address dans edge (172.30.0.2 est réservée à Traefik). Si l'appli lit X-Forwarded-For,
+    # elle ne doit faire confiance qu'à 172.30.0.2 (pas à tout le réseau edge).
     labels:
       traefik.enable: "true"
       traefik.docker.network: edge
@@ -106,7 +112,7 @@ docker compose up -d
 docker compose ps                   # traefik et socket-proxy "healthy"
 ```
 
-3. **PixelJoy** : sur GitHub, *Actions › Backoffice deploy › Run workflow* avec `proxy=traefik` (valeur par défaut). Le workflow vérifie que le réseau `edge` existe, recrée le conteneur de l'app **sans** son port `127.0.0.1:8787`, le branche sur `edge` avec ses labels, vérifie l'app depuis l'intérieur du conteneur, puis teste `https://admin.pixeljoy.krafting.be` (avertissement seulement si le certificat n'est pas encore là).
+3. **PixelJoy** : sur GitHub, *Actions › Backoffice deploy › Run workflow* avec `proxy=traefik` (valeur par défaut). Le workflow vérifie que le réseau `edge` existe avec le sous-réseau `172.30.0.0/24`, recrée le conteneur de l'app **sans** son port `127.0.0.1:8787`, le branche sur `edge` avec ses labels, vérifie l'app depuis l'intérieur du conteneur, puis teste `https://admin.pixeljoy.krafting.be` (avertissement seulement si le certificat n'est pas encore là).
 
 4. **L'autre projet** : applique la modification préparée à l'étape B, puis dans son dossier :
 

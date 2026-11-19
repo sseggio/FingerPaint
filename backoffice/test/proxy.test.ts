@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { HSTS_VALUE, isTrustedProxyPeer } from '../src/app';
+import { HSTS_VALUE } from '../src/app';
 import { ORIGIN, PASSWORD, setup, type TestEnv } from './helpers';
 
 let env: TestEnv | undefined;
@@ -29,17 +29,6 @@ function viaNginx(e: TestEnv, opts: { password?: string; xff?: string; host?: st
     body: JSON.stringify({ password: opts.password ?? PASSWORD }),
   });
 }
-
-describe('trusted proxy peers', () => {
-  it('accepts loopback and private (Docker) addresses only', () => {
-    for (const a of ['127.0.0.1', '::1', '::ffff:127.0.0.1', '172.18.0.1', '172.31.255.254', '10.0.0.3', '192.168.1.2', 'fd00::1', 'fe80::1']) {
-      expect(isTrustedProxyPeer(a)).toBe(true);
-    }
-    for (const a of ['203.0.113.9', '172.32.0.1', '172.15.0.1', '8.8.8.8', '::ffff:8.8.8.8', '2001:db8::1', '', 'unknown']) {
-      expect(isTrustedProxyPeer(a)).toBe(false);
-    }
-  });
-});
 
 describe('behind Nginx terminating TLS', () => {
   it('sets the __Host- Secure session cookie although the hop to the app is plain HTTP', async () => {
@@ -126,7 +115,9 @@ describe('behind Nginx terminating TLS', () => {
  * default, set explicitly in infra/edge/docker-compose.yml), DROPS any X-Forwarded-* sent by the
  * client and sets X-Forwarded-For to the address of the TCP peer it accepted.
  */
-const TRAEFIK_PEER = '172.20.0.2';
+const TRAEFIK_PEER = '172.30.0.2';
+/** Another container of the shared "edge" network (the user's other project). */
+const EDGE_NEIGHBOUR = '172.30.0.150';
 
 function viaTraefik(e: TestEnv, opts: { password?: string; xff?: string; origin?: string | null } = {}) {
   const headers: Record<string, string> = {
@@ -149,7 +140,6 @@ function viaTraefik(e: TestEnv, opts: { password?: string; xff?: string; origin?
 
 describe('behind the shared Traefik (Docker network edge)', () => {
   it('sets the __Host- Secure session cookie (TLS terminated by Traefik)', async () => {
-    expect(isTrustedProxyPeer(TRAEFIK_PEER)).toBe(true);
     env = await setup({ remoteAddress: TRAEFIK_PEER });
     const res = await viaTraefik(env);
     expect(res.status).toBe(200);
@@ -165,6 +155,8 @@ describe('behind the shared Traefik (Docker network edge)', () => {
     env = await setup({ remoteAddress: TRAEFIK_PEER });
     expect((await viaTraefik(env)).status).toBe(200);
     expect((await viaTraefik(env, { origin: 'https://evil.test' })).status).toBe(403);
+    // Same host but plain http: refused, the public URL is https.
+    expect((await viaTraefik(env, { origin: `http://${PUBLIC_HOST}` })).status).toBe(403);
     expect((await viaTraefik(env, { origin: null })).status).toBe(403);
   });
 
@@ -189,6 +181,32 @@ describe('behind the shared Traefik (Docker network edge)', () => {
 
   it('ignores X-Forwarded-For from a public peer (app port reached directly)', async () => {
     env = await setup({ remoteAddress: '203.0.113.9' });
+    for (let i = 0; i < 3; i++) {
+      expect((await viaTraefik(env, { password: 'nope', xff: `198.51.100.${i}` })).status).toBe(401);
+    }
+    expect((await viaTraefik(env, { xff: '198.51.100.99' })).status).toBe(429);
+  });
+
+  it('ignores X-Forwarded-For from another container of the edge network (Traefik bypassed)', async () => {
+    env = await setup({ remoteAddress: EDGE_NEIGHBOUR, trustedProxies: TRAEFIK_PEER });
+    for (let i = 0; i < 3; i++) {
+      expect((await viaTraefik(env, { password: 'nope', xff: `198.51.100.${i}` })).status).toBe(401);
+    }
+    // Rotating a forged X-Forwarded-For gives no fresh budget: the client is the neighbour itself.
+    expect((await viaTraefik(env, { xff: '198.51.100.99' })).status).toBe(429);
+  });
+
+  it('caps attempts per proxy peer, whatever X-Forwarded-For says', async () => {
+    env = await setup({ remoteAddress: TRAEFIK_PEER, trustedProxies: TRAEFIK_PEER });
+    // perPeer = 6 in the tests: six clients with one failure each exhaust the proxy's budget.
+    for (let i = 0; i < 6; i++) {
+      expect((await viaTraefik(env, { password: 'nope', xff: `198.51.100.${i}` })).status).toBe(401);
+    }
+    expect((await viaTraefik(env, { xff: '198.51.100.50' })).status).toBe(429);
+  });
+
+  it('trusts no proxy when TRUSTED_PROXIES is empty (client = TCP peer)', async () => {
+    env = await setup({ remoteAddress: TRAEFIK_PEER, trustedProxies: '' });
     for (let i = 0; i < 3; i++) {
       expect((await viaTraefik(env, { password: 'nope', xff: `198.51.100.${i}` })).status).toBe(401);
     }

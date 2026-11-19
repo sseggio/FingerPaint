@@ -7,9 +7,12 @@
 # current/backoffice uses this file too).
 services:
   app:
-    # No port published on the host: only containers of the "edge" network (Traefik) reach it.
-    # TRUST_PROXY stays "true" (docker-compose.yml): X-Forwarded-For is only read from
-    # private peers, and Traefik replaces any client-supplied X-Forwarded-For (README.md, 3.9).
+    # No port published on the host: only containers of the "edge" network reach it.
+    # X-Forwarded-For is read ONLY from Traefik's fixed address on "edge" (subnet 172.30.0.0/24,
+    # Traefik = 172.30.0.2, see infra/edge/README.md; checked by deploy-remote.sh): another
+    # container of the shared network cannot forge it. Traefik replaces any client-supplied value.
+    environment:
+      TRUSTED_PROXIES: "172.30.0.2"
     networks:
       - default
       - edge

@@ -18,7 +18,8 @@ const SHA = 'a'.repeat(40);
 const HASH = 'scrypt:32768:8:1:c2FsdA:aGFzaA';
 
 /**
- * Fake Docker CLI. State = files in $FAKE_STATE: edge (network exists), traefik (a Traefik container
+ * Fake Docker CLI. State = files in $FAKE_STATE: edge (network exists; content = its subnet, empty =
+ * 172.30.0.0/24), traefik-ip (Traefik's address on it, default 172.30.0.2), traefik (a Traefik container
  * runs on it), caddy / app (project containers exist), app-port (the app publishes 127.0.0.1:8787),
  * sticky-port (a plain `up` keeps that binding, only --force-recreate drops it). Every call is
  * appended to $FAKE_STATE/log.
@@ -31,12 +32,16 @@ case "$1" in
   version) echo 27.0.0; exit 0 ;;
   image) exit 0 ;;
   network)
-    [ "$2" = inspect ] && [ "$3" = edge ] && [ -f "$s/edge" ] && exit 0
-    exit 1 ;;
+    [ "$2" = inspect ] && [ "$3" = edge ] && [ -f "$s/edge" ] || exit 1
+    if [ "$4" = --format ]; then
+      subnet=$(cat "$s/edge"); echo "\${subnet:-172.30.0.0/24} "
+    fi
+    exit 0 ;;
+  inspect) cat "$s/traefik-ip" 2>/dev/null || echo 172.30.0.2; exit 0 ;;
   ps)
     args="$*"
     case "$args" in
-      *network=edge*) [ -f "$s/traefik" ] && echo "traefik:v3.7.19" ;;
+      *network=edge*) [ -f "$s/traefik" ] && echo "trid traefik:v3.7.19" ;;
       *service=caddy*) [ -f "$s/caddy" ] && echo caddyid ;;
       *service=app*) [ -f "$s/app" ] && echo appid ;;
     esac
@@ -109,6 +114,22 @@ describe('deploy-remote.sh, traefik mode', () => {
     expect(code).not.toBe(0);
     expect(out).toMatch(/infra\/edge\/README\.md/);
     expect(log()).not.toMatch(/compose .* (build|up)/);
+  });
+
+  it('fails when the edge network does not use the fixed subnet', () => {
+    writeFileSync(join(state, 'edge'), '172.18.0.0/16');
+    const { code, out } = run(['preflight', 'pj', 'traefik']);
+    expect(code).not.toBe(0);
+    expect(out).toMatch(/::error::.*uses subnet '172\.18\.0\.0\/16' instead of 172\.30\.0\.0\/24/);
+    expect(out).toMatch(/infra\/edge\/README\.md/);
+  });
+
+  it('warns when Traefik is not at its fixed address', () => {
+    set('edge', 'traefik');
+    writeFileSync(join(state, 'traefik-ip'), '172.30.0.140');
+    const { code, out } = run(['preflight', 'pj', 'traefik']);
+    expect(code).toBe(0);
+    expect(out).toMatch(/::warning::the Traefik container on 'edge' has address '172\.30\.0\.140', not 172\.30\.0\.2/);
   });
 
   it('warns (without failing) when no Traefik runs on the edge network', () => {
@@ -198,7 +219,9 @@ const hasCompose = spawnSync('docker', ['compose', 'version'], { encoding: 'utf8
 
 interface ComposeService {
   ports?: { published?: string; host_ip?: string }[];
-  networks?: Record<string, unknown>;
+  networks?: Record<string, { ipv4_address?: string } | null>;
+  environment?: Record<string, string>;
+  healthcheck?: { test?: string[] };
   labels?: Record<string, string>;
   profiles?: string[];
   command?: string[];
@@ -229,11 +252,13 @@ describe.skipIf(!hasCompose)('docker compose config', () => {
     const c = composeConfig(BACKOFFICE, ['docker-compose.yml'], ENV);
     expect(c.services.app.ports ?? []).toEqual([]);
     expect(c.services.caddy.ports?.map((p) => p.published)).toEqual(['80', '443', '443']);
+    expect(c.services.app.environment?.TRUSTED_PROXIES).toBe('caddy');
   });
 
   it('nginx mode: app on 127.0.0.1:8787 only, Caddy disabled', () => {
     const c = composeConfig(BACKOFFICE, ['docker-compose.yml', 'docker-compose.nginx.yml'], ENV);
     expect(c.services.app.ports).toEqual([expect.objectContaining({ host_ip: '127.0.0.1', published: '8787' })]);
+    expect(c.services.app.environment?.TRUSTED_PROXIES).toBe('127.0.0.1, ::1, gateway');
     // Profile "caddy" not enabled: the service is left out of the effective configuration.
     expect(c.services.caddy).toBeUndefined();
   });
@@ -242,6 +267,8 @@ describe.skipIf(!hasCompose)('docker compose config', () => {
     const c = composeConfig(BACKOFFICE, ['docker-compose.yml', 'docker-compose.traefik.yml'], ENV);
     const app = c.services.app;
     expect(app.ports ?? []).toEqual([]);
+    expect(app.environment?.TRUSTED_PROXIES).toBe('172.30.0.2');
+    expect(app.environment?.TRUST_PROXY).toBeUndefined();
     expect(Object.keys(app.networks ?? {}).sort()).toEqual(['default', 'edge']);
     expect(c.networks?.edge).toEqual(expect.objectContaining({ name: 'edge', external: true }));
     expect(app.labels).toEqual(
@@ -278,5 +305,10 @@ describe.skipIf(!hasCompose)('docker compose config', () => {
     expect(Object.keys(proxy.networks ?? {})).toEqual(['socket']);
     expect(c.networks?.edge).toEqual(expect.objectContaining({ name: 'edge', external: true }));
     expect(c.networks?.socket?.internal).toBe(true);
+    // Fixed address trusted by the apps; ping only on the container's loopback.
+    expect(traefik.networks?.edge?.ipv4_address).toBe('172.30.0.2');
+    expect(cmd).toContain('--entryPoints.ping.address=127.0.0.1:8082');
+    expect(cmd).toContain('--ping.entryPoint=ping');
+    expect(traefik.healthcheck?.test).toContain('--entryPoints.ping.address=127.0.0.1:8082');
   });
 });

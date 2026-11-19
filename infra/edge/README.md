@@ -21,7 +21,8 @@ Cette pile est **indépendante de PixelJoy** : le workflow GitHub de PixelJoy ne
 | Journaux | **aucun access log** (règle « aucune donnée collectée » : ni IP ni requête écrite), log général en `WARN` (avertissements et erreurs) |
 | Dashboard / API | désactivés. Pas de télémétrie (`sendAnonymousUsage=false`, `checkNewVersion=false`) |
 | Durcissement | conteneurs en lecture seule, `no-new-privileges`, Traefik sans aucune capability sauf `NET_BIND_SERVICE` |
-| Santé | `traefik healthcheck --ping` (point d'entrée interne `:8080`, non publié) ; le proxy de socket a son propre healthcheck |
+| Adresse fixe | Traefik a toujours l'adresse **`172.30.0.2`** sur `edge` (sous-réseau fixe `172.30.0.0/24`) : les applis ne font confiance à `X-Forwarded-For` que venant de cette adresse (PixelJoy : `TRUSTED_PROXIES=172.30.0.2`) |
+| Santé | `traefik healthcheck --ping` sur un point d'entrée `ping` dédié, lié à `127.0.0.1:8082` **dans** le conteneur : ni publié, ni joignable par les autres conteneurs de `edge`. Les routeurs sans entrypoint explicite vont sur `websecure` seulement (`asDefault`). Le proxy de socket a son propre healthcheck |
 
 ## Installation pas à pas
 
@@ -52,10 +53,31 @@ nano .env        # ACME_EMAIL=ton-adresse@exemple.com
 ### 3. Créer le réseau partagé `edge` (une seule fois)
 
 ```sh
-docker network create edge
+docker network inspect edge >/dev/null 2>&1 && echo "edge existe déjà : voir plus bas" ||
+  docker network create --subnet 172.30.0.0/24 --gateway 172.30.0.1 --ip-range 172.30.0.128/25 edge
+docker network inspect edge --format '{{range .IPAM.Config}}{{.Subnet}} {{.IPRange}}{{end}}'
+# → 172.30.0.0/24 172.30.0.128/25
 ```
 
-Il est **externe** à la pile : un `docker compose down` de la pile `edge` ne le supprime pas et ne coupe pas les projets qui y sont branchés.
+- **Sous-réseau fixe** `172.30.0.0/24` : Traefik y prend l'adresse fixe `172.30.0.2` (`docker-compose.yml`), et les applis ne croient `X-Forwarded-For` que venant d'elle. Un autre conteneur du réseau (ton autre projet, par exemple) ne peut donc pas se faire passer pour un client quelconque.
+- `--ip-range 172.30.0.128/25` : les conteneurs des projets reçoivent leurs adresses dynamiques entre `.128` et `.255`, jamais `172.30.0.2`. Ne donne jamais d'`ipv4_address` fixe dans ce réseau à un autre conteneur.
+- Si la création échoue avec « Pool overlaps with other one on this address space », un réseau Docker existant utilise déjà `172.30.x.x` (`docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` le montre). Le plus simple : recréer ce réseau-là ailleurs ; sinon, choisir un autre sous-réseau privé libre et le reporter partout où `172.30.0.` apparaît (`infra/edge/docker-compose.yml`, `backoffice/docker-compose.traefik.yml`, `EDGE_SUBNET`/`EDGE_TRAEFIK_IP` de `backoffice/scripts/deploy-remote.sh`).
+- Il est **externe** à la pile : un `docker compose down` de la pile `edge` ne le supprime pas et ne coupe pas les projets qui y sont branchés.
+
+#### Le réseau `edge` existe déjà sans le bon sous-réseau
+
+(Par exemple créé avec un simple `docker network create edge`. Le déploiement PixelJoy en `proxy=traefik` s'arrête alors avec « uses subnet … instead of 172.30.0.0/24 ».) Un réseau Docker ne se modifie pas : il faut le recréer, ce qui coupe brièvement les sites branchés dessus.
+
+```sh
+docker network inspect edge --format '{{range .Containers}}{{.Name}} {{end}}'   # conteneurs branchés
+cd /opt/edge && docker compose down                       # Traefik (sans -v : certificats gardés)
+# pour chaque AUTRE conteneur listé (projets) : docker network disconnect edge <nom>
+docker network rm edge
+docker network create --subnet 172.30.0.0/24 --gateway 172.30.0.1 --ip-range 172.30.0.128/25 edge
+docker compose up -d                                      # Traefik, à l'adresse 172.30.0.2
+# puis, dans le dossier de chaque projet : docker compose up -d   (rebranche ses conteneurs)
+# PixelJoy : relancer le workflow (proxy=traefik)
+```
 
 ### 4. Pare-feu
 
@@ -118,9 +140,9 @@ docker compose logs traefik                       # erreurs ACME éventuelles (D
 
 ## Adresse IP des clients
 
-Traefik transmet l'IP du client dans `X-Forwarded-For` (et supprime toute valeur envoyée par le client). Les applis doivent lire l'entrée **la plus à droite** et seulement si la connexion vient du réseau Docker (c'est ce que fait PixelJoy). Avec Docker en IPv4 (règles iptables par défaut), l'IP source est préservée. Si le VPS reçoit aussi du trafic **IPv6** et que Docker n'a pas IPv6 activé, le `docker-proxy` relaie ces connexions et Traefik voit l'adresse de la passerelle Docker à la place du client (sans risque de sécurité, mais toutes ces connexions partagent le même compteur de limite de connexion de PixelJoy).
+Traefik transmet l'IP du client dans `X-Forwarded-For` (et supprime toute valeur envoyée par le client). Les applis doivent lire l'entrée **la plus à droite** et seulement si la connexion vient de **l'adresse de Traefik, `172.30.0.2`** (c'est ce que fait PixelJoy avec `TRUSTED_PROXIES=172.30.0.2`) : faire confiance à tout le réseau `edge` permettrait à n'importe quel conteneur branché dessus de contourner Traefik et d'inventer l'IP du client. Avec Docker en IPv4 (règles iptables par défaut), l'IP source est préservée. Si le VPS reçoit aussi du trafic **IPv6** et que Docker n'a pas IPv6 activé, le `docker-proxy` relaie ces connexions et Traefik voit l'adresse de la passerelle Docker à la place du client (sans risque de sécurité, mais toutes ces connexions partagent le même compteur de limite de connexion de PixelJoy).
 
-Tout conteneur branché sur `edge` peut joindre les autres conteneurs de ce réseau : n'y branche que les services web de tes propres projets.
+Tout conteneur branché sur `edge` peut joindre les autres conteneurs de ce réseau (en contournant Traefik) : n'y branche que les services web de tes propres projets, et que chaque appli ne fasse confiance qu'à `172.30.0.2`.
 
 ## Mise à jour
 

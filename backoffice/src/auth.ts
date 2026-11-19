@@ -49,10 +49,18 @@ export function safeEqual(a: string, b: string): boolean {
 export interface RateLimitOptions {
   /** Failed attempts allowed per client within the window. */
   perClient: number;
+  /**
+   * Failed attempts allowed per TCP peer within the window, counted in addition to the per-client
+   * limit when the client address comes from X-Forwarded-For (the peer is then a trusted proxy).
+   * Bounds what a spoofed X-Forwarded-For could gain. Defaults to 4 × perClient.
+   */
+  perPeer?: number;
   /** Failed attempts allowed overall within the window (slows distributed guessing). */
   global: number;
   windowMs: number;
 }
+
+type Window = { count: number; resetAt: number };
 
 /**
  * Fixed-window limiter on login attempts. Memory only; entries expire with their window.
@@ -60,36 +68,57 @@ export interface RateLimitOptions {
  * pass the check; a successful login refunds it.
  */
 export class LoginRateLimiter {
-  private readonly clients = new Map<string, { count: number; resetAt: number }>();
+  private readonly clients = new Map<string, Window>();
+  private readonly peers = new Map<string, Window>();
   private globalCount = 0;
   private globalResetAt = 0;
+  private readonly perPeer: number;
 
-  constructor(private readonly opts: RateLimitOptions) {}
+  constructor(private readonly opts: RateLimitOptions) {
+    this.perPeer = opts.perPeer ?? opts.perClient * 4;
+  }
 
-  /** Reserves one attempt. Returns 0 when allowed, else the milliseconds to wait (nothing reserved). */
-  reserve(client: string, nowMs: number): number {
+  private static current(map: Map<string, Window>, key: string, nowMs: number, windowMs: number): Window {
+    let entry = map.get(key);
+    if (!entry || nowMs >= entry.resetAt) {
+      entry = { count: 0, resetAt: nowMs + windowMs };
+      map.set(key, entry);
+    }
+    return entry;
+  }
+
+  private static prune(map: Map<string, Window>, nowMs: number) {
+    if (map.size > 10_000) for (const [k, v] of map) if (nowMs >= v.resetAt) map.delete(k);
+  }
+
+  /**
+   * Reserves one attempt for `client` (and for the TCP `peer` when given, i.e. when the client
+   * address was taken from X-Forwarded-For). Returns 0 when allowed, else the milliseconds to wait
+   * (nothing reserved).
+   */
+  reserve(client: string, nowMs: number, peer?: string): number {
     if (nowMs >= this.globalResetAt) {
       this.globalCount = 0;
       this.globalResetAt = nowMs + this.opts.windowMs;
     }
     if (this.globalCount >= this.opts.global) return this.globalResetAt - nowMs;
-    let entry = this.clients.get(client);
-    if (!entry || nowMs >= entry.resetAt) {
-      entry = { count: 0, resetAt: nowMs + this.opts.windowMs };
-      this.clients.set(client, entry);
-    }
+    const entry = LoginRateLimiter.current(this.clients, client, nowMs, this.opts.windowMs);
     if (entry.count >= this.opts.perClient) return entry.resetAt - nowMs;
+    const peerEntry = peer === undefined ? undefined : LoginRateLimiter.current(this.peers, peer, nowMs, this.opts.windowMs);
+    if (peerEntry && peerEntry.count >= this.perPeer) return peerEntry.resetAt - nowMs;
     entry.count++;
+    if (peerEntry) peerEntry.count++;
     this.globalCount++;
-    if (this.clients.size > 10_000) {
-      for (const [k, v] of this.clients) if (nowMs >= v.resetAt) this.clients.delete(k);
-    }
+    LoginRateLimiter.prune(this.clients, nowMs);
+    LoginRateLimiter.prune(this.peers, nowMs);
     return 0;
   }
 
   /** Successful login: gives the reserved attempt back and clears the client's failures. */
-  refund(client: string) {
+  refund(client: string, peer?: string) {
     this.clients.delete(client);
+    const peerEntry = peer === undefined ? undefined : this.peers.get(peer);
+    if (peerEntry && peerEntry.count > 0) peerEntry.count--;
     if (this.globalCount > 0) this.globalCount--;
   }
 }
