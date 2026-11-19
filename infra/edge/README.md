@@ -128,6 +128,8 @@ networks:
 
 Le nom du routeur et du service (`mon-projet`) doit être **unique sur tout le VPS**. Le DNS du domaine doit pointer vers le VPS **avant** le démarrage : sinon le défi Let's Encrypt échoue (et compte dans les limites de taux).
 
+Exemple complet sans modifier le dépôt du projet (fichier *override* + site statique servi par un petit nginx) : [`examples/affiny/`](examples/affiny/), décrit dans [MIGRATION.md](MIGRATION.md), section B.
+
 PixelJoy : déployer avec `proxy=traefik` (valeur par défaut du workflow *Backoffice deploy*), voir `backoffice/README.md`, section 3.9.
 
 ## Vérifications

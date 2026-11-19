@@ -205,13 +205,22 @@ describe('deploy-remote.sh, traefik mode', () => {
 describe('shell scripts', () => {
   it('parse with bash -n (and pass shellcheck when installed)', () => {
     const scripts = [SCRIPT, join(BACKOFFICE, 'scripts', 'build-deploy-archive.sh'), join(BACKOFFICE, 'scripts', 'backup.sh')];
-    for (const s of scripts) expect(spawnSync('bash', ['-n', s]).status).toBe(0);
+    const affinyPreflight = join(REPO, 'infra', 'edge', 'examples', 'affiny', 'preflight.sh');
+    for (const s of [...scripts, affinyPreflight]) expect(spawnSync('bash', ['-n', s]).status).toBe(0);
     if (spawnSync('shellcheck', ['--version']).status === 0) {
       // backup.sh predates this check (SC2012 info): only the deployment scripts are linted.
-      const res = spawnSync('shellcheck', scripts.slice(0, 2), { encoding: 'utf8' });
+      const res = spawnSync('shellcheck', [...scripts.slice(0, 2), affinyPreflight], { encoding: 'utf8' });
       expect(res.stdout).toBe('');
       expect(res.status).toBe(0);
     }
+  });
+});
+
+describe('Dockerfile', () => {
+  it('sets no legacy TRUST_PROXY and trusts no proxy by default (TRUSTED_PROXIES empty)', () => {
+    const dockerfile = readFileSync(join(BACKOFFICE, 'Dockerfile'), 'utf8');
+    expect(dockerfile).not.toMatch(/TRUST_PROXY\b/);
+    expect(dockerfile).toMatch(/^\s*TRUSTED_PROXIES=$/m);
   });
 });
 
@@ -310,5 +319,67 @@ describe.skipIf(!hasCompose)('docker compose config', () => {
     expect(cmd).toContain('--entryPoints.ping.address=127.0.0.1:8082');
     expect(cmd).toContain('--ping.entryPoint=ping');
     expect(traefik.healthcheck?.test).toContain('--entryPoints.ping.address=127.0.0.1:8082');
+  });
+
+  // Reconstruction of Affiny's pre-production compose (other project of the VPS, separate repo).
+  const AFFINY_PREPROD = `services:
+  api:
+    build: { context: ../.. }
+    environment:
+      NODE_ENV: production
+      GATEWAY_PORT: "3000"
+      CORS_ORIGIN: https://admin.\${PREPROD_DOMAIN}
+      TRUST_PROXY: "1"
+      REDIS_URL: redis://redis:6379
+    ports: ["127.0.0.1:13000:3000", "127.0.0.1:13004:3004"]
+    depends_on: [redis]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+  redis:
+    image: redis:7-alpine
+`;
+
+  it('infra/edge/examples/affiny: override drops the host ports and routes api, socket.io and admin', () => {
+    const dir = join(root, 'affiny', 'deploy', 'preprod');
+    mkdirSync(join(dir, 'backoffice'), { recursive: true });
+    writeFileSync(join(dir, 'docker-compose.yml'), AFFINY_PREPROD);
+    const example = join(REPO, 'infra', 'edge', 'examples', 'affiny');
+    for (const f of ['docker-compose.traefik.yml', 'backoffice-nginx.conf']) copyFileSync(join(example, f), join(dir, f));
+    const env = 'PREPROD_DOMAIN=affiny.example.com\n';
+    const base = composeConfig(dir, ['docker-compose.yml'], env);
+    expect((base.services.api.ports ?? []).map((p) => p.published).sort()).toEqual(['13000', '13004']);
+
+    const c = composeConfig(dir, ['docker-compose.yml', 'docker-compose.traefik.yml'], env);
+    const api = c.services.api;
+    expect(api.ports ?? []).toEqual([]);
+    expect(api.environment?.TRUST_PROXY).toBe('1');
+    expect(Object.keys(api.networks ?? {}).sort()).toEqual(['default', 'edge']);
+    expect(api.labels).toEqual(
+      expect.objectContaining({
+        'traefik.enable': 'true',
+        'traefik.docker.network': 'edge',
+        'traefik.http.routers.affiny-api.rule': 'Host(`api.affiny.example.com`)',
+        'traefik.http.routers.affiny-api.middlewares': 'affiny-compress',
+        'traefik.http.services.affiny-api.loadbalancer.server.port': '3000',
+        'traefik.http.routers.affiny-ws.rule': 'Host(`api.affiny.example.com`) && PathPrefix(`/socket.io/`)',
+        'traefik.http.routers.affiny-ws.priority': '100',
+        'traefik.http.routers.affiny-ws.service': 'affiny-ws',
+        'traefik.http.services.affiny-ws.loadbalancer.server.port': '3004',
+      }),
+    );
+    expect(api.labels?.['traefik.http.routers.affiny-ws.middlewares']).toBeUndefined();
+
+    const bo = c.services.backoffice;
+    expect(Object.keys(bo.networks ?? {})).toEqual(['edge']);
+    expect(bo.ports ?? []).toEqual([]);
+    expect(bo.volumes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: join(dir, 'backoffice'), target: '/srv/backoffice', read_only: true }),
+        expect.objectContaining({ source: join(dir, 'backoffice-nginx.conf'), target: '/etc/nginx/nginx.conf', read_only: true }),
+      ]),
+    );
+    expect(bo.labels?.['traefik.http.routers.affiny-admin.rule']).toBe('Host(`admin.affiny.example.com`)');
+    expect(bo.labels?.['traefik.http.services.affiny-admin.loadbalancer.server.port']).toBe('8080');
+    expect(c.services.redis.networks).toEqual({ default: null });
   });
 });
