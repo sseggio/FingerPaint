@@ -3,7 +3,7 @@
 #   docker build -f backoffice/Dockerfile .      (docker-compose.yml does this for you)
 
 # Base images pinned by digest (updated by Dependabot, see .github/dependabot.yml and README.md).
-FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS build
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS build
 WORKDIR /repo/backoffice
 COPY backoffice/package.json backoffice/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -17,7 +17,7 @@ COPY backoffice backoffice
 WORKDIR /repo/backoffice
 RUN npm run typecheck && npm run gen:embedded && npm run build
 
-FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 ENV NODE_ENV=production \
     PORT=8080 \
     DATA_DIR=/data \
