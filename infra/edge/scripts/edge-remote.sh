@@ -76,6 +76,7 @@ ensure_env() {
   mkdir -p "$BASE/shared"
   chmod 700 "$BASE/shared"
   if [ -f "$env" ]; then
+    chmod 600 "$env"
     current=$(sed -n 's/^ACME_EMAIL=//p' "$env" | tail -n 1)
     if [ -n "$current" ]; then
       info "shared/.env kept (ACME_EMAIL already set)"
