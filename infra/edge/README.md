@@ -10,6 +10,8 @@ Cette pile est **indépendante des applications** (y compris de l'app PixelJoy) 
 
 - envoie `infra/edge` (sans `examples/`) dans `~/edge/releases/<sha>`, bascule le lien `~/edge/current` de façon atomique (5 versions gardées) ;
 - crée `~/edge/shared/.env` au premier lancement (lien `.env` dans chaque version), puis ne le touche plus ;
+- copie `dynamic/` fichier par fichier dans le dossier stable `~/edge/shared/dynamic` (variable `EDGE_DYNAMIC_DIR` de `shared/.env`), monté par Traefik qui le surveille et recharge seul : le conteneur ne dépend jamais d'un dossier de version (la version en cours, la précédente et toute version encore montée ne sont jamais supprimées ; relancer le même commit garde la version en cours telle quelle) ; si `docker-compose.yml` change, Traefik est recréé (`--force-recreate`) ;
+- refuse un réseau `edge` dont l'`ip-range` n'est pas `172.30.0.128/25` ou dont l'adresse `172.30.0.2` est prise par un autre conteneur que Traefik ;
 - vérifie Docker, crée le réseau `edge` s'il manque (`172.30.0.0/24`) ou s'arrête s'il a un autre sous-réseau, valide la configuration, `docker compose pull` (projet compose fixe `edge` : le volume `edge_acme` des certificats persiste) ;
 - **si Traefik tourne déjà, ou si 80 ET 443 sont libres** : `docker compose up -d --wait`, puis vérifie `https://admin.pixeljoy.krafting.be/catalog/v1/manifest.json` (JSON `v=1`, certificat Let's Encrypt hors *staging*, jusqu'à 3 minutes) ;
 - **sinon** (Nginx de l'hôte encore actif) : Traefik n'est **pas** démarré ; le workflow réussit avec l'avertissement « ports 80/443 encore utilisés (Nginx hôte) : Traefik prêt, sera démarré au prochain lancement une fois les autres projets migrés ».

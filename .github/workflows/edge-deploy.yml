@@ -98,11 +98,18 @@ jobs:
           if ! [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::Unexpected GITHUB_SHA"; exit 1; fi
           git archive --format=tar.gz -o "$RUNNER_TEMP/edge.tar.gz" "$GITHUB_SHA:infra/edge" -- . ':(exclude)examples'
           # EDGE_PATH (fixed) and GITHUB_SHA (validated) contain no quote or shell metacharacter.
+          # Written into <sha>.partial first. Re-run of the CURRENT release (same commit = same files):
+          # the existing directory is kept, never removed under the running stack. Any other existing
+          # copy of <sha> is replaced.
           # shellcheck disable=SC2029
           ssh vps "set -eu; mkdir -p '$EDGE_PATH/releases'; cd '$EDGE_PATH/releases';
             rm -rf '$GITHUB_SHA.partial'; mkdir '$GITHUB_SHA.partial';
             tar -xzf - -C '$GITHUB_SHA.partial';
-            rm -rf '$GITHUB_SHA'; mv '$GITHUB_SHA.partial' '$GITHUB_SHA'" < "$RUNNER_TEMP/edge.tar.gz"
+            if [ -d '$GITHUB_SHA' ] && [ \"\$(readlink ../current 2>/dev/null || true)\" = 'releases/$GITHUB_SHA' ]; then
+              rm -rf '$GITHUB_SHA.partial'; echo 'release $GITHUB_SHA is the current one: kept as is';
+            else
+              rm -rf '$GITHUB_SHA'; mv '$GITHUB_SHA.partial' '$GITHUB_SHA';
+            fi" < "$RUNNER_TEMP/edge.tar.gz"
 
       - name: Check, configure, pull and (if ports 80/443 are free) start on the VPS
         id: activate

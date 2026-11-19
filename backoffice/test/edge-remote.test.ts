@@ -16,6 +16,7 @@ import {
   readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -34,7 +35,9 @@ const SHA = 'b'.repeat(40);
 
 /**
  * Fake Docker CLI. State in $FAKE_STATE: edge (network exists; content = subnet, empty = the right
- * one), traefik (a Traefik container of project "edge" runs), pull-fails. Every call is logged.
+ * one), edge-iprange (default 172.30.0.128/25), edge-containers ("name ip/24" lines), traefik (a
+ * Traefik container of project "edge" runs), mounts (mount sources of the project's containers),
+ * pull-fails. Every call is logged.
  */
 const FAKE_DOCKER = `#!/usr/bin/env bash
 s=$FAKE_STATE
@@ -45,16 +48,21 @@ case "$1" in
     case "$2" in
       inspect)
         [ -f "$s/edge" ] || exit 1
-        subnet=$(cat "$s/edge"); echo "\${subnet:-172.30.0.0/24}"; exit 0 ;;
+        case "$5" in
+          *Containers*) cat "$s/edge-containers" 2>/dev/null; exit 0 ;;
+        esac
+        subnet=$(cat "$s/edge"); iprange=$(cat "$s/edge-iprange" 2>/dev/null || echo 172.30.0.128/25)
+        echo "\${subnet:-172.30.0.0/24} $iprange"; exit 0 ;;
       create) : > "$s/edge"; exit 0 ;;
     esac ;;
   ps) [ -f "$s/traefik" ] && echo trid; exit 0 ;;
+  inspect) cat "$s/mounts" 2>/dev/null; exit 0 ;;
   compose)
     args="$*"
     case "$args" in
       "compose version"*) echo "Docker Compose version v2.30.0"; exit 0 ;;
       *" pull"*) [ -f "$s/pull-fails" ] && exit 1; exit 0 ;;
-      *" up "*) touch "$s/traefik"; exit 0 ;;
+      *" up "*) touch "$s/traefik"; echo "$args" > "$s/up-args"; exit 0 ;;
       *) exit 0 ;;
     esac ;;
 esac
@@ -145,7 +153,7 @@ describe('edge-remote.sh activate', () => {
     expect(r.stdout.trim().split('\n').pop()).toBe('EDGE_STATUS=deferred');
     expect(log()).toMatch(/docker compose -p edge .* pull/);
     expect(log()).not.toMatch(/ up /);
-    expect(readFileSync(envFile(), 'utf8')).toBe('ACME_EMAIL=ops@example.com\nACME_CA_SERVER=\n');
+    expect(readFileSync(envFile(), 'utf8')).toBe(`ACME_EMAIL=ops@example.com\nACME_CA_SERVER=\nEDGE_DYNAMIC_DIR=${home}/edge/shared/dynamic\n`);
     expect(statSync(envFile()).mode & 0o777).toBe(0o600);
     expect(readlinkSync(join(home, 'edge', 'current'))).toBe(`releases/${SHA}`);
     expect(readlinkSync(join(home, 'edge', 'releases', SHA, '.env'))).toBe('../../shared/.env');
@@ -186,7 +194,7 @@ describe('edge-remote.sh activate', () => {
     const r = run(['activate', '~/edge', SHA], 'other@example.com\n');
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/shared\/\.env kept/);
-    expect(readFileSync(envFile(), 'utf8')).toBe('ACME_EMAIL=ops@example.com\nACME_CA_SERVER=\n');
+    expect(readFileSync(envFile(), 'utf8')).toBe(`ACME_EMAIL=ops@example.com\nACME_CA_SERVER=\nEDGE_DYNAMIC_DIR=${home}/edge/shared/dynamic\n`);
     expect(r.stdout).toMatch(/EDGE_STATUS=started\s*$/);
   });
 
@@ -197,7 +205,7 @@ describe('edge-remote.sh activate', () => {
     expect(bad.code).not.toBe(0);
     expect(bad.out).toMatch(/ACME_EMAIL is empty/);
     expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
-    expect(readFileSync(envFile(), 'utf8')).toBe('ACME_CA_SERVER=\nACME_EMAIL=ops@example.com\n');
+    expect(readFileSync(envFile(), 'utf8')).toBe(`ACME_CA_SERVER=\nACME_EMAIL=ops@example.com\nEDGE_DYNAMIC_DIR=${home}/edge/shared/dynamic\n`);
   });
 
   it('creates the edge network with the fixed subnet when missing', () => {
@@ -237,6 +245,103 @@ describe('edge-remote.sh activate', () => {
     expect(readlinkSync(join(home, 'edge', 'current'))).toBe(`releases/${shas[6]}`);
     expect(readdirSync(join(home, 'edge', 'releases'))).toHaveLength(5);
     expect(existsSync(join(home, 'edge', 'releases', shas[6]!))).toBe(true);
+  });
+
+  it('mounts a stable shared/dynamic (EDGE_DYNAMIC_DIR) filled from the release', () => {
+    expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
+    const dyn = join(home, 'edge', 'shared', 'dynamic');
+    expect(readFileSync(envFile(), 'utf8')).toContain(`EDGE_DYNAMIC_DIR=${dyn}\n`);
+    expect(lstatSync(dyn).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(dyn, 'middlewares.yml'), 'utf8')).toBe(readFileSync(join(EDGE, 'dynamic', 'middlewares.yml'), 'utf8'));
+    const compose = readFileSync(join(EDGE, 'docker-compose.yml'), 'utf8');
+    expect(compose).toContain('${EDGE_DYNAMIC_DIR:-./dynamic}:/etc/traefik/dynamic:ro');
+    expect(compose).toContain('--providers.file.watch=true');
+  });
+
+  it('dynamic/ update applied in place (same directory inode, stale files removed, no temp file left)', () => {
+    expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
+    const dyn = join(home, 'edge', 'shared', 'dynamic');
+    const inode = statSync(dyn).ino;
+    writeFileSync(join(dyn, 'old.yml'), 'http: {}\n');
+    const next = 'c'.repeat(40);
+    const rel = release(next);
+    writeFileSync(join(rel, 'dynamic', 'middlewares.yml'), 'http:\n  middlewares: {}\n');
+    writeFileSync(join(rel, 'dynamic', 'extra.yml'), 'http: {}\n');
+    const r = run(['activate', '~/edge', next], '\n', next);
+    expect(r.code).toBe(0);
+    expect(statSync(dyn).ino).toBe(inode);
+    expect(readFileSync(join(dyn, 'middlewares.yml'), 'utf8')).toBe('http:\n  middlewares: {}\n');
+    expect(readdirSync(dyn).sort()).toEqual(['extra.yml', 'middlewares.yml']);
+    // docker-compose.yml unchanged: no forced recreation.
+    expect(readFileSync(join(state, 'up-args'), 'utf8')).not.toContain('--force-recreate');
+  });
+
+  it('docker-compose.yml changed: up -d --wait --force-recreate', () => {
+    expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
+    const next = 'c'.repeat(40);
+    const rel = release(next);
+    writeFileSync(join(rel, 'docker-compose.yml'), `${readFileSync(join(rel, 'docker-compose.yml'), 'utf8')}\n# changed\n`);
+    expect(run(['activate', '~/edge', next], '\n', next).code).toBe(0);
+    expect(readFileSync(join(state, 'up-args'), 'utf8')).toMatch(/up -d --wait --remove-orphans --force-recreate/);
+  });
+
+  it('re-run of the same SHA while Traefik runs: release and shared/dynamic kept, no recreation', () => {
+    expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
+    expect(existsSync(join(state, 'traefik'))).toBe(true);
+    const r = run(['activate', '~/edge', SHA], '\n');
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/update/);
+    expect(existsSync(join(home, 'edge', 'releases', SHA, 'docker-compose.yml'))).toBe(true);
+    expect(readlinkSync(join(home, 'edge', 'current'))).toBe(`releases/${SHA}`);
+    expect(existsSync(join(home, 'edge', 'shared', 'dynamic', 'middlewares.yml'))).toBe(true);
+    expect(readFileSync(join(state, 'up-args'), 'utf8')).not.toContain('--force-recreate');
+  });
+
+  it('prune never removes the current release, the previous one nor one mounted by a running container', () => {
+    const shas = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((c) => c.repeat(40));
+    shas.forEach((s, i) => {
+      const t = new Date(Date.UTC(2026, 0, 10 + i));
+      utimesSync(release(s), t, t);
+    });
+    // Oldest = previous current; second oldest = mounted by the running Traefik (old layout);
+    // the new release is given the oldest mtime of all.
+    mkdirSync(join(home, 'edge', 'shared'), { recursive: true });
+    writeFileSync(envFile(), 'ACME_EMAIL=ops@example.com\n');
+    symlinkSync(`releases/${shas[0]}`, join(home, 'edge', 'current'));
+    writeFileSync(join(state, 'traefik'), '');
+    writeFileSync(join(state, 'mounts'), `${join(home, 'edge', 'releases', shas[1]!, 'dynamic')}\n/var/run/docker.sock\n`);
+    const next = 'd'.repeat(40);
+    const old = new Date(Date.UTC(2025, 0, 1));
+    utimesSync(release(next), old, old);
+    const r = run(['activate', '~/edge', next], '\n', next);
+    expect(r.code).toBe(0);
+    const left = readdirSync(join(home, 'edge', 'releases'));
+    for (const keep of [next, shas[0]!, shas[1]!, shas[8]!]) expect(left).toContain(keep);
+    expect(left).not.toContain(shas[2]);
+  });
+
+  it('edge network with a wrong ip-range, or 172.30.0.2 held by another container: clear error, nothing pulled', () => {
+    writeFileSync(join(state, 'edge-iprange'), '');
+    let r = run(['activate', '~/edge', SHA], 'ops@example.com\n');
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/ip-range 'none' instead of 172\.30\.0\.128\/25/);
+    rmSync(join(state, 'edge-iprange'));
+    writeFileSync(join(state, 'edge-containers'), 'other-app-1 172.30.0.2/24\n');
+    r = run(['activate', '~/edge', SHA], 'ops@example.com\n');
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/held by container 'other-app-1'/);
+    expect(log()).not.toMatch(/ pull| up /);
+    writeFileSync(join(state, 'edge-containers'), 'edge-traefik-1 172.30.0.2/24\nother-app-1 172.30.0.130/24\n');
+    expect(run(['activate', '~/edge', SHA], 'ops@example.com\n').code).toBe(0);
+  });
+
+  it('ss failure: ports considered busy, Traefik not started, warning', () => {
+    writeFileSync(join(bin, 'ss'), '#!/usr/bin/env bash\nexit 1\n');
+    const r = run(['activate', '~/edge', SHA], 'ops@example.com\n');
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/ss failed while checking port 80: considered busy/);
+    expect(r.stdout).toMatch(/EDGE_STATUS=deferred\s*$/);
+    expect(log()).not.toMatch(/ up /);
   });
 
   it('rejects an invalid sha or base path', () => {
@@ -317,6 +422,51 @@ describe('edge-deploy.yml', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('edge-deploy.yml upload step (run with a fake ssh)', () => {
+  const wf = parse(readFileSync(WORKFLOW, 'utf8')) as Workflow;
+  const upload = wf.jobs.deploy!.steps.find((s) => s.name?.startsWith('Upload'))!.run!;
+  const headSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).stdout.trim();
+
+  const uploadAs = (remote: string) =>
+    spawnSync('bash', ['-e', '-c', upload], {
+      cwd: REPO,
+      encoding: 'utf8',
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, REMOTE_HOME: remote, EDGE_PATH: 'edge', GITHUB_SHA: headSha, RUNNER_TEMP: root },
+    });
+
+  beforeEach(() => {
+    // Fake ssh: runs the remote command with bash in the "remote" home.
+    writeFileSync(join(bin, 'ssh'), '#!/usr/bin/env bash\nshift\ncd "$REMOTE_HOME"\nexec bash -c "$*"\n');
+    chmodSync(join(bin, 'ssh'), 0o755);
+  });
+
+  it('uploads without examples/, and never removes the current release on a re-run of the same SHA', () => {
+    const remote = join(root, 'remote');
+    mkdirSync(remote);
+    const run1 = uploadAs(remote);
+    expect(run1.status, `${run1.stdout}${run1.stderr}`).toBe(0);
+    const rel = join(remote, 'edge', 'releases', headSha);
+    expect(existsSync(join(rel, 'docker-compose.yml'))).toBe(true);
+    expect(existsSync(join(rel, 'scripts', 'edge-remote.sh'))).toBe(true);
+    expect(existsSync(join(rel, 'examples'))).toBe(false);
+    // Not current yet: a second upload replaces it.
+    writeFileSync(join(rel, 'marker'), '');
+    const again = () => uploadAs(remote);
+    expect(again().status).toBe(0);
+    expect(existsSync(join(rel, 'marker'))).toBe(false);
+    // Current: kept as is (same inode, marker still there), no partial left.
+    symlinkSync(`releases/${headSha}`, join(remote, 'edge', 'current'));
+    writeFileSync(join(rel, 'marker'), '');
+    const ino = statSync(rel).ino;
+    const r = again();
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('is the current one: kept as is');
+    expect(statSync(rel).ino).toBe(ino);
+    expect(existsSync(join(rel, 'marker'))).toBe(true);
+    expect(existsSync(`${rel}.partial`)).toBe(false);
   });
 });
 

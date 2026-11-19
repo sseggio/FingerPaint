@@ -82,10 +82,10 @@ services:
     image: nginx:1.30-alpine
     user: "101:101"
     read_only: true
-    tmpfs: [/tmp, /var/cache/nginx]
+    tmpfs: [/tmp, /var/cache/nginx]   # read_only : le pid va dans /tmp (pid /tmp/nginx.pid; dans la conf)
     volumes:
       - ./dist:/srv/site:ro
-      - ./site-nginx.conf:/etc/nginx/nginx.conf:ro   # listen 8080; try_files $uri /index.html; access_log off;
+      - ./site-nginx.conf:/etc/nginx/nginx.conf:ro   # pid /tmp/nginx.pid; listen 8080; try_files $uri /index.html; access_log off;
     networks: [edge]
     labels:
       traefik.enable: "true"
