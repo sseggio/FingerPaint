@@ -1,0 +1,21 @@
+# Dynamic configuration (file provider, read-only mount). Middlewares usable by every project
+# behind the shared Traefik, as <name>@file.
+http:
+  middlewares:
+    # Applied to EVERY router of the websecure entrypoint (docker-compose.yml,
+    # entrypoints.websecure.http.middlewares). Deliberately minimal so that it never breaks an
+    # application: nosniff, and no Server / X-Powered-By banner. Applications keep (and are
+    # expected to send) their own CSP, framing and HSTS policy.
+    security-headers:
+      headers:
+        contentTypeNosniff: true
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+
+    # Opt-in, for applications that do not send HSTS themselves (PixelJoy sends its own):
+    #   traefik.http.routers.<router>.middlewares: hsts@file
+    # No includeSubDomains here: whether every sub-domain is HTTPS-only is a per-domain decision.
+    hsts:
+      headers:
+        stsSeconds: 31536000

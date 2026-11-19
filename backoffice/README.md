@@ -7,7 +7,7 @@ Petit serveur auto-hébergé qui publie de **nouvelles illustrations** pour l'ap
 
 Les 48 œuvres embarquées dans l'app n'ont pas besoin d'être dans le catalogue ; leurs identifiants sont réservés (le serveur refuse un id déjà utilisé par l'app).
 
-Technique : Node 22, [Hono](https://hono.dev), SQLite (`node:sqlite`, intégré à Node), fichiers JSON sur disque, en frontal **soit le Nginx déjà présent sur le VPS** (mode `nginx`, par défaut du workflow, voir « Derrière un Nginx existant »), **soit Caddy** (mode `caddy`, HTTPS automatique, VPS dédié). Le code de validation et d'encodage des œuvres est **celui de l'app** (`src/lib/artwork`), importé tel quel.
+Technique : Node 22, [Hono](https://hono.dev), SQLite (`node:sqlite`, intégré à Node), fichiers JSON sur disque, en frontal **soit le Traefik partagé du VPS** (mode `traefik`, par défaut du workflow : pile `infra/edge`, voir 3.9), **soit le Nginx déjà présent sur le VPS** (mode `nginx`, voir « Derrière un Nginx existant »), **soit Caddy** (mode `caddy`, HTTPS automatique, VPS dédié). Le code de validation et d'encodage des œuvres est **celui de l'app** (`src/lib/artwork`), importé tel quel.
 
 ---
 
@@ -41,8 +41,9 @@ Le workflow GitHub **Backoffice deploy** (`.github/workflows/backoffice-deploy.y
 
 1. il prépare une archive contenant uniquement ce qu'il faut pour construire le serveur (`backoffice/`, `src/lib/artwork`, `src/lib/color.ts`, `src/lib/symbols.ts`, `src/content/albums.json`, `src/content/artworks` : la liste est lue dans le `Dockerfile`) et l'envoie en SSH dans `~/pixeljoy/releases/<commit>` ;
 2. au **premier** déploiement, il crée `~/pixeljoy/shared/.env` (droits `600`) avec `DOMAIN`, un `SESSION_SECRET` aléatoire tiré sur le VPS et le hash de ton mot de passe admin (calculé sur GitHub : le mot de passe en clair n'est jamais envoyé au VPS ni écrit nulle part) ;
-3. il vérifie que Docker est installé (mode `caddy` : que les ports 80/443 sont libres ; mode `nginx` : que le port local `app_port`, 8787 par défaut, est libre ou déjà tenu par notre conteneur), construit l'image, bascule le lien `~/pixeljoy/current` vers la nouvelle version (les 3 dernières sont gardées) et lance `docker compose up -d --build` ;
+3. il vérifie que Docker est installé (mode `traefik` : que le réseau Docker `edge` du Traefik partagé existe ; mode `caddy` : que les ports 80/443 sont libres ; mode `nginx` : que le port local `app_port`, 8787 par défaut, est libre ou déjà tenu par notre conteneur), construit l'image, bascule le lien `~/pixeljoy/current` vers la nouvelle version (les 3 dernières sont gardées) et lance `docker compose up -d --build` ;
 4. il vérifie enfin que le serveur répond, sinon il affiche l'état des conteneurs et leurs 100 dernières lignes de logs, et le job échoue :
+   - mode `traefik` : le manifeste lu **dans le conteneur de l'app** (`docker compose exec`, l'app n'a aucun port sur l'hôte, 2 minutes max.) ; le test public `https://<domaine>/…` est ensuite tenté mais seulement en avertissement (le certificat peut être en cours d'obtention, ou la pile `edge` pas encore démarrée) ;
    - mode `nginx` : `http://127.0.0.1:8787/catalog/v1/manifest.json` **sur le VPS** (via SSH, 2 minutes max.) ; le test public `https://<domaine>/…` est ensuite tenté mais seulement en avertissement (Nginx et le certificat sont configurés une fois par root, voir 3.8) ;
    - mode `caddy` : `https://<domaine>/catalog/v1/manifest.json` et `https://<domaine>/admin` (3 minutes max.).
 
@@ -119,7 +120,7 @@ Ensuite, supprime la clé privée de ton ordinateur si tu n'en as plus besoin (`
 
 ### 3.6 Ouvrir les ports 80 et 443 (mode `caddy` uniquement)
 
-En mode `nginx`, rien à faire ici : Nginx tient déjà ces ports, l'app n'écoute que sur `127.0.0.1` (passe à 3.7, puis 3.8).
+En mode `traefik`, c'est fait une fois pour toutes avec la pile `infra/edge` (son README, étape 4). En mode `nginx`, rien à faire ici : Nginx tient déjà ces ports, l'app n'écoute que sur `127.0.0.1` (passe à 3.7, puis 3.8).
 
 Caddy en a besoin pour obtenir le certificat HTTPS (Let's Encrypt). Dans le pare-feu de ton hébergeur (s'il y en a un d'activé) et, si `ufw` est utilisé sur le VPS :
 
@@ -138,7 +139,7 @@ Sur GitHub : onglet *Actions › Backoffice deploy › Run workflow*. Paramètre
 
 - `domain` : le sous-domaine (par défaut `admin.pixeljoy.krafting.be`, l'enregistrement DNS A doit pointer vers le VPS) ;
 - `path` : le dossier sur le VPS (par défaut `~/pixeljoy`, dans le dossier personnel de `deploy`) ;
-- `proxy` : `nginx` (par défaut : le VPS a déjà un Nginx sur 80/443, aucun conteneur Caddy, l'app écoute sur `127.0.0.1:<app_port>`, voir 3.8) ou `caddy` (VPS dédié, Caddy prend 80/443). En mode `nginx`, un éventuel conteneur Caddy laissé par un déploiement précédent en mode `caddy` est supprimé (ses volumes et les données sont conservés). Le workflow ne touche **jamais** à Nginx ni à `/etc` (l'utilisateur de déploiement n'a pas sudo) ;
+- `proxy` : `traefik` (par défaut : le Traefik partagé de `infra/edge` tient 80/443, l'app rejoint le réseau Docker `edge` sans aucun port sur l'hôte, voir 3.9), `nginx` (le VPS a un Nginx sur 80/443, aucun conteneur Caddy, l'app écoute sur `127.0.0.1:<app_port>`, voir 3.8) ou `caddy` (VPS dédié, Caddy prend 80/443). En modes `traefik` et `nginx`, un éventuel conteneur Caddy laissé par un déploiement précédent en mode `caddy` est supprimé (ses volumes et les données sont conservés). Le workflow ne touche **jamais** à Nginx, à `/etc` ni à la pile `edge` (l'utilisateur de déploiement n'a pas sudo) ;
 - `app_port` : port local de l'app en mode `nginx` (vide = variable de dépôt `APP_PORT` si définie, sinon `8787`). S'il change, adapte `proxy_pass` dans la config Nginx ;
 - `rotate_password` : laisse décoché. Coche-le uniquement pour **changer le mot de passe admin** : modifie d'abord le secret `BACKOFFICE_ADMIN_PASSWORD`, puis relance le workflow avec la case cochée (seul `ADMIN_PASSWORD_HASH` est remplacé dans `shared/.env`).
 
@@ -180,6 +181,24 @@ On utilise `certonly` pour que Certbot ne réécrive pas le fichier (`sudo certb
 Si tu changes `app_port`, remplace `8787` dans les deux `proxy_pass`. Ce que l'app fait elle-même (indépendamment du proxy) : cookie de session `__Host-pj_admin; Secure` (le navigateur ne parle qu'en HTTPS à Nginx), vérification `Origin` par rapport à `https://$DOMAIN` (Nginx transmet `Host`), HSTS, CSP et autres en-têtes de `/admin`. Le client pris en compte pour la limite de connexion est la dernière entrée de `X-Forwarded-For` (que Nginx écrase avec `$remote_addr`), et seulement si la connexion vient d'une adresse locale/privée (le proxy) : l'app n'est publiée que sur `127.0.0.1`.
 
 Commandes manuelles dans `~/pixeljoy/current/backoffice` : le workflow écrit `COMPOSE_FILE=docker-compose.yml:docker-compose.nginx.yml` et `APP_PORT` dans `shared/.env`, donc `docker compose ps`, `docker compose logs app`, `./scripts/backup.sh` utilisent le bon mode (pas de Caddy).
+
+### 3.9 Derrière le Traefik partagé (mode `traefik`, par défaut)
+
+Un seul Traefik en conteneur (pile [`infra/edge`](../infra/edge/README.md), indépendante de PixelJoy) tient 80/443 pour **tous** les projets Docker du VPS et obtient les certificats Let's Encrypt. PixelJoy se déclare avec des labels Docker ([`docker-compose.traefik.yml`](docker-compose.traefik.yml)) : routeur ``Host(`$DOMAIN`)`` sur l'entrypoint `websecure` avec le résolveur `letsencrypt`, service sur le port interne `8080`, réseau externe `edge` (`traefik.docker.network=edge`). L'app ne publie **aucun** port sur l'hôte ; Caddy est désactivé (profil `caddy`).
+
+**Prérequis, une seule fois, avec ton compte sudo** : installer la pile `edge` en suivant [`infra/edge/README.md`](../infra/edge/README.md) (ou [`infra/edge/MIGRATION.md`](../infra/edge/MIGRATION.md) si le Nginx de l'hôte sert encore des sites). Le workflow PixelJoy ne la déploie jamais : si le réseau `edge` n'existe pas, il s'arrête au préflight avec une erreur qui renvoie vers ce README, sans rien modifier.
+
+Ce que fait le déploiement en mode `traefik` :
+
+- vérifie que le réseau `edge` existe (avertissement si aucun conteneur Traefik n'y tourne : l'app démarre, mais n'est pas joignable depuis Internet tant que la pile `edge` ne tourne pas) ;
+- supprime un éventuel conteneur Caddy du projet (sans `-v` : volumes et données gardés) ;
+- en venant du mode `nginx` : le conteneur de l'app est recréé **sans** le port `127.0.0.1:8787` (le script le vérifie et force la recréation si besoin) ;
+- écrit `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml` dans `shared/.env` (les commandes manuelles et `backup.sh` utilisent le bon mode) ;
+- succès = le manifeste répond **dans le conteneur** (`docker compose exec app wget …/catalog/v1/manifest.json`), puis test public HTTPS non bloquant.
+
+**IP du client** : Traefik joint l'app depuis le réseau Docker `edge` (adresse privée, donc acceptée comme proxy par l'app avec `TRUST_PROXY=true`). Il ne fait **pas** confiance aux `X-Forwarded-For` envoyés par les clients (`forwardedHeaders.insecure=false`, sa valeur par défaut, écrite explicitement dans `infra/edge/docker-compose.yml`) : il les supprime et écrit l'adresse réelle du client. L'app lit l'entrée la plus à droite : même si un en-tête client passait un jour (mode `insecure`), l'entrée de droite reste celle ajoutée par Traefik, donc un client ne peut pas se donner une autre IP pour contourner la limite de connexion. Seuls les conteneurs branchés sur `edge` (tes propres projets) pourraient joindre l'app directement en se présentant comme proxy. Cookies `__Host-…; Secure`, vérification `Origin` (Traefik transmet le `Host` d'origine), HSTS, CSP : identiques aux autres modes. Traefik ne recompresse rien (ETag et 304 de `/catalog/*` intacts), n'écrit aucun access log, et n'impose pas de limite de taille de corps (l'app limite elle-même les uploads à 1 Mo).
+
+**Passer de `nginx` à `traefik`** : suis [`infra/edge/MIGRATION.md`](../infra/edge/MIGRATION.md) ; d'ici là, lance le workflow avec `proxy=nginx` explicitement (une fois le réseau `edge` créé, `proxy=traefik` retirerait le port dont Nginx a besoin). Retour arrière : relancer avec `proxy=nginx`.
 
 ## 3 bis. Installation manuelle (alternative)
 
@@ -296,7 +315,7 @@ rm -rf /tmp/restore
 
 ## 7. Dépannage
 
-- Le workflow **Backoffice deploy** échoue : ouvre le job dans l'onglet *Actions*, le message `Error` indique l'étape. « Missing repository secret » : un secret de la section 3.5 manque. « SSH connection failed » : vérifie `VPS_HOST`, `VPS_USER`, la clé publique dans `/home/deploy/.ssh/authorized_keys` et `VPS_KNOWN_HOSTS` (à refaire si le VPS a été réinstallé). « docker is not installed » / « cannot talk to the Docker daemon » : section 3.1 et 3.2 (puis relance). « Smoke test failed » : regarde l'étape *Diagnostics* (état des conteneurs et logs) ; mode `caddy` : le plus souvent DNS pas encore propagé ou ports 80/443 fermés ou déjà utilisés (si un Nginx tient déjà 80/443, relance avec `proxy=nginx`). Mode `nginx` : « Local smoke test failed » = l'app ne répond pas sur `127.0.0.1:8787` (logs dans *Diagnostics*) ; « port 8787 is already used » = choisis un autre `app_port` ; l'avertissement « not reachable yet » sur HTTPS = Nginx/certificat pas encore configurés (3.8).
+- Le workflow **Backoffice deploy** échoue : ouvre le job dans l'onglet *Actions*, le message `Error` indique l'étape. « Missing repository secret » : un secret de la section 3.5 manque. « SSH connection failed » : vérifie `VPS_HOST`, `VPS_USER`, la clé publique dans `/home/deploy/.ssh/authorized_keys` et `VPS_KNOWN_HOSTS` (à refaire si le VPS a été réinstallé). « docker is not installed » / « cannot talk to the Docker daemon » : section 3.1 et 3.2 (puis relance). « Smoke test failed » : regarde l'étape *Diagnostics* (état des conteneurs et logs) ; mode `traefik` : « the Docker network 'edge' does not exist » = la pile `infra/edge` n'est pas installée (son README) ; « Local smoke test failed » = l'app ne répond pas dans son conteneur ; l'avertissement « not reachable yet » = Traefik arrêté, pas encore de certificat, ou DNS (`docker compose logs traefik` dans le dossier de la pile `edge`) ; mode `caddy` : le plus souvent DNS pas encore propagé ou ports 80/443 fermés ou déjà utilisés (si un Nginx tient déjà 80/443, relance avec `proxy=nginx`). Mode `nginx` : « Local smoke test failed » = l'app ne répond pas sur `127.0.0.1:8787` (logs dans *Diagnostics*) ; « port 8787 is already used » = choisis un autre `app_port` ; l'avertissement « not reachable yet » sur HTTPS = Nginx/certificat pas encore configurés (3.8).
 - `docker compose logs app` : messages du serveur (jamais d'IP ni de requête : il n'y a pas de journal d'accès).
 - `docker compose logs caddy` : problème de certificat → vérifie le DNS et les ports 80/443.
 - « Invalid configuration » au démarrage : `ADMIN_PASSWORD_HASH` ou `SESSION_SECRET` manquant ou mal copié dans `.env`.
@@ -348,7 +367,7 @@ rm -rf /tmp/restore
 - Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement ; la limite globale peut bloquer aussi l'admin pendant une attaque, voir Dépannage). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
 - `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS envoyé par l'app elle-même dès que `PUBLIC_URL` est en `https` (donc derrière Caddy comme derrière Nginx).
 - Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..128 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
-- Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (mode `caddy` : seul Caddy est joignable ; mode `nginx` : publié uniquement sur `127.0.0.1:8787`).
+- Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (mode `traefik` : joignable uniquement via le réseau Docker `edge` ; mode `caddy` : seul Caddy est joignable ; mode `nginx` : publié uniquement sur `127.0.0.1:8787`).
 - Proxy : `X-Forwarded-For` n'est pris en compte que si `TRUST_PROXY=true` **et** que la connexion TCP vient d'une adresse locale ou privée (loopback, réseaux Docker) ; sinon l'adresse du socket est utilisée.
 
 ### Développement
@@ -362,4 +381,4 @@ cp .env.example .env  # puis ADMIN_PASSWORD_HASH, SESSION_SECRET, et PUBLIC_URL=
 npm run dev           # http://localhost:8080/admin
 ```
 
-Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`false` par défaut dans l'image ; `docker-compose.yml` le met à `true` car seul le proxy (Caddy, ou Nginx via `127.0.0.1`) joint l'app — ne l'active jamais si le port 8080 est exposé directement ; même activé, `X-Forwarded-For` n'est lu que depuis une adresse locale/privée), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).
+Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`false` par défaut dans l'image ; `docker-compose.yml` le met à `true` car seul le proxy (Traefik via le réseau `edge`, Caddy, ou Nginx via `127.0.0.1`) joint l'app — ne l'active jamais si le port 8080 est exposé directement ; même activé, `X-Forwarded-For` n'est lu que depuis une adresse locale/privée), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).

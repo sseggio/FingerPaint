@@ -1,0 +1,34 @@
+# "traefik" proxy mode (default of the deploy workflow): the VPS runs the shared Traefik of
+# infra/edge (its own compose stack, deployed separately, see infra/edge/README.md), which owns
+# 80/443, gets the certificate and routes ${DOMAIN} to this app through the external Docker
+# network "edge". Use together with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+# (the deploy workflow writes COMPOSE_FILE into shared/.env, so a plain `docker compose ...` in
+# current/backoffice uses this file too).
+services:
+  app:
+    # No port published on the host: only containers of the "edge" network (Traefik) reach it.
+    # TRUST_PROXY stays "true" (docker-compose.yml): X-Forwarded-For is only read from
+    # private peers, and Traefik replaces any client-supplied X-Forwarded-For (README.md, 3.9).
+    networks:
+      - default
+      - edge
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: edge
+      traefik.http.routers.pixeljoy-catalog.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.pixeljoy-catalog.entrypoints: websecure
+      traefik.http.routers.pixeljoy-catalog.tls: "true"
+      traefik.http.routers.pixeljoy-catalog.tls.certresolver: letsencrypt
+      # HTTP->HTTPS is redirected globally by Traefik; security-headers@file is added by the
+      # websecure entrypoint. The app sends HSTS (with includeSubDomains), CSP, etc. itself.
+      traefik.http.services.pixeljoy-catalog.loadbalancer.server.port: "8080"
+
+  caddy:
+    # Disabled: Traefik owns 80/443. Only started with `--profile caddy` (never by the workflow).
+    profiles: ["caddy"]
+
+networks:
+  edge:
+    external: true
+    name: edge

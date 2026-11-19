@@ -8,7 +8,13 @@
 # `docker compose up -d --build` (fixed project name: the data volumes persist across releases).
 #
 # Proxy modes (input `proxy`):
-#   nginx (default)  the VPS already runs Nginx on 80/443 for other sites. The deployment never
+#   traefik (default) the VPS runs the shared Traefik of infra/edge (separate compose stack, installed
+#                    once by root, NEVER deployed by this workflow: infra/edge/README.md). The app joins
+#                    the external Docker network "edge" with Traefik labels and publishes no host port.
+#                    The preflight fails with a clear error when the "edge" network is missing.
+#                    Success = the manifest answers inside the app container on the VPS (docker
+#                    compose exec); the public HTTPS check is only a warning.
+#   nginx            the VPS already runs Nginx on 80/443 for other sites. The deployment never
 #                    touches Nginx nor /etc (the SSH user has no sudo): no Caddy container, the app
 #                    listens on 127.0.0.1:<app_port> only, and root configures Nginx once with
 #                    backoffice/deploy/nginx/admin.pixeljoy.conf.example (README, « Derrière un
@@ -46,12 +52,13 @@ on:
           - production
         default: Staging
       proxy:
-        description: "Reverse proxy: nginx = the VPS's existing Nginx proxies to 127.0.0.1:<app_port> (no Caddy); caddy = bundled Caddy on 80/443"
+        description: "Reverse proxy: traefik = shared Traefik of infra/edge (Docker network edge); nginx = the VPS's Nginx proxies to 127.0.0.1:<app_port>; caddy = bundled Caddy on 80/443"
         type: choice
         options:
+          - traefik
           - nginx
           - caddy
-        default: nginx
+        default: traefik
       app_port:
         description: "nginx mode: loopback port of the app (empty = repository variable APP_PORT, else 8787)"
         required: false
@@ -107,8 +114,8 @@ jobs:
           if [ "$INPUT_ROTATE" != "true" ] && [ "$INPUT_ROTATE" != "false" ]; then
             echo "::error::Invalid rotate_password"; exit 1
           fi
-          if [ "$INPUT_PROXY" != "nginx" ] && [ "$INPUT_PROXY" != "caddy" ]; then
-            echo "::error::Invalid proxy (nginx or caddy)"; exit 1
+          if ! [[ "$INPUT_PROXY" =~ ^(traefik|nginx|caddy)$ ]]; then
+            echo "::error::Invalid proxy (traefik, nginx or caddy)"; exit 1
           fi
           app_port=${INPUT_APP_PORT:-${VAR_APP_PORT:-8787}}
           if ! [[ "$app_port" =~ ^[1-9][0-9]{3,4}$ ]] || [ "$app_port" -lt 1024 ] || [ "$app_port" -gt 65535 ]; then
@@ -199,31 +206,43 @@ jobs:
             activate "'$DEPLOY_PATH'" "$GITHUB_SHA" "$DEPLOY_DOMAIN" "$DEPLOY_ROTATE" "$DEPLOY_PROXY" "$DEPLOY_APP_PORT" \
             < "$RUNNER_TEMP/admin-hash"
 
-      # nginx mode: the deployment succeeds when the app answers on 127.0.0.1:<app_port> ON THE VPS.
+      # nginx / traefik modes: the deployment succeeds when the app answers ON THE VPS (nginx: on
+      # 127.0.0.1:<app_port>; traefik: inside the app container, which publishes no host port).
       - name: Smoke test (local, on the VPS)
-        if: env.DEPLOY_PROXY == 'nginx'
+        if: env.DEPLOY_PROXY == 'nginx' || env.DEPLOY_PROXY == 'traefik'
         run: |
+          if [ "$DEPLOY_PROXY" = traefik ]; then
+            where="the app container (docker compose exec app, port 8080)"
+          else
+            where="http://127.0.0.1:$DEPLOY_APP_PORT"
+          fi
           deadline=$((SECONDS + 120))
           while :; do
             # shellcheck disable=SC2029
             if body=$(ssh vps bash "'$DEPLOY_PATH/releases/$GITHUB_SHA/backoffice/scripts/deploy-remote.sh'" \
-              local-check "'$DEPLOY_PATH'" "$DEPLOY_APP_PORT" 2>/dev/null) &&
+              local-check "'$DEPLOY_PATH'" "$DEPLOY_APP_PORT" "$DEPLOY_PROXY" 2>/dev/null) &&
               printf '%s' "$body" | jq -e '.v == 1' >/dev/null 2>&1; then
-              echo "OK: http://127.0.0.1:$DEPLOY_APP_PORT/catalog/v1/manifest.json on the VPS (v=1)"
+              echo "OK: /catalog/v1/manifest.json served by $where on the VPS (v=1)"
               break
             fi
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::Local smoke test failed: no valid manifest on 127.0.0.1:$DEPLOY_APP_PORT on the VPS after 2 minutes"
+              echo "::error::Local smoke test failed: no valid manifest from $where on the VPS after 2 minutes"
               exit 1
             fi
-            echo "waiting for http://127.0.0.1:$DEPLOY_APP_PORT on the VPS..."
+            echo "waiting for $where on the VPS..."
             sleep 5
           done
 
-      # nginx mode: informative only (Nginx and its certificate are configured by root, maybe later).
+      # nginx / traefik modes: informative only (Nginx and its certificate, or the edge stack, are
+      # set up by root, maybe later; Traefik may still be getting the certificate).
       - name: Public HTTPS check (non-blocking)
-        if: env.DEPLOY_PROXY == 'nginx'
+        if: env.DEPLOY_PROXY == 'nginx' || env.DEPLOY_PROXY == 'traefik'
         run: |
+          if [ "$DEPLOY_PROXY" = traefik ]; then
+            hint="The app runs on the VPS (Docker network edge): check that the shared Traefik runs and has its certificate (infra/edge/README.md; docker compose logs traefik in infra/edge)."
+          else
+            hint="The app runs on 127.0.0.1:$DEPLOY_APP_PORT on the VPS: configure Nginx and the certificate as root (backoffice/README.md, « Derrière un Nginx existant »)."
+          fi
           for attempt in 1 2 3; do
             manifest_ok=false
             if body=$(curl -fsS --max-time 10 "https://$DEPLOY_DOMAIN/catalog/v1/manifest.json" 2>/dev/null) &&
@@ -237,7 +256,7 @@ jobs:
             fi
             [ "$attempt" -lt 3 ] && sleep 10
           done
-          echo "::warning::https://$DEPLOY_DOMAIN is not reachable yet (manifest ok: $manifest_ok, /admin: HTTP $admin_code). The app runs on 127.0.0.1:$DEPLOY_APP_PORT on the VPS: configure Nginx and the certificate as root (backoffice/README.md, « Derrière un Nginx existant »)."
+          echo "::warning::https://$DEPLOY_DOMAIN is not reachable yet (manifest ok: $manifest_ok, /admin: HTTP $admin_code). $hint"
 
       - name: Smoke test (public HTTPS, Caddy)
         if: env.DEPLOY_PROXY == 'caddy'
