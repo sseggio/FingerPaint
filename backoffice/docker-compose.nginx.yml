@@ -1,0 +1,16 @@
+# "nginx" proxy mode: the VPS already runs Nginx on 80/443 (other sites), which terminates TLS and
+# proxies to the app (see README.md, « Derrière un Nginx existant » and
+# deploy/nginx/admin.pixeljoy.conf.example). Use together with docker-compose.yml:
+#   APP_PORT=8787 docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+# (the deploy workflow writes COMPOSE_FILE and APP_PORT into shared/.env, so a plain
+# `docker compose ...` in current/backoffice uses this file too).
+services:
+  app:
+    # Loopback only: reachable by the host's Nginx, never from the Internet. TRUST_PROXY stays
+    # "true" (docker-compose.yml): X-Forwarded-For is only honoured from local/private peers.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8787}:8080"
+
+  caddy:
+    # Disabled: Nginx owns 80/443. Only started with `--profile caddy` (never by the workflow).
+    profiles: ["caddy"]

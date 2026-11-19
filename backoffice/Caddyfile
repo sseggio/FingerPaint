@@ -10,6 +10,8 @@
 	# Caddy only compresses the other routes (admin UI and API).
 	@compressible not path /catalog/*
 	encode @compressible zstd gzip
+	# The app sends HSTS, nosniff and the /admin headers itself (same behaviour behind Nginx);
+	# Caddy sets (replaces, never duplicates) the first two as well.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

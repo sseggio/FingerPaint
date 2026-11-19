@@ -38,7 +38,11 @@ export interface AppConfig {
   /** Directory holding the admin UI (index.html, admin.css, admin.js, favicon.svg). */
   publicDir: string;
   cookieSecure: boolean;
-  /** Behind Caddy: the client address is the right-most X-Forwarded-For entry (memory only). */
+  /**
+   * Behind a reverse proxy (Caddy or the host's Nginx): the client address is the right-most
+   * X-Forwarded-For entry (memory only), but only when the TCP peer is the local proxy
+   * (loopback / private address, see isTrustedProxyPeer).
+   */
   trustProxy: boolean;
   rateLimit?: RateLimitOptions;
   /** Password verifications allowed in parallel (default MAX_LOGIN_CHECKS). */
@@ -70,6 +74,26 @@ const STATIC_FILES: Record<string, string> = {
   'admin.js': 'text/javascript; charset=utf-8',
   'favicon.svg': 'image/svg+xml',
 };
+
+/** Sent by the app itself (whatever the proxy) when the public URL is https. */
+export const HSTS_VALUE = 'max-age=31536000; includeSubDomains';
+
+/**
+ * TCP peers allowed to set X-Forwarded-For: loopback, private IPv4 (RFC 1918, the Docker networks:
+ * Caddy's container, or docker-proxy relaying the host's Nginx on 127.0.0.1:<port>) and IPv6 ULA /
+ * link-local. A public peer reached the app directly: its X-Forwarded-For is ignored.
+ */
+export function isTrustedProxyPeer(address: string): boolean {
+  let a = address.trim().toLowerCase();
+  if (a.startsWith('::ffff:') && a.includes('.')) a = a.slice(7);
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(a);
+  if (v4) {
+    const [o1, o2] = [Number(v4[1]), Number(v4[2])];
+    return o1 === 127 || o1 === 10 || (o1 === 172 && o2 >= 16 && o2 <= 31) || (o1 === 192 && o2 === 168);
+  }
+  if (a === '::1') return true;
+  return /^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a);
+}
 
 const ARTWORK_FILE_RE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.([1-9]\d{0,5})\.json$/;
 
@@ -152,18 +176,24 @@ export function createApp(cfg: AppConfig) {
 
   const touch = () => cfg.db.setMeta(CHANGED_AT_KEY, now().toISOString());
 
+  const hsts = new URL(cfg.publicUrl).protocol === 'https:';
+
   function clientId(c: Context): string {
-    if (cfg.trustProxy) {
+    const peer = cfg.remoteAddress?.(c);
+    // `peer` is undefined only in tests (app.request without a socket).
+    if (cfg.trustProxy && (peer === undefined || isTrustedProxyPeer(peer))) {
       const xff = c.req.header('x-forwarded-for');
       const last = xff?.split(',').pop()?.trim();
       if (last) return last;
     }
-    return cfg.remoteAddress?.(c) ?? 'unknown';
+    return peer ?? 'unknown';
   }
 
   function sameOrigin(c: Context): boolean {
     const origin = c.req.header('origin');
     if (!origin) return false;
+    // The public origin always matches, even if the proxy forwarded Host as 127.0.0.1:<port>.
+    // X-Forwarded-Host is deliberately not trusted: Nginx/Caddy pass the original Host header.
     let host: string;
     try {
       host = new URL(origin).host;
@@ -181,6 +211,7 @@ export function createApp(cfg: AppConfig) {
     await next();
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'no-referrer');
+    if (hsts) c.header('Strict-Transport-Security', HSTS_VALUE);
     if (c.req.path === '/admin' || c.req.path.startsWith('/admin/')) {
       c.header('Content-Security-Policy', ADMIN_CSP);
       c.header('X-Frame-Options', 'DENY');

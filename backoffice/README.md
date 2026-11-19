@@ -7,7 +7,7 @@ Petit serveur auto-hébergé qui publie de **nouvelles illustrations** pour l'ap
 
 Les 48 œuvres embarquées dans l'app n'ont pas besoin d'être dans le catalogue ; leurs identifiants sont réservés (le serveur refuse un id déjà utilisé par l'app).
 
-Technique : Node 22, [Hono](https://hono.dev), SQLite (`node:sqlite`, intégré à Node), fichiers JSON sur disque, Caddy en frontal (HTTPS automatique). Le code de validation et d'encodage des œuvres est **celui de l'app** (`src/lib/artwork`), importé tel quel.
+Technique : Node 22, [Hono](https://hono.dev), SQLite (`node:sqlite`, intégré à Node), fichiers JSON sur disque, en frontal **soit le Nginx déjà présent sur le VPS** (mode `nginx`, par défaut du workflow, voir « Derrière un Nginx existant »), **soit Caddy** (mode `caddy`, HTTPS automatique, VPS dédié). Le code de validation et d'encodage des œuvres est **celui de l'app** (`src/lib/artwork`), importé tel quel.
 
 ---
 
@@ -41,8 +41,10 @@ Le workflow GitHub **Backoffice deploy** (`.github/workflows/backoffice-deploy.y
 
 1. il prépare une archive contenant uniquement ce qu'il faut pour construire le serveur (`backoffice/`, `src/lib/artwork`, `src/lib/color.ts`, `src/lib/symbols.ts`, `src/content/albums.json`, `src/content/artworks` : la liste est lue dans le `Dockerfile`) et l'envoie en SSH dans `~/pixeljoy/releases/<commit>` ;
 2. au **premier** déploiement, il crée `~/pixeljoy/shared/.env` (droits `600`) avec `DOMAIN`, un `SESSION_SECRET` aléatoire tiré sur le VPS et le hash de ton mot de passe admin (calculé sur GitHub : le mot de passe en clair n'est jamais envoyé au VPS ni écrit nulle part) ;
-3. il vérifie que Docker est installé et que les ports 80/443 sont libres, construit l'image, bascule le lien `~/pixeljoy/current` vers la nouvelle version (les 3 dernières sont gardées) et lance `docker compose up -d --build` ;
-4. il vérifie enfin que `https://<domaine>/catalog/v1/manifest.json` et `https://<domaine>/admin` répondent (3 minutes max.), sinon il affiche l'état des conteneurs et leurs 100 dernières lignes de logs, et le job échoue.
+3. il vérifie que Docker est installé (mode `caddy` : que les ports 80/443 sont libres ; mode `nginx` : que le port local `app_port`, 8787 par défaut, est libre ou déjà tenu par notre conteneur), construit l'image, bascule le lien `~/pixeljoy/current` vers la nouvelle version (les 3 dernières sont gardées) et lance `docker compose up -d --build` ;
+4. il vérifie enfin que le serveur répond, sinon il affiche l'état des conteneurs et leurs 100 dernières lignes de logs, et le job échoue :
+   - mode `nginx` : `http://127.0.0.1:8787/catalog/v1/manifest.json` **sur le VPS** (via SSH, 2 minutes max.) ; le test public `https://<domaine>/…` est ensuite tenté mais seulement en avertissement (Nginx et le certificat sont configurés une fois par root, voir 3.8) ;
+   - mode `caddy` : `https://<domaine>/catalog/v1/manifest.json` et `https://<domaine>/admin` (3 minutes max.).
 
 Les données (base et œuvres) sont dans des volumes Docker nommés (`pixeljoy-catalog_catalog-data`, …) : elles ne dépendent pas du dossier de la version et survivent à chaque déploiement.
 
@@ -115,7 +117,9 @@ Ensuite, supprime la clé privée de ton ordinateur si tu n'en as plus besoin (`
 
 **Environnement GitHub** : le job lit ses secrets dans l'environnement choisi au lancement (entrée `environment` : `Staging` par défaut, ou `production`), en plus des secrets de dépôt. Si tu ranges les 5 secrets dans un environnement, lance le workflow avec ce même environnement. **Optionnel, plus strict** : pour que seuls les déploiements depuis la branche d'intégration puissent lire les secrets : *Settings › Environments › Staging* (ou `production`) ; dans *Deployment branches and tags*, choisis *Selected branches and tags* et ajoute `claude/trusting-turing-c692ne` ; puis recrée les 5 secrets dans *Environment secrets* et supprime-les des *Repository secrets*. N'active **pas** *Required reviewers* : le déploiement doit rester déclenchable sans approbation manuelle (bouton *Run workflow* ou API). Lance alors le workflow sur cette branche.
 
-### 3.6 Ouvrir les ports 80 et 443
+### 3.6 Ouvrir les ports 80 et 443 (mode `caddy` uniquement)
+
+En mode `nginx`, rien à faire ici : Nginx tient déjà ces ports, l'app n'écoute que sur `127.0.0.1` (passe à 3.7, puis 3.8).
 
 Caddy en a besoin pour obtenir le certificat HTTPS (Let's Encrypt). Dans le pare-feu de ton hébergeur (s'il y en a un d'activé) et, si `ufw` est utilisé sur le VPS :
 
@@ -134,11 +138,48 @@ Sur GitHub : onglet *Actions › Backoffice deploy › Run workflow*. Paramètre
 
 - `domain` : le sous-domaine (par défaut `admin.pixeljoy.krafting.be`, l'enregistrement DNS A doit pointer vers le VPS) ;
 - `path` : le dossier sur le VPS (par défaut `~/pixeljoy`, dans le dossier personnel de `deploy`) ;
+- `proxy` : `nginx` (par défaut : le VPS a déjà un Nginx sur 80/443, aucun conteneur Caddy, l'app écoute sur `127.0.0.1:<app_port>`, voir 3.8) ou `caddy` (VPS dédié, Caddy prend 80/443). En mode `nginx`, un éventuel conteneur Caddy laissé par un déploiement précédent en mode `caddy` est supprimé (ses volumes et les données sont conservés). Le workflow ne touche **jamais** à Nginx ni à `/etc` (l'utilisateur de déploiement n'a pas sudo) ;
+- `app_port` : port local de l'app en mode `nginx` (vide = variable de dépôt `APP_PORT` si définie, sinon `8787`). S'il change, adapte `proxy_pass` dans la config Nginx ;
 - `rotate_password` : laisse décoché. Coche-le uniquement pour **changer le mot de passe admin** : modifie d'abord le secret `BACKOFFICE_ADMIN_PASSWORD`, puis relance le workflow avec la case cochée (seul `ADMIN_PASSWORD_HASH` est remplacé dans `shared/.env`).
 
 Pour mettre à jour le serveur plus tard, relance simplement le workflow. Après le premier déploiement, `shared/.env` n'est plus jamais réécrit (sauf `rotate_password`) : pour changer de domaine, modifie `DOMAIN` dans `~/pixeljoy/shared/.env` sur le VPS puis relance le workflow avec le nouveau `domain`.
 
 Sur le VPS, la version en ligne est dans `~/pixeljoy/current/backoffice` : c'est le dossier où lancer les commandes `docker compose …` et `./scripts/backup.sh` des sections suivantes (les sauvegardes vont dans `~/pixeljoy/shared/backups`, conservé entre les versions). Pour revenir à une version précédente : `cd ~/pixeljoy && ln -sfn releases/<commit> current && cd "$(readlink -f current)/backoffice" && docker compose up -d`.
+
+### 3.8 Derrière un Nginx existant (recommandé si le VPS héberge déjà des sites)
+
+Mode `proxy=nginx` : le Nginx du VPS termine TLS (certificat Let's Encrypt via Certbot) et transmet les requêtes à l'app sur `127.0.0.1:8787`. Les autres sites de ce Nginx ne sont pas touchés : on ajoute un seul fichier, pour le seul nom `admin.pixeljoy.krafting.be`. Le modèle est dans [`deploy/nginx/admin.pixeljoy.conf.example`](deploy/nginx/admin.pixeljoy.conf.example) : redirection 80→443, `proxy_pass http://127.0.0.1:8787`, en-têtes `X-Forwarded-*`, `client_max_body_size 2m` (upload PNG de 1 Mo), timeouts, `access_log off;` (aucune donnée collectée), pas de gzip sur `/catalog/` (l'app gère gzip et ETag), HSTS.
+
+**Ordre** : d'abord déployer (le workflow démarre l'app sur `127.0.0.1:8787` et la vérifie en local, le test HTTPS public est un simple avertissement à ce stade), **puis** configurer Nginx. Avec ton compte sudo (pas `deploy`), sur le VPS :
+
+```sh
+# 0. Le DNS A de admin.pixeljoy.krafting.be pointe vers le VPS, et l'app répond en local :
+curl -fsS http://127.0.0.1:8787/catalog/v1/manifest.json      # → {"v":1,…}
+
+# 1. Certificat (Certbot gère un serveur temporaire dans Nginx, sans modifier les sites existants) :
+sudo certbot certonly --nginx -d admin.pixeljoy.krafting.be --deploy-hook "systemctl reload nginx"
+#    (alternative : sudo certbot certonly --webroot -w /var/www/html -d admin.pixeljoy.krafting.be
+#     si un serveur sur le port 80 sert déjà /var/www/html pour ce nom)
+
+# 2. Le site : récupère le modèle depuis la version déployée, puis active-le.
+DEPLOY_USER=pixeljoy   # l'utilisateur SSH du déploiement (secret VPS_USER)
+sudo cp "/home/$DEPLOY_USER/pixeljoy/current/backoffice/deploy/nginx/admin.pixeljoy.conf.example" \
+  /etc/nginx/sites-available/admin.pixeljoy.conf
+sudo ln -s /etc/nginx/sites-available/admin.pixeljoy.conf /etc/nginx/sites-enabled/admin.pixeljoy.conf
+
+# 3. Vérifier TOUTE la configuration avant de recharger (si `nginx -t` échoue, rien n'est appliqué
+#    et les autres sites continuent de tourner : corrige ou retire le lien, puis recommence).
+sudo nginx -t && sudo systemctl reload nginx
+
+# 4. Contrôle
+curl -fsS https://admin.pixeljoy.krafting.be/catalog/v1/manifest.json
+```
+
+On utilise `certonly` pour que Certbot ne réécrive pas le fichier (`sudo certbot --nginx -d admin.pixeljoy.krafting.be`, sans `certonly`, obtient le même certificat mais modifie lui-même la configuration Nginx). Le renouvellement est automatique (timer `certbot`), le `--deploy-hook` recharge Nginx après chaque renouvellement. `reload` (pas `restart`) recharge sans couper les connexions des autres sites.
+
+Si tu changes `app_port`, remplace `8787` dans les deux `proxy_pass`. Ce que l'app fait elle-même (indépendamment du proxy) : cookie de session `__Host-pj_admin; Secure` (le navigateur ne parle qu'en HTTPS à Nginx), vérification `Origin` par rapport à `https://$DOMAIN` (Nginx transmet `Host`), HSTS, CSP et autres en-têtes de `/admin`. Le client pris en compte pour la limite de connexion est la dernière entrée de `X-Forwarded-For` (que Nginx écrase avec `$remote_addr`), et seulement si la connexion vient d'une adresse locale/privée (le proxy) : l'app n'est publiée que sur `127.0.0.1`.
+
+Commandes manuelles dans `~/pixeljoy/current/backoffice` : le workflow écrit `COMPOSE_FILE=docker-compose.yml:docker-compose.nginx.yml` et `APP_PORT` dans `shared/.env`, donc `docker compose ps`, `docker compose logs app`, `./scripts/backup.sh` utilisent le bon mode (pas de Caddy).
 
 ## 3 bis. Installation manuelle (alternative)
 
@@ -255,7 +296,7 @@ rm -rf /tmp/restore
 
 ## 7. Dépannage
 
-- Le workflow **Backoffice deploy** échoue : ouvre le job dans l'onglet *Actions*, le message `Error` indique l'étape. « Missing repository secret » : un secret de la section 3.5 manque. « SSH connection failed » : vérifie `VPS_HOST`, `VPS_USER`, la clé publique dans `/home/deploy/.ssh/authorized_keys` et `VPS_KNOWN_HOSTS` (à refaire si le VPS a été réinstallé). « docker is not installed » / « cannot talk to the Docker daemon » : section 3.1 et 3.2 (puis relance). « Smoke test failed » : regarde l'étape *Diagnostics* (état des conteneurs et logs) ; le plus souvent DNS pas encore propagé ou ports 80/443 fermés ou déjà utilisés.
+- Le workflow **Backoffice deploy** échoue : ouvre le job dans l'onglet *Actions*, le message `Error` indique l'étape. « Missing repository secret » : un secret de la section 3.5 manque. « SSH connection failed » : vérifie `VPS_HOST`, `VPS_USER`, la clé publique dans `/home/deploy/.ssh/authorized_keys` et `VPS_KNOWN_HOSTS` (à refaire si le VPS a été réinstallé). « docker is not installed » / « cannot talk to the Docker daemon » : section 3.1 et 3.2 (puis relance). « Smoke test failed » : regarde l'étape *Diagnostics* (état des conteneurs et logs) ; mode `caddy` : le plus souvent DNS pas encore propagé ou ports 80/443 fermés ou déjà utilisés (si un Nginx tient déjà 80/443, relance avec `proxy=nginx`). Mode `nginx` : « Local smoke test failed » = l'app ne répond pas sur `127.0.0.1:8787` (logs dans *Diagnostics*) ; « port 8787 is already used » = choisis un autre `app_port` ; l'avertissement « not reachable yet » sur HTTPS = Nginx/certificat pas encore configurés (3.8).
 - `docker compose logs app` : messages du serveur (jamais d'IP ni de requête : il n'y a pas de journal d'accès).
 - `docker compose logs caddy` : problème de certificat → vérifie le DNS et les ports 80/443.
 - « Invalid configuration » au démarrage : `ADMIN_PASSWORD_HASH` ou `SESSION_SECRET` manquant ou mal copié dans `.env`.
@@ -270,7 +311,7 @@ rm -rf /tmp/restore
 
 ### API publique (format consommé par l'app, F22)
 
-`GET /catalog/v1/manifest.json` — `Cache-Control: public, max-age=300`, `ETag` (requêtes conditionnelles `If-None-Match` → 304), gzip si `Accept-Encoding: gzip`, CORS `*`, aucun cookie. Caddy ne recompresse pas `/catalog/*` (matcher `@compressible` du `Caddyfile`) : l'ETag de l'app et les 304 sont transmis tels quels.
+`GET /catalog/v1/manifest.json` — `Cache-Control: public, max-age=300`, `ETag` (requêtes conditionnelles `If-None-Match` → 304), gzip si `Accept-Encoding: gzip`, CORS `*`, aucun cookie. Caddy ne recompresse pas `/catalog/*` (matcher `@compressible` du `Caddyfile`), Nginx non plus (`gzip off;` dans `location /catalog/` du modèle) : l'ETag de l'app et les 304 sont transmis tels quels.
 
 ```jsonc
 {
@@ -305,9 +346,10 @@ rm -rf /tmp/restore
 - Session : jeton aléatoire dans un cookie `__Host-pj_admin` `HttpOnly; Secure; SameSite=Strict` (12 h), seul son HMAC (`SESSION_SECRET`) est stocké en base.
 - CSRF : jeton par session exigé dans l'en-tête `X-CSRF-Token` + vérification de l'en-tête `Origin` sur toute requête qui modifie quelque chose (y compris la connexion).
 - Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement ; la limite globale peut bloquer aussi l'admin pendant une attaque, voir Dépannage). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
-- `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS ajouté par Caddy.
+- `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS envoyé par l'app elle-même dès que `PUBLIC_URL` est en `https` (donc derrière Caddy comme derrière Nginx).
 - Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..128 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
-- Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (seul Caddy est joignable).
+- Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (mode `caddy` : seul Caddy est joignable ; mode `nginx` : publié uniquement sur `127.0.0.1:8787`).
+- Proxy : `X-Forwarded-For` n'est pris en compte que si `TRUST_PROXY=true` **et** que la connexion TCP vient d'une adresse locale ou privée (loopback, réseaux Docker) ; sinon l'adresse du socket est utilisée.
 
 ### Développement
 
@@ -320,4 +362,4 @@ cp .env.example .env  # puis ADMIN_PASSWORD_HASH, SESSION_SECRET, et PUBLIC_URL=
 npm run dev           # http://localhost:8080/admin
 ```
 
-Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`false` par défaut dans l'image ; `docker-compose.yml` le met à `true` car seul Caddy joint l'app — ne l'active jamais si le port 8080 est exposé directement), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).
+Variables optionnelles : `PUBLIC_URL` (sinon `https://$DOMAIN`), `PORT` (8080), `DATA_DIR` (`./data`), `TRUST_PROXY` (`false` par défaut dans l'image ; `docker-compose.yml` le met à `true` car seul le proxy (Caddy, ou Nginx via `127.0.0.1`) joint l'app — ne l'active jamais si le port 8080 est exposé directement ; même activé, `X-Forwarded-For` n'est lu que depuis une adresse locale/privée), `COOKIE_SECURE` (`false` uniquement pour tester en HTTP hors `localhost`).
