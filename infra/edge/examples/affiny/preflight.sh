@@ -1,9 +1,9 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Read-only checks before switching Affiny pre-production to the shared Traefik (MIGRATION.md, B/C).
 # Run from /opt/affiny/deploy/preprod, next to docker-compose.yml and docker-compose.traefik.yml:
-#   sh preflight.sh
+#   bash preflight.sh
 # Changes nothing. Exit code 0 = ready.
-set -eu
+set -euo pipefail
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "OK:   $*"; }

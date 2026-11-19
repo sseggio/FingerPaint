@@ -123,7 +123,7 @@ Une fois le réseau `edge` créé (étape A) :
 
 ```sh
 cd /opt/affiny/deploy/preprod
-sh preflight.sh                                            # doit finir par "Ready."
+bash preflight.sh                                           # doit finir par "Ready."
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env config -q && echo "config OK"
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml --env-file .env config | grep -E 'published|traefik.http.routers'
 #   → aucune ligne "published" ; les routeurs affiny-api, affiny-ws, affiny-admin avec les bons domaines
@@ -143,7 +143,7 @@ Lance *Actions › Backoffice deploy › Run workflow* avec `proxy=traefik` (val
 
 - [ ] **edge prêt** : `/opt/edge/.env` rempli (`ACME_EMAIL`), `cd /opt/edge && docker compose config -q` OK, images téléchargées (`docker compose pull`, étape A) ;
 - [ ] **réseau** : `docker network inspect edge --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'` affiche `172.30.0.0/24` ;
-- [ ] **override Affiny** en place et validé : `sh preflight.sh` → `Ready.` (dont `docker compose … config`), image `api` construite, conteneur `backoffice` `healthy` (B.5) ;
+- [ ] **override Affiny** en place et validé : `bash preflight.sh` → `Ready.` (dont `docker compose … config`), image `api` construite, conteneur `backoffice` `healthy` (B.5) ;
 - [ ] **PixelJoy déployé** en `proxy=traefik` (B.6) : `docker ps --filter network=edge` le liste avec le `backoffice` d'Affiny ;
 - [ ] **DNS** des 3 domaines vers le VPS : `for d in api.affiny.krafting.be admin.affiny.krafting.be admin.pixeljoy.krafting.be; do echo "$d $(dig +short A "$d") $(dig +short AAAA "$d")"; done` → `151.80.155.198` partout (et pas d'AAAA vers une autre machine) ;
 - [ ] **pare-feu** : 80/tcp, 443/tcp, 443/udp ouverts (README.md, étape 4) ;
