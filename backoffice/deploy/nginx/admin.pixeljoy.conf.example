@@ -1,0 +1,81 @@
+# PixelJoy catalog + back-office behind the VPS's existing Nginx (proxy mode "nginx").
+# Installed ONCE by root, after the first deployment (app on 127.0.0.1:8787), see
+# backoffice/README.md, « Derrière un Nginx existant »:
+#   sudo cp admin.pixeljoy.conf.example /etc/nginx/sites-available/admin.pixeljoy.conf
+#   sudo ln -s /etc/nginx/sites-available/admin.pixeljoy.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+# Only these two server blocks (server_name admin.pixeljoy.krafting.be) are added: the other
+# sites of this Nginx are not affected. If you changed app_port / APP_PORT, change 8787 below.
+
+# HTTP: ACME challenges (certificate renewal) and redirect everything else to HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name admin.pixeljoy.krafting.be;
+
+    # No access log: the catalog collects no data, not even IP addresses.
+    access_log off;
+    server_tokens off;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name admin.pixeljoy.krafting.be;
+
+    # Certificates obtained by Certbot (sudo certbot certonly --nginx -d admin.pixeljoy.krafting.be).
+    ssl_certificate     /etc/letsencrypt/live/admin.pixeljoy.krafting.be/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/admin.pixeljoy.krafting.be/privkey.pem;
+    # TLS protocols/ciphers: the global defaults of nginx.conf (TLSv1.2 + TLSv1.3) are kept.
+
+    access_log off;
+    server_tokens off;
+
+    # PNG uploads are limited to 1 MB by the app (multipart overhead included: 2 MB here).
+    client_max_body_size 2m;
+
+    # HSTS on every answer, including Nginx's own errors (502 while the app restarts). The app
+    # sends the same header itself: hidden below so that it is not duplicated.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Proxy settings inherited by both locations below (keep them here: a location defining its
+    # own add_header or proxy_set_header would no longer inherit these ones).
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    # Overwritten (not appended): the app uses the right-most entry as the client address for the
+    # login rate limit, and only trusts it from a local peer (it is published on 127.0.0.1 only).
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_hide_header Strict-Transport-Security;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
+    # Public catalog: the app gzips it itself with its own ETag and answers If-None-Match with
+    # 304. Nginx must not re-encode it (that would weaken/rewrite the ETag).
+    location /catalog/ {
+        gzip off;
+        proxy_pass http://127.0.0.1:8787;
+    }
+
+    # Admin UI + API and /healthz. The app sets the CSP, X-Frame-Options, nosniff, no-store...
+    location / {
+        gzip on;
+        gzip_proxied any;
+        gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+        proxy_pass http://127.0.0.1:8787;
+    }
+}

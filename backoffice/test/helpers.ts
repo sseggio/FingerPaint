@@ -47,7 +47,14 @@ export const EMBEDDED: EmbeddedContent = {
 
 let cachedHash: string | null = null;
 
-export async function setup(opts: { now?: () => Date } = {}) {
+export interface SetupOptions {
+  now?: () => Date;
+  /** Simulated TCP peer of every request (e.g. the local reverse proxy); undefined = no socket. */
+  remoteAddress?: string;
+  publicUrl?: string;
+}
+
+export async function setup(opts: SetupOptions = {}) {
   cachedHash ??= await hashPassword(PASSWORD, 1 << 14);
   const dataDir = mkdtempSync(join(tmpdir(), 'pj-bo-'));
   const db = new CatalogDb(join(dataDir, 'catalog.sqlite'));
@@ -60,12 +67,13 @@ export async function setup(opts: { now?: () => Date } = {}) {
     embedded: EMBEDDED,
     passwordHash: cachedHash,
     sessionSecret: 'x'.repeat(48),
-    publicUrl: ORIGIN,
+    publicUrl: opts.publicUrl ?? ORIGIN,
     publicDir: join(import.meta.dirname, '..', 'public', 'admin'),
     cookieSecure: true,
     trustProxy: true,
     rateLimit: { perClient: 3, global: 10, windowMs: 60_000 },
     now,
+    remoteAddress: opts.remoteAddress === undefined ? undefined : () => opts.remoteAddress,
   });
   const cleanup = () => {
     db.close();

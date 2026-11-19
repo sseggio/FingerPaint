@@ -1,4 +1,5 @@
 # PixelJoy catalog + back-office. Usage: see README.md (cp .env.example .env, then docker compose up -d).
+# Behind an existing Nginx instead of Caddy: add -f docker-compose.nginx.yml (README.md).
 name: pixeljoy-catalog
 
 services:
@@ -18,7 +19,8 @@ services:
       TRUST_PROXY: "true"
     volumes:
       - catalog-data:/data
-    # Not published on the host: only Caddy can reach it.
+    # Not published on the host: only Caddy can reach it. In "nginx" proxy mode,
+    # docker-compose.nginx.yml publishes it on 127.0.0.1:${APP_PORT} only and disables Caddy.
     expose:
       - "8080"
     read_only: true
