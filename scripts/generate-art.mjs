@@ -19,6 +19,7 @@ import { ANIMALS } from './art/animals.mjs';
 import { DEEP_OCEAN } from './art/deep-ocean.mjs';
 import { fromAscii } from './art/engine.mjs';
 import { GARDEN } from './art/garden.mjs';
+import { GRAND } from './art/grand.mjs';
 import { KITCHEN } from './art/kitchen.mjs';
 import { OCEAN } from './art/ocean.mjs';
 import { writeContactSheet, writePreview } from './art/render.mjs';
@@ -48,6 +49,7 @@ const DEFS = [
   ...ANIMALS,
   ...SPACE,
   ...DEEP_OCEAN,
+  ...GRAND,
 ];
 
 const accessRank = (a) => (a === 'free' ? 0 : a === 'pro' ? 1 : 2);

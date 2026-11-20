@@ -34,11 +34,14 @@ JSON UTF-8 versionné, produit par `src/features/backup/backup-format.ts` :
 - `order` (optionnel, F18) : journal d'ordre de remplissage, indices de cases en Uint16
   little-endian encodés en base64. Champ compatible : la version du format reste 1, les fichiers
   sans `order` s'importent comme avant (l'ordre de replay est alors complété, voir
-  `src/lib/fill-order.ts`) et les versions précédentes de l'app l'ignorent.
+  `src/lib/fill-order.ts`) et les versions précédentes de l'app l'ignorent. Uint16 couvre
+  exactement les 65 536 cases d'une grille 256×256 (F33) : ~175 Ko de base64 pour une œuvre
+  256×256 terminée (+ ~11 Ko de bitset). Si l'export dépassait la limite de 16 Mo, les journaux
+  les plus longs sont omis (la progression, elle, est toujours complète).
 
 ### Validation à l'import
 
-Refus du fichier entier si : fichier > 5 Mo, JSON invalide, `format` différent, `version` ≠ 1,
+Refus du fichier entier si : fichier > 16 Mo (5 Mo jusqu'à la build 7), JSON invalide, `format` différent, `version` ≠ 1,
 checksum faux, `createdAt` invalide, réglages ou série invalides, bitset mal formé ou de
 mauvaise longueur, bits hors grille, `filledCount` ≠ nombre de bits, statut incohérent
 (`completed` ⇔ toutes les cases).
@@ -70,7 +73,7 @@ colorié (ou effacé) pendant que l'écran était ouvert n'est jamais écrasé.
 une case = un carré de `scale`×`scale` pixels en échantillonnage nearest-neighbor, sans filigrane.
 
 - Échelle (`src/lib/export-scale.ts`) : le plus grand entier de ×8 à ×32 tel que le grand côté
-  tienne dans 2 048 px (16×16 → 512 px, 64×64 → 2 048 px, 128×128 → 2 048 px).
+  tienne dans 2 048 px (16×16 → 512 px, 64×64 → 2 048 px, 128×128 → 2 048 px, 256×256 → ×8 = 2 048 px).
 - Cases vides (non coloriables) : transparentes par défaut, ou fond clair `#FFF8F0` / sombre
   `#14121F` (tokens `colors.*.background`) au choix dans la feuille d'actions.
 - Œuvre en cours : l'état partiel est exporté (cases non remplies en gris clair, comme dans l'app).

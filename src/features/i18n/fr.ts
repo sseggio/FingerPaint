@@ -11,7 +11,7 @@ export const fr: Dictionary = {
   'library.subtitle': 'Des pixels à colorier, sans pub.',
   'library.artworkCount': { one: '{count} illustration à colorier', other: '{count} illustrations à colorier' },
   'library.openArtwork': 'Ouvrir « {title} »',
-  'library.devPerf': 'Test de performance 128×128 (dev)',
+  'library.devPerf': 'Test de performance 256×256 (dev)',
   'library.greeting': 'On colorie quoi aujourd’hui ?',
   'library.stats': '{done} terminées · {inProgress} en cours',
   'library.continueTitle': 'Continuer',

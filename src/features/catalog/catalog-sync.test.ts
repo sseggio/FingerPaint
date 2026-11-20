@@ -2,7 +2,7 @@ import { emptyCatalogIndex, type CatalogIndex } from '@/lib/catalog/catalog-inde
 import { sha256Hex } from '@/lib/sha256';
 import { encodeUtf8 } from '@/lib/utf8';
 
-import { BASE, CONFIG, FakeCatalog, GARDEN, makeSource, memoryFiles, PETS } from './__fixtures__/fake-catalog';
+import { BASE, CONFIG, FakeCatalog, GARDEN, makeSizedSource, makeSource, memoryFiles, PETS } from './__fixtures__/fake-catalog';
 import { httpGet } from './catalog-http';
 import { syncCatalog, type SyncDeps } from './catalog-sync';
 
@@ -84,6 +84,46 @@ describe('syncCatalog', () => {
     expect(out.downloaded.get('puppy')?.access).toBe('pro');
     expect(out.index.entries.hamster.addedAt).toBe(5_000);
     expect(out.index.entries.kitten.addedAt).toBe(0);
+  });
+
+  it('accepts a 256×256 artwork (F33)', async () => {
+    server.publish([PETS], [{ source: makeSizedSource('mural', 256), declareSize: true }]);
+    const out = await syncCatalog(deps());
+    if (out.status !== 'updated') throw new Error(out.status);
+    expect(out.downloaded.get('mural')?.w).toBe(256);
+    expect(out.index.etag).toBe('"m1"');
+  });
+
+  it('an artwork too large for this app only fails itself, the rest of the catalog applies (build 7 behavior)', async () => {
+    // No declared size (back-office before F33): the file is downloaded, then refused alone.
+    server.publish([PETS], [{ source: makeSource('kitten') }, { source: makeSizedSource('huge', 300) }]);
+    const out = await syncCatalog(deps());
+    if (out.status !== 'updated') throw new Error(out.status);
+    expect([...out.downloaded.keys()]).toEqual(['kitten']);
+    expect(Object.keys(out.index.entries)).toEqual(['kitten']);
+    // Not complete: the ETag is forgotten so the next sync retries.
+    expect(out.index.etag).toBeNull();
+  });
+
+  it('skips artworks declared larger than MAX_SIZE before downloading them, keeping the ETag (F33)', async () => {
+    server.publish(
+      [PETS],
+      [{ source: makeSource('kitten'), declareSize: true }, { source: makeSizedSource('huge', 300), declareSize: true }],
+    );
+    const out = await syncCatalog(deps());
+    if (out.status !== 'updated') throw new Error(out.status);
+    expect(server.artworkRequests().map((r) => r.url.split('/').pop())).toEqual(['kitten.1.json']);
+    expect(out.plan.unsupported.map((a) => a.id)).toEqual(['huge']);
+    expect(Object.keys(out.index.entries)).toEqual(['kitten']);
+    expect(out.index.etag).toBe('"m1"');
+  });
+
+  it('refuses a file whose size differs from the declared one', async () => {
+    const manifest = server.publish([PETS], [{ source: makeSource('kitten'), declareSize: true }]);
+    server.setManifest({ ...manifest, artworks: [{ ...manifest.artworks[0], w: 64 }] }, '"m2"');
+    const out = await syncCatalog(deps());
+    if (out.status !== 'updated') throw new Error(out.status);
+    expect(out.downloaded.size).toBe(0);
   });
 
   it('keeps withdrawn artworks the user has progress on', async () => {

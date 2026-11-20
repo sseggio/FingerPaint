@@ -36,6 +36,7 @@ describe('replayFramePlan', () => {
     ['16×16', 256],
     ['64×64', 4096],
     ['128×128', 16_384],
+    ['256×256', 65_536],
   ])('%s: fixed duration, cells per frame derived, sum exact', (_name, total) => {
     const plan = replayFramePlan(total);
     expect(plan).toHaveLength(Math.ceil(REPLAY_DURATION_MS / FRAME_MS));

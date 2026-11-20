@@ -9,16 +9,24 @@ import type { Artwork } from '@/lib/artwork/types';
 import type { ProgressEntry } from '@/lib/library';
 import { LruCache } from '@/lib/lru-cache';
 
-import { buildThumbnailPixels, type ThumbnailFill } from './thumbnail-pixels';
+import { buildThumbnailPixels, THUMBNAIL_MAX_SIDE, thumbnailSize, type ThumbnailFill } from './thumbnail-pixels';
 
 const NEAREST: SamplingOptions = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 /**
- * Thumbnails are tiny (≤ 128×128 px, 64 KB) so a few screens' worth stay cached. Evicted
- * images are not disposed: a mounted thumbnail may still draw one; the GC reclaims them.
+ * Thumbnails are small (sampled down to ≤ THUMBNAIL_MAX_SIDE = 128 px, ≤ 64 KB even for a
+ * 256×256 artwork) so a few screens' worth stay cached, within a pixel-memory budget as well as
+ * an entry count. Evicted images are not disposed: a mounted thumbnail may still draw one; the
+ * GC reclaims them.
  */
 export const THUMBNAIL_CACHE_SIZE = 120;
-const cache = new LruCache<string, SkImage | null>(THUMBNAIL_CACHE_SIZE);
+/** Pixel memory the cached thumbnails may hold (bytes, RGBA). */
+export const THUMBNAIL_CACHE_BYTES = 6 * 1024 * 1024;
+const imageBytes = (image: SkImage | null) => (image ? image.width() * image.height() * 4 : 0);
+const cache = new LruCache<string, SkImage | null>(THUMBNAIL_CACHE_SIZE, undefined, {
+  maxWeight: THUMBNAIL_CACHE_BYTES,
+  weigh: imageBytes,
+});
 
 export function clearThumbnailCache() {
   cache.clear();
@@ -45,7 +53,8 @@ function planFor(id: string, entry: ProgressEntry | undefined, mode: ThumbnailMo
 
 function cachedImage(key: string, artwork: Artwork, fill: ThumbnailFill): SkImage | null {
   if (cache.has(key)) return cache.get(key) ?? null;
-  const image = makeLayerImage(buildThumbnailPixels(artwork, fill), artwork.width, artwork.height);
+  const size = thumbnailSize(artwork.width, artwork.height, THUMBNAIL_MAX_SIDE);
+  const image = makeLayerImage(buildThumbnailPixels(artwork, fill, THUMBNAIL_MAX_SIDE), size.width, size.height);
   cache.set(key, image);
   return image;
 }

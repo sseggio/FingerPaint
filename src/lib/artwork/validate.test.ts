@@ -47,8 +47,12 @@ describe('validateArtwork', () => {
   it('rejects a bad access', () => expectIssue({ access: 'premium' }, 'access', /free/));
   it('accepts a pack access', () => expect(issuesFor({ access: { pack: 'ocean' } })).toEqual([]));
   it('rejects a bad difficulty', () => expectIssue({ difficulty: 4 }, 'difficulty', /1, 2 or 3/));
-  it('rejects a width below 8', () => expectIssue({ w: 4 }, 'w', /8\.\.128/));
-  it('rejects a height above 128', () => expectIssue({ h: 129 }, 'h', /8\.\.128/));
+  it('rejects a width below 8', () => expectIssue({ w: 4 }, 'w', /8\.\.256/));
+  it('rejects a height above 256', () => expectIssue({ h: 257 }, 'h', /8\.\.256/));
+  it('accepts a 256×256 artwork (F33)', () => {
+    const rows = Array.from({ length: 256 }, (_, y) => (y % 2 ? '128A64B64C' : 'AB'.repeat(128)));
+    expect(issuesFor({ w: 256, h: 256, rows })).toEqual([]);
+  });
 
   it('rejects a wrong row count', () =>
     expectIssue({ rows: valid().rows.slice(0, 7) }, 'rows', /expected 8 rows, got 7/));

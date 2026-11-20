@@ -3,13 +3,25 @@
  * back-office, see backoffice/README.md). Everything coming from the network is untrusted:
  * the manifest is validated strictly and rejected as a whole on the first problem.
  */
-import type { ArtworkAccess, LocalizedText } from '@/lib/artwork/types';
+import { MAX_SIZE, type ArtworkAccess, type LocalizedText } from '@/lib/artwork/types';
 
 export const MANIFEST_PATH = '/catalog/v1/manifest.json';
 export const MAX_MANIFEST_ARTWORKS = 500;
 export const MAX_MANIFEST_ALBUMS = 100;
 export const MAX_MANIFEST_BYTES = 512 * 1024;
+/**
+ * Largest artwork file accepted. Unchanged by F33 (256×256): an RLE row takes at most one
+ * character per cell (a run of 2 is "2A", longer runs are shorter per cell), so the worst
+ * 256×256 file is 256 rows × (256 + ~8 chars of JSON) + palette + titles ≈ 70 KB, well under
+ * 256 KB (checked by manifest.test.ts). Keeping the same value also keeps build ≤ 7 clients and
+ * the back-office aligned.
+ */
 export const MAX_ARTWORK_BYTES = 256 * 1024;
+/**
+ * Plausible bound for the optional `w` / `h` of a manifest entry. Deliberately far above this
+ * app's MAX_SIZE: entries for bigger grids (future versions) are valid, just filtered out.
+ */
+const MAX_DECLARED_SIZE = 4096;
 const MAX_ID_LENGTH = 64;
 const MAX_TITLE_LENGTH = 80;
 const MAX_URL_LENGTH = 512;
@@ -29,6 +41,13 @@ export interface ManifestArtwork {
   url: string;
   sha256: string;
   publishedAt: string;
+  /**
+   * Grid size, optional (F33, written by the back-office since then). Lets a client skip an
+   * artwork larger than it supports BEFORE downloading it (`isSupportedSize`). Older clients
+   * drop the unknown fields and rely on the file validation instead.
+   */
+  w?: number;
+  h?: number;
 }
 
 export interface Manifest {
@@ -98,6 +117,18 @@ function isAccess(v: unknown): v is ArtworkAccess {
   return isRecord(v) && Object.keys(v).length === 1 && isContentId(v.pack);
 }
 
+const isDeclaredSize = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_DECLARED_SIZE;
+
+/**
+ * Whether this app can open a manifest artwork, judging from its declared size (`w`, `h`).
+ * Entries without a size (older back-office) are assumed supported: the downloaded file is
+ * validated anyway.
+ */
+export function isSupportedSize(art: Pick<ManifestArtwork, 'w' | 'h'>, maxSize: number = MAX_SIZE): boolean {
+  return (art.w === undefined || art.w <= maxSize) && (art.h === undefined || art.h <= maxSize);
+}
+
 export type ManifestResult = { ok: true; manifest: Manifest } | { ok: false; error: string };
 
 /**
@@ -144,8 +175,13 @@ export function validateManifest(raw: unknown, host: string): ManifestResult {
     if (url.host !== host) return fail(`artworks[${i}].url: must be on ${host}`);
     if (typeof a.sha256 !== 'string' || !SHA_RE.test(a.sha256)) return fail(`artworks[${i}].sha256: expected 64 hex chars`);
     if (!isIso(a.publishedAt)) return fail(`artworks[${i}].publishedAt: expected an ISO date`);
+    if (a.w !== undefined && !isDeclaredSize(a.w)) return fail(`artworks[${i}].w: expected an integer in 1..${MAX_DECLARED_SIZE}`);
+    if (a.h !== undefined && !isDeclaredSize(a.h)) return fail(`artworks[${i}].h: expected an integer in 1..${MAX_DECLARED_SIZE}`);
     artworkIds.add(a.id);
-    artworks.push({ id: a.id, album: a.album, rev: a.rev, url: a.url as string, sha256: a.sha256, publishedAt: a.publishedAt });
+    const entry: ManifestArtwork = { id: a.id, album: a.album, rev: a.rev, url: a.url as string, sha256: a.sha256, publishedAt: a.publishedAt };
+    if (a.w !== undefined) entry.w = a.w;
+    if (a.h !== undefined) entry.h = a.h;
+    artworks.push(entry);
   }
   return { ok: true, manifest: { v: 1, updatedAt: raw.updatedAt, albums, artworks } };
 }

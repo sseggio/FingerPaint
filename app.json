@@ -85,6 +85,7 @@
         }
       ],
       "expo-sharing",
+      "./plugins/with-async-storage-size",
       [
         "expo-localization",
         {

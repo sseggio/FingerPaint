@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatIssue, validateArtwork } from '../src/artwork-lib';
+import { formatIssue, MAX_SIZE, validateArtwork } from '../src/artwork-lib';
 import { clampMaxColors, convertPng, ConvertError, MAX_PNG_BYTES, readPngSize, reducePalette } from '../src/convert';
 import { renderPreview } from '../src/preview';
 import { makePng, samplePng } from './helpers';
@@ -45,7 +45,8 @@ describe('convertPng', () => {
   it('refuses non-PNG, oversized dimensions and files over 1 MB before decoding', () => {
     expect(() => convertPng(Buffer.from('GIF89a not a png at all, definitely not'))).toThrow(ConvertError);
     expect(() => convertPng(makePng(4, 4, () => [0, 0, 0, 255]))).toThrow(/hors limites/);
-    expect(() => convertPng(makePng(129, 8, () => [0, 0, 0, 255]))).toThrow(/hors limites/);
+    expect(() => convertPng(makePng(257, 8, () => [0, 0, 0, 255]))).toThrow(/hors limites/);
+    expect(() => convertPng(makePng(8, 257, () => [0, 0, 0, 255]))).toThrow(/8 à 256 pixels/);
     expect(() => convertPng(Buffer.alloc(MAX_PNG_BYTES + 1))).toThrow(/1 Mo/);
     // A forged IHDR claiming a huge image is rejected from the header alone.
     const forged = Buffer.from(makePng(8, 8, () => [0, 0, 0, 255]));
@@ -62,6 +63,28 @@ describe('convertPng', () => {
     const grid = convertPng(png, 40);
     expect(grid.palette.length).toBeLessThanOrEqual(40);
     expect(Date.now() - t).toBeLessThan(10_000);
+  });
+
+  it('accepts 256×256 (F33): valid artwork, fast even when noisy, under the upload limit', () => {
+    expect(MAX_SIZE).toBe(256);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % 256);
+    const png = makePng(256, 256, () => [rnd(), rnd(), rnd(), 255]);
+    // Worst case for PNG compression (random pixels) still fits the 1 MB upload limit.
+    expect(png.length).toBeLessThan(MAX_PNG_BYTES / 2);
+    const t = Date.now();
+    const grid = convertPng(png, 40);
+    expect(Date.now() - t).toBeLessThan(15_000);
+    expect(grid.w).toBe(256);
+    expect(grid.h).toBe(256);
+    expect(grid.rows).toHaveLength(256);
+    const art = {
+      v: 1, id: 'noisy', album: 'garden', title: { fr: 'B', en: 'B' },
+      w: grid.w, h: grid.h, palette: grid.palette, rows: grid.rows, access: 'free', difficulty: 3,
+    };
+    expect(validateArtwork(art).map(formatIssue)).toEqual([]);
+    // Preview of a 256×256 grid: integer scale, longest side ≤ 384 px.
+    expect(readPngSize(renderPreview(grid))).toEqual({ width: 256, height: 256 });
   });
 
   it('renders an enlarged preview PNG', () => {

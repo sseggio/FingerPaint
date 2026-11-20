@@ -1,3 +1,4 @@
+import { MAX_SIZE } from './artwork/types';
 import { decodeBase64, encodeBase64, getBit } from './bitset';
 
 /**
@@ -6,9 +7,10 @@ import { decodeBase64, encodeBase64, getBit } from './bitset';
  *
  * - In memory: a `FillJournal`, a Uint16Array sized for the whole grid (one slot per cell, so it
  *   never grows) and the number of slots used. Cell indices fit in 16 bits: the largest artwork is
- *   128×128 = 16 384 cells, far below 65 536.
+ *   MAX_SIZE² = 256×256 = 65 536 cells, indices 0..65 535, exactly the Uint16 range (F33; checked
+ *   at load time below, so raising MAX_SIZE again forces a format change here).
  * - Stored: the used slots as little-endian Uint16 bytes, in padded base64 (2 bytes per cell,
- *   ~43 KB of text for a full 128×128 artwork).
+ *   ~175 KB of text for a full 256×256 artwork, ~43 KB for 128×128).
  *
  * A journal read back from storage or from a backup is checked strictly (`decodeFillOrder`):
  * every index inside the grid, no duplicate, every cell set in the progress bitset. Anything
@@ -19,6 +21,9 @@ import { decodeBase64, encodeBase64, getBit } from './bitset';
 
 /** Largest cell count a Uint16 journal can index. */
 export const MAX_FILL_ORDER_CELLS = 65_536;
+if (MAX_SIZE * MAX_SIZE > MAX_FILL_ORDER_CELLS) {
+  throw new Error('fill order: MAX_SIZE² exceeds the Uint16 journal range');
+}
 
 export interface FillJournal {
   /** One slot per cell of the grid; only the first `length` are meaningful. */

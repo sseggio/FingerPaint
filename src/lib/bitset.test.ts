@@ -36,6 +36,18 @@ describe('bitset', () => {
     expect(countBits(bits)).toBe(2);
   });
 
+  it('round-trips a 256×256 bitset (65 536 bits) through base64 (F33)', () => {
+    const n = 256 * 256;
+    const bits = createBitset(n);
+    expect(bits.length).toBe(8192);
+    for (let i = 0; i < n; i += 7) setBit(bits, i);
+    setBit(bits, n - 1);
+    const encoded = bitsetToBase64(bits);
+    expect(encoded.length).toBe(10_924); // 8 KB of bits ≈ 11 KB of base64
+    expect(bitsetFromBase64(encoded, n)).toEqual(bits);
+    expect(() => bitsetFromBase64(encoded, n + 8)).toThrow();
+  });
+
   it('round-trips a 128×128 bitset (16 384 bits) through base64', () => {
     const n = 128 * 128;
     const bits = createBitset(n);

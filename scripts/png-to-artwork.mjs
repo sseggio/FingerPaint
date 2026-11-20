@@ -23,6 +23,10 @@ import { PNG } from 'pngjs';
 
 import { deltaE, encodeRow, KEYS, luminance } from './art/engine.mjs';
 
+/** Grid side limits, same as MIN_SIZE / MAX_SIZE in src/lib/artwork/types.ts (F33: 256). */
+const MIN_SIDE = 8;
+const MAX_SIDE = 256;
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const MIN_DELTA_E = 10;
 export const DEFAULT_MAX_COLORS = 24;
@@ -95,7 +99,9 @@ export function pngToArtwork(buffer, meta) {
   const keyOf = new Map(palette.map((c, i) => [c, KEYS[i]]));
   const rows = grid.map((row) => encodeRow(row.map((c) => (c ? keyOf.get(target.get(c)) : '.'))));
   const warnings = [];
-  if (width < 8 || height < 8 || width > 128 || height > 128) warnings.push(`size ${width}×${height} is outside 8..128`);
+  if (width < MIN_SIDE || height < MIN_SIDE || width > MAX_SIDE || height > MAX_SIDE) {
+    warnings.push(`size ${width}×${height} is outside ${MIN_SIDE}..${MAX_SIDE}`);
+  }
   if (palette.length < 2) warnings.push(`only ${palette.length} color(s), at least 2 are required`);
   return {
     artwork: {

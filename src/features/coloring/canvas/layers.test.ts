@@ -136,14 +136,14 @@ describe('glyph atlas layout', () => {
   });
 });
 
-describe('128×128 perf fixture', () => {
+describe('256×256 perf fixture (MAX_SIZE)', () => {
   const perf = createPerfArtworkSource();
 
   it('is a valid artwork that uses every color', () => {
     expect(validateArtwork(perf, { albumIds: new Set(['dev']) })).toEqual([]);
     const decoded = toArtwork(perf);
     expect(decoded.id).toBe(PERF_ARTWORK_ID);
-    expect(decoded.width * decoded.height).toBe(128 * 128);
-    expect(buildBackgroundPixels(decoded)).toHaveLength(128 * 128 * 4);
+    expect(decoded.width * decoded.height).toBe(256 * 256);
+    expect(buildBackgroundPixels(decoded)).toHaveLength(256 * 256 * 4);
   });
 });

@@ -2,10 +2,12 @@
  * scripts/png-to-artwork.mjs, run as artists would (Node child process) on 4×4 fixtures.
  */
 import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { decodeRow } from '@/lib/artwork/codec';
 import { deltaE76, luminance } from '@/lib/artwork/color';
+import { MAX_SIZE, MIN_SIZE } from '@/lib/artwork/types';
 
 const SCRIPT = join(__dirname, 'png-to-artwork.mjs');
 const FIXTURES = join(__dirname, '__fixtures__');
@@ -90,5 +92,13 @@ describe('png-to-artwork', () => {
     const res = run(['/nonexistent.png', '--id', '../evil', '--album', 'garden', '--out', '-']);
     expect(res.status).toBe(1);
     expect(res.stderr).toContain('kebab-case');
+  });
+});
+
+describe('png-to-artwork size limits', () => {
+  it('match the app (MIN_SIZE..MAX_SIZE, 256 since F33)', () => {
+    const text = readFileSync(SCRIPT, 'utf8');
+    expect(text).toContain(`const MIN_SIDE = ${MIN_SIZE};`);
+    expect(text).toContain(`const MAX_SIDE = ${MAX_SIZE};`);
   });
 });

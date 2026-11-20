@@ -39,12 +39,20 @@ export function createColorPixels(width: number, height: number): Uint8Array {
 
 /**
  * Paints cells (row-major indices) with their target color in place. Empty or out-of-range
- * cells are ignored. Returns the number of pixels written.
+ * cells are ignored. Only `indices[from..to)` when given (no copy of a long order, e.g. a replay
+ * frame of a 256×256 artwork). Returns the number of pixels written.
  */
-export function paintCells(pixels: Uint8Array, artwork: LayerSource, indices: ArrayLike<number>): number {
+export function paintCells(
+  pixels: Uint8Array,
+  artwork: LayerSource,
+  indices: ArrayLike<number>,
+  from = 0,
+  to = indices.length,
+): number {
   const { cells, palette } = artwork;
   let written = 0;
-  for (let k = 0; k < indices.length; k++) {
+  const end = Math.min(to, indices.length);
+  for (let k = Math.max(0, from); k < end; k++) {
     const i = indices[k];
     const value = cells[i];
     if (!value) continue;
@@ -61,10 +69,19 @@ export function paintCells(pixels: Uint8Array, artwork: LayerSource, indices: Ar
 
 /** Color layer restored from a progress bitset (bit i set = cell i correctly filled). */
 export function buildColorPixels(artwork: LayerSource, filled: Uint8Array): Uint8Array {
+  const { cells, palette } = artwork;
   const pixels = createColorPixels(artwork.width, artwork.height);
-  const indices: number[] = [];
-  for (let i = 0; i < artwork.cells.length; i++) if (getBit(filled, i)) indices.push(i);
-  paintCells(pixels, artwork, indices);
+  // Direct loop (no index list): restoring a 256×256 session touches 65 536 cells.
+  for (let i = 0; i < cells.length; i++) {
+    const value = cells[i];
+    if (!value || !getBit(filled, i)) continue;
+    const [r, g, b] = palette.colors[value - 1].rgb;
+    const o = i * BYTES_PER_PIXEL;
+    pixels[o] = r;
+    pixels[o + 1] = g;
+    pixels[o + 2] = b;
+    pixels[o + 3] = 255;
+  }
   return pixels;
 }
 

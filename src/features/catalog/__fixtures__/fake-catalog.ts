@@ -20,10 +20,20 @@ export function makeSource(id: string, album = 'pets', access: ArtworkSource['ac
   return { ...strawberry, id, album, access, title: { fr: titleEn, en: titleEn } };
 }
 
+/** An artwork of `size`×`size` cells (all valid except, above MAX_SIZE, the size itself). */
+export function makeSizedSource(id: string, size: number, album = 'pets'): ArtworkSource {
+  const base = makeSource(id, album);
+  const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, base.palette.length);
+  const rows = Array.from({ length: size }, (_, y) => (y === 0 ? `${keys}${size - keys.length}A` : `${size}A`));
+  return { ...base, w: size, h: size, rows };
+}
+
 export interface Published {
   source: ArtworkSource;
   rev?: number;
   publishedAt?: string;
+  /** Declare the grid size (`w`, `h`) in the manifest entry, as the back-office does since F33. */
+  declareSize?: boolean;
 }
 
 interface Route {
@@ -47,11 +57,12 @@ export class FakeCatalog {
       v: 1,
       updatedAt: '2026-11-15T10:00:00.000Z',
       albums,
-      artworks: artworks.map(({ source, rev = 1, publishedAt = '2026-11-15T10:00:00.000Z' }) => {
+      artworks: artworks.map(({ source, rev = 1, publishedAt = '2026-11-15T10:00:00.000Z', declareSize = false }) => {
         const bytes = encodeUtf8(JSON.stringify(source));
         const url = `${BASE}/catalog/v1/artworks/${source.id}.${rev}.json`;
         this.routes.set(url, { status: 200, body: bytes });
-        return { id: source.id, album: source.album, rev, url, sha256: sha256Hex(bytes), publishedAt };
+        const entry = { id: source.id, album: source.album, rev, url, sha256: sha256Hex(bytes), publishedAt };
+        return declareSize ? { ...entry, w: source.w, h: source.h } : entry;
       }),
     };
     this.setManifest(manifest, options.etag);

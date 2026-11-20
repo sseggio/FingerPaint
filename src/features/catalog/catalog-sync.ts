@@ -2,6 +2,12 @@
  * One catalog synchronization, with every side effect injected (tests mock fetch and files):
  * manifest (ETag) → strict validation → plan → downloads (3 at a time, 256 KB max, SHA-256
  * checked, validateArtwork) → next index. Any failure keeps the local cache untouched.
+ *
+ * Artworks this app cannot open (F33: grids above MAX_SIZE) never reject the manifest: one bad
+ * file only fails its own download (the rest of the catalog is applied, the ETag is not kept so
+ * it is retried later). That is also what clients up to build 7 (MAX_SIZE 128) do with 256×256
+ * artworks. Since F33 the manifest declares each artwork's `w` / `h`, so oversized ones are
+ * skipped before download (`plan.unsupported`) without forgetting the ETag.
  */
 import type { ArtworkSource } from '@/lib/artwork/types';
 import { validateArtwork } from '@/lib/artwork/validate';
@@ -52,6 +58,9 @@ export function verifyArtworkFile(bytes: Uint8Array, art: ManifestArtwork, album
   if (issues.length > 0) throw new Error(`${art.id}: invalid artwork`);
   const source = raw as ArtworkSource;
   if (source.id !== art.id || source.album !== art.album) throw new Error(`${art.id}: id/album mismatch`);
+  if ((art.w !== undefined && source.w !== art.w) || (art.h !== undefined && source.h !== art.h)) {
+    throw new Error(`${art.id}: size mismatch`);
+  }
   return { source, text };
 }
 

@@ -71,6 +71,30 @@ describe('planSync', () => {
   });
 });
 
+describe('artworks larger than this app supports (F33)', () => {
+  const sized = (id: string, rev: number, w: number, h = w): ManifestArtwork => ({ ...art(id, rev), w, h });
+
+  it('are never downloaded and do not cost the ETag', () => {
+    const m = manifest([sized('big', 1, 256), sized('huge', 1, 512), sized('tall', 1, 64, 300), art('legacy', 1)]);
+    const plan = planSync(m, index([]), ctx());
+    expect(plan.download.map((a) => a.id)).toEqual(['big', 'legacy']);
+    expect(plan.unsupported.map((a) => a.id)).toEqual(['huge', 'tall']);
+    const next = applySync(index([]), m, plan, { downloaded: plan.download, now: 200, etag: '"e"' });
+    expect(Object.keys(next.entries).sort()).toEqual(['big', 'legacy']);
+    expect(next.etag).toBe('"e"');
+  });
+
+  it('keep a local revision this app can open when a too-large one replaces it', () => {
+    const m = manifest([sized('mural', 2, 512)]);
+    const local = index([entry('mural', 1)]);
+    const plan = planSync(m, local, ctx());
+    expect(plan.unsupported.map((a) => a.id)).toEqual(['mural']);
+    expect(plan.remove).toEqual([]);
+    const next = applySync(local, m, plan, { downloaded: [], now: 200, etag: '"e"' });
+    expect(next.entries.mural).toEqual(entry('mural', 1));
+  });
+});
+
 describe('applySync', () => {
   it('records new artworks with their arrival time, keeps it on updates', () => {
     const before = index([entry('puppy', 2, 100)]);

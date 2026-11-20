@@ -166,6 +166,8 @@ describe('visibleRange', () => {
       { x0: 0, y0: 0, x1: 128, y1: 128 },
       { x0: 3, y0: 127, x1: 9, y1: 128 },
       { x0: 0, y0: 5, x1: 1, y1: 6 },
+      { x0: 0, y0: 0, x1: 256, y1: 256 },
+      { x0: 200, y0: 255, x1: 256, y1: 256 },
     ]) {
       expect(rangeFromKey(rangeKey(r))).toEqual(r);
     }

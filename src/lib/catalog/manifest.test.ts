@@ -1,4 +1,15 @@
-import { MAX_MANIFEST_ARTWORKS, parseCatalogUrl, parseHttpsUrl, validateManifest, type Manifest } from './manifest';
+import { KEYS, MAX_COLORS, MAX_SIZE } from '@/lib/artwork/types';
+import { encodeUtf8 } from '@/lib/utf8';
+
+import {
+  isSupportedSize,
+  MAX_ARTWORK_BYTES,
+  MAX_MANIFEST_ARTWORKS,
+  parseCatalogUrl,
+  parseHttpsUrl,
+  validateManifest,
+  type Manifest,
+} from './manifest';
 
 const HOST = 'catalog.example.com';
 const SHA = 'a'.repeat(64);
@@ -28,6 +39,51 @@ const reject = (raw: unknown) => {
   expect(r.ok).toBe(false);
   return r.ok ? '' : r.error;
 };
+
+describe('declared artwork size (F33)', () => {
+  it('keeps optional w / h and filters on them', () => {
+    const r = validateManifest(manifest({ artworks: [art({ w: 256, h: 192 })] }), HOST);
+    expect(r.ok && r.manifest.artworks[0]).toMatchObject({ w: 256, h: 192 });
+    expect(isSupportedSize({ w: 256, h: 192 })).toBe(true);
+    expect(isSupportedSize({ w: MAX_SIZE, h: MAX_SIZE })).toBe(true);
+    expect(isSupportedSize({ w: MAX_SIZE + 1, h: 16 })).toBe(false);
+    expect(isSupportedSize({ w: 16, h: 512 })).toBe(false);
+    // No size (older back-office): assumed supported, the file is validated anyway.
+    expect(isSupportedSize({})).toBe(true);
+    // What a build 7 client (MAX_SIZE 128) decides with the same entries.
+    expect(isSupportedSize({ w: 256, h: 256 }, 128)).toBe(false);
+  });
+
+  it('accepts sizes above MAX_SIZE (future artworks) but rejects malformed ones', () => {
+    expect(validateManifest(manifest({ artworks: [art({ w: 1024, h: 1024 })] }), HOST).ok).toBe(true);
+    for (const bad of [0, -1, 1.5, '64', 100_000, null]) {
+      expect(reject(manifest({ artworks: [art({ w: bad })] }))).toMatch(/\.w:/);
+      expect(reject(manifest({ artworks: [art({ h: bad })] }))).toMatch(/\.h:/);
+    }
+  });
+
+  it('allows the worst-case 256×256 file within MAX_ARTWORK_BYTES', () => {
+    // One character per cell is the RLE worst case (no two neighbors alike), 40 colors, long titles.
+    const rows = Array.from({ length: MAX_SIZE }, (_, y) =>
+      Array.from({ length: MAX_SIZE }, (_, x) => KEYS[(x + y) % 2 === 0 ? x % MAX_COLORS : (x + 1) % MAX_COLORS]).join(''),
+    );
+    const source = {
+      v: 1,
+      id: 'w'.repeat(64),
+      album: 'a'.repeat(64),
+      title: { fr: '🎨'.repeat(40), en: 'É'.repeat(80) },
+      w: MAX_SIZE,
+      h: MAX_SIZE,
+      palette: Array.from({ length: MAX_COLORS }, () => '#ABCDEF'),
+      rows,
+      access: { pack: 'p'.repeat(64) },
+      difficulty: 3,
+    };
+    const bytes = encodeUtf8(JSON.stringify(source, null, 2)).length;
+    expect(bytes).toBeGreaterThan(MAX_SIZE * MAX_SIZE);
+    expect(bytes).toBeLessThan(MAX_ARTWORK_BYTES / 3);
+  });
+});
 
 describe('validateManifest', () => {
   it('accepts the back-office format and drops unknown fields', () => {

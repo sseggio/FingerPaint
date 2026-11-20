@@ -26,8 +26,15 @@ import { isDailyState, type DailyState } from '@/lib/daily';
 export const BACKUP_FORMAT = 'pixeljoy-backup';
 export const BACKUP_VERSION = 1;
 export const BACKUP_EXTENSION = '.pixeljoy';
-/** Files larger than this are refused before being parsed (a full V1 backup is ~100 KB). */
-export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+/**
+ * Files larger than this are refused before being parsed. A full V1 backup was ~100 KB; since
+ * F33 a finished 256×256 artwork weighs ~190 KB (11 KB of bitset + 175 KB of fill order), so the
+ * limit went from 5 MB to 16 MB: ~80 finished 256×256 artworks plus the whole catalog at
+ * smaller sizes. Should a backup still exceed it, `serializeBackup` drops fill orders (optional,
+ * the replay order is then completed on the fly) rather than writing a file that cannot be
+ * imported. Builds up to 7 keep refusing files above 5 MB.
+ */
+export const MAX_BACKUP_BYTES = 16 * 1024 * 1024;
 /** Upper bound on progress entries (far above the catalog size; guards against huge files). */
 export const MAX_BACKUP_ENTRIES = 10_000;
 
@@ -114,8 +121,12 @@ export function checksumOf(payload: unknown): string {
   return fnv1a64(canonicalJson(payload));
 }
 
-/** Serializes a backup (pretty-printed JSON, newline-terminated). */
-export function serializeBackup(data: BackupData, createdAt: number): string {
+/**
+ * Serializes a backup (pretty-printed JSON, newline-terminated). The result never exceeds
+ * `maxBytes` because of fill orders: when it would, the largest orders are left out (progress,
+ * streak and settings are always written in full).
+ */
+export function serializeBackup(data: BackupData, createdAt: number, maxBytes: number = MAX_BACKUP_BYTES): string {
   const progress: Record<string, BackupProgress> = {};
   for (const id of [...data.progress.keys()].sort()) {
     const entry = data.progress.get(id);
@@ -135,14 +146,31 @@ export function serializeBackup(data: BackupData, createdAt: number): string {
     },
     settings: { ...data.settings },
   };
-  const file: BackupFile = {
-    format: BACKUP_FORMAT,
-    version: BACKUP_VERSION,
-    createdAt,
-    checksum: checksumOf(payload),
-    payload,
+  const write = () => {
+    const file: BackupFile = {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      createdAt,
+      checksum: checksumOf(payload),
+      payload,
+    };
+    return `${JSON.stringify(file, null, 2)}\n`;
   };
-  return `${JSON.stringify(file, null, 2)}\n`;
+  let text = write();
+  // Base64 and JSON keys are ASCII: the string length is the byte size, except for non-ASCII
+  // settings, a few bytes at most (covered by the margin below).
+  if (text.length <= maxBytes) return text;
+  const withOrder = Object.values(progress)
+    .filter((p) => p.order !== undefined)
+    .sort((a, b) => (b.order?.length ?? 0) - (a.order?.length ?? 0));
+  let size = text.length;
+  for (const p of withOrder) {
+    if (size <= maxBytes - 1024) break;
+    size -= (p.order?.length ?? 0) + 20;
+    delete p.order;
+  }
+  text = write();
+  return text;
 }
 
 /** Validates one progress entry against the catalog ('unknown' when the id is not in it). */

@@ -10,7 +10,7 @@ Chaque œuvre est un fichier JSON `src/content/artworks/<albumId>/<artworkId>.js
   "id": "strawberry",                       // kebab-case, unique, = nom du fichier
   "album": "kitchen",                       // id présent dans albums.json
   "title": { "fr": "Fraise", "en": "Strawberry" },
-  "w": 16, "h": 16,                         // 8..128
+  "w": 16, "h": 16,                         // 8..256 (F33)
   "palette": ["#7A1030", "#F2304B", "…"],   // 2..40 couleurs #RRGGBB ; palette[i] ↔ KEYS[i]
   "rows": ["7.2B7.", "…"],                  // h lignes RLE
   "access": "free",                         // "free" | "pro" | { "pack": "<id>" }
@@ -46,7 +46,7 @@ Lancée par Jest (`src/content/content.test.ts`) et par `npm run validate:art`. 
 | `album` en kebab-case et présent dans `albums.json` | `album` |
 | titres FR et EN non vides | `title.fr`, `title.en` |
 | `access` valide, `difficulty` ∈ {1,2,3} | `access`, `difficulty` |
-| `w`, `h` entiers dans 8..128 | `w`, `h` |
+| `w`, `h` entiers dans 8..256 | `w`, `h` |
 | palette de 2 à 40 couleurs `#RRGGBB` | `palette`, `palette[i]` |
 | aucune couleur en double (insensible à la casse) | `palette[j]` |
 | ΔE76 ≥ 10 entre deux couleurs (CIE Lab, D65) | `palette[j]` |
