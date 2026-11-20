@@ -1,4 +1,5 @@
-import { EXPORT_MAX_SIDE, exportScale, exportSize } from './export-scale';
+import { MAX_SIZE, MIN_SIZE } from './artwork/types';
+import { EXPORT_MAX_SIDE, EXPORT_MIN_SCALE, exportScale, exportSize } from './export-scale';
 
 describe('exportScale', () => {
   it.each([
@@ -9,7 +10,10 @@ describe('exportScale', () => {
     [100, 80, 20],
     [128, 128, 16],
     [128, 32, 16],
+    [192, 192, 10],
+    [255, 200, 8],
     [256, 256, 8],
+    [256, 8, 8],
     [300, 10, 6],
     [4096, 4096, 1],
   ])('%i×%i → ×%i', (w, h, scale) => {
@@ -26,6 +30,17 @@ describe('exportScale', () => {
         expect(size.width).toBe(w * size.scale);
       }
     }
+  });
+
+  it('gives every valid artwork (up to MAX_SIZE = 256) at least ×8 within 2048 px (F33)', () => {
+    for (let w = MIN_SIZE; w <= MAX_SIZE; w++) {
+      for (const h of [MIN_SIZE, 100, 192, MAX_SIZE]) {
+        const size = exportSize(w, h);
+        expect(size.scale).toBeGreaterThanOrEqual(EXPORT_MIN_SCALE);
+        expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(EXPORT_MAX_SIDE);
+      }
+    }
+    expect(exportSize(MAX_SIZE, MAX_SIZE)).toEqual({ scale: 8, width: 2048, height: 2048 });
   });
 
   it('rejects invalid sizes', () => {

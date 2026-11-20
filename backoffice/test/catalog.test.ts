@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Manifest } from '../src/catalog';
-import { authed, createArtwork, login, setup, type Session, type TestEnv } from './helpers';
+import { authed, convert, createArtwork, login, makePng, setup, type Converted, type Session, type TestEnv } from './helpers';
 
 let env: TestEnv;
 let s: Session;
@@ -44,6 +44,8 @@ describe('GET /catalog/v1/manifest.json', () => {
       url: 'https://catalog.test/catalog/v1/artworks/now-art.1.json',
       sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       publishedAt: '2026-06-01T12:00:00.000Z',
+      w: 16,
+      h: 16,
     });
     // Scheduled publication appears once its date passes.
     env.setNow(new Date('2026-06-02T08:00:00Z'));
@@ -87,6 +89,28 @@ describe('GET /catalog/v1/artworks/<id>.<rev>.json', () => {
     const bytes = Buffer.from(await res.arrayBuffer());
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256);
     expect(JSON.parse(bytes.toString('utf8'))).toMatchObject({ v: 1, id: 'red-blue', album: 'garden', w: 16, h: 16, access: 'free', difficulty: 1 });
+    // F33: the grid size is declared in the manifest (apps filter before downloading).
+    expect(entry).toMatchObject({ w: 16, h: 16 });
+  });
+
+  it('publishes a 256×256 artwork end to end, size declared in the manifest (F33)', async () => {
+    const png = makePng(256, 256, (x, y) => (((x >> 4) + (y >> 4)) % 2 ? [230, 40, 90, 255] : [40, 60, 200, 255]));
+    const res = await convert(env, s, png);
+    expect(res.status).toBe(200);
+    const grid = (await res.json()) as Converted;
+    expect([grid.w, grid.h]).toEqual([256, 256]);
+    const created = await env.app.request(
+      '/admin/api/artworks',
+      authed(s, { method: 'POST' }, {
+        id: 'big-checker', titleFr: 'Damier', titleEn: 'Checker', album: 'garden', difficulty: 3, access: 'pro',
+        publish: { mode: 'now' }, w: grid.w, h: grid.h, palette: grid.palette, rows: grid.rows,
+      }),
+    );
+    expect(created.status).toBeLessThan(300);
+    const entry = (await manifest()).artworks.find((a) => a.id === 'big-checker');
+    expect(entry).toMatchObject({ w: 256, h: 256 });
+    const file = await env.app.request('/catalog/v1/artworks/big-checker.1.json');
+    expect(JSON.parse(Buffer.from(await file.arrayBuffer()).toString('utf8'))).toMatchObject({ w: 256, h: 256 });
   });
 
   it('hides drafts, scheduled artworks, unknown revisions and malformed names', async () => {

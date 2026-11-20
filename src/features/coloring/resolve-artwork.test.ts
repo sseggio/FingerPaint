@@ -17,7 +17,7 @@ describe('coloring route params', () => {
   });
 
   it('serves the perf fixture in development only', () => {
-    expect(resolveColoringArtwork(PERF_ARTWORK_ID, { allowDev: true })?.width).toBe(128);
+    expect(resolveColoringArtwork(PERF_ARTWORK_ID, { allowDev: true })?.width).toBe(256);
     expect(resolveColoringArtwork(PERF_ARTWORK_ID, { allowDev: false })).toBeUndefined();
   });
 });

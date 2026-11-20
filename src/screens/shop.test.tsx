@@ -66,7 +66,9 @@ describe('ShopScreen with EXPO_PUBLIC_IAP_PROVIDER=none', () => {
       expect(screen.getByRole('header', { name: title })).toBeTruthy();
     }
     expect(screen.getAllByText('Coming soon').length).toBeGreaterThanOrEqual(3);
-    expect(screen.getAllByText('8 artworks')).toHaveLength(2);
+    // Pro: 9 bundled artworks (F33 added the 256×256 one); the Deep ocean pack: 8.
+    expect(screen.getAllByText('9 artworks')).toHaveLength(1);
+    expect(screen.getAllByText('8 artworks')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /^Buy / })).toBeNull();
     // Nothing time-limited, ever.
     expect(screen.queryByText(/hurry|only today|countdown|expires|\d+:\d\d/i)).toBeNull();

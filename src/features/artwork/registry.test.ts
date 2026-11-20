@@ -27,7 +27,7 @@ describe('artwork registry (bundled content)', () => {
 
   it('decodes every bundled artwork', () => {
     const sources = getRegistry().listArtworks();
-    expect(sources).toHaveLength(48);
+    expect(sources).toHaveLength(50);
     for (const source of sources) {
       const art = getArtwork(source.id);
       expect(art).toBeDefined();

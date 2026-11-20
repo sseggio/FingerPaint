@@ -1,12 +1,12 @@
 import { encode } from '@/lib/artwork/codec';
-import type { ArtworkSource, HexColor } from '@/lib/artwork/types';
+import { MAX_SIZE, type ArtworkSource, type HexColor } from '@/lib/artwork/types';
 
 import { PERF_ARTWORK_ID } from '../../perf-artwork-id';
 
 export { PERF_ARTWORK_ID };
 
 /**
- * Generated 128×128 artwork for performance checks (worst case: largest grid, many colors,
+ * Generated MAX_SIZE×MAX_SIZE (256×256, F33) artwork for performance checks (worst case: largest grid, many colors,
  * numbers everywhere). Not part of the public content; loaded through a `__DEV__`-guarded
  * require (see resolve-artwork.ts) so release bundles do not embed it.
  */
@@ -16,7 +16,7 @@ const PERF_PALETTE: HexColor[] = [
   '#BCF60C', '#FABEBE', '#008080', '#9A6324', '#800000', '#000075', '#808080', '#FFFFFF',
 ];
 
-export function createPerfArtworkSource(size = 128): ArtworkSource {
+export function createPerfArtworkSource(size = MAX_SIZE): ArtworkSource {
   const n = PERF_PALETTE.length;
   const cells = new Uint8Array(size * size);
   const c = (size - 1) / 2;
@@ -33,7 +33,7 @@ export function createPerfArtworkSource(size = 128): ArtworkSource {
     v: 1,
     id: PERF_ARTWORK_ID,
     album: 'dev',
-    title: { fr: 'Test de performance 128×128', en: 'Performance test 128×128' },
+    title: { fr: `Test de performance ${size}×${size}`, en: `Performance test ${size}×${size}` },
     w: size,
     h: size,
     palette: PERF_PALETTE,

@@ -19,6 +19,12 @@ export interface ManifestArtwork {
   url: string;
   sha256: string;
   publishedAt: string;
+  /**
+   * Grid size (F33). Lets apps skip artworks larger than their MAX_SIZE before downloading them;
+   * older apps ignore these fields (and refuse such a file on its own, keeping the rest).
+   */
+  w: number;
+  h: number;
 }
 
 export interface Manifest {
@@ -63,6 +69,8 @@ export function buildManifest(db: CatalogDb, publicUrl: string, now: Date): Mani
       url: `${base}${artworkPath(a.id, a.rev)}`,
       sha256: a.sha256,
       publishedAt: a.publishedAt ?? nowIso,
+      w: a.w,
+      h: a.h,
     })),
   };
 }

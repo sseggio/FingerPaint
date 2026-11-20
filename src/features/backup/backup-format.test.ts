@@ -12,6 +12,7 @@ import {
   MAX_BACKUP_BYTES,
   parseBackup,
   serializeBackup,
+  type BackupArtwork,
   type BackupData,
   type CatalogLookup,
 } from './backup-format';
@@ -274,5 +275,47 @@ describe('parseBackup rejections', () => {
     const created = base();
     created.createdAt = -5;
     expectError(resign(created), 'invalid');
+  });
+});
+
+describe('256×256 artworks (F33)', () => {
+  const N = 256 * 256;
+  const big: CatalogLookup = (id) => (id.startsWith('mural-') ? { cellCount: N, totalCells: N } : undefined);
+  const fullOrder = () => {
+    const order = new Uint16Array(N);
+    for (let k = 0; k < N; k++) order[k] = N - 1 - k;
+    return order;
+  };
+  function bigData(count: number): BackupData {
+    const progress = new Map<string, BackupArtwork>();
+    for (let i = 0; i < count; i++) {
+      const id = `mural-${i}`;
+      progress.set(id, { summary: summary(id, N, 'completed'), bits: createBitset(N).fill(255), order: fullOrder() });
+    }
+    return { progress, daily, settings: { ...DEFAULT_SETTINGS } };
+  }
+
+  it('round-trips finished artworks with their full 65 536-cell fill order', () => {
+    const text = serializeBackup(bigData(2), 1);
+    // ~190 KB per finished 256×256 artwork: dozens fit under the limit.
+    expect(text.length).toBeLessThan(2 * 200 * 1024);
+    expect(Math.floor(MAX_BACKUP_BYTES / (text.length / 2))).toBeGreaterThanOrEqual(80);
+    const r = parseBackup(text, big);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.backup.progress.get('mural-1')?.order?.length).toBe(N);
+    expect(r.backup.progress.get('mural-1')?.order?.[0]).toBe(N - 1);
+  });
+
+  it('drops fill orders rather than writing a file above the size limit', () => {
+    const limit = 500 * 1024;
+    const text = serializeBackup(bigData(4), 1, limit);
+    expect(text.length).toBeLessThanOrEqual(limit);
+    const r = parseBackup(text, big);
+    if (!r.ok) throw new Error(r.error);
+    // Progress is complete; some orders were left out (the replay completes them on the fly).
+    expect(r.backup.progress.size).toBe(4);
+    const kept = [...r.backup.progress.values()].filter((e) => e.order).length;
+    expect(kept).toBeGreaterThan(0);
+    expect(kept).toBeLessThan(4);
   });
 });

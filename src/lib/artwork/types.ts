@@ -74,7 +74,8 @@ export const KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 export const EMPTY_KEY = '.';
 
 export const MIN_SIZE = 8;
-export const MAX_SIZE = 128;
+/** Largest grid side (F33: 256, i.e. up to 65 536 cells). Shared by the app, the back-office and the scripts. */
+export const MAX_SIZE = 256;
 export const MIN_COLORS = 2;
 export const MAX_COLORS = 40;
 export const MIN_DELTA_E = 10;

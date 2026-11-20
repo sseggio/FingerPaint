@@ -42,6 +42,7 @@ import {
 import type { Artwork } from '@/lib/artwork/types';
 import { groupByValue, previewCells } from '@/lib/fill-preview';
 import { maxVisibleCells, type CellRange, type Size } from '@/lib/geometry';
+import { LruCache } from '@/lib/lru-cache';
 import { REPLAY_POP_MS, REPLAY_POP_SCALE } from '@/lib/replay';
 import { canvasThemes, type CanvasThemeColors } from '@/theme';
 
@@ -58,6 +59,9 @@ import { FOCUS_TIMING, useViewport } from './use-viewport';
 const NEAREST: SamplingOptions = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 /** Numbers are downscaled from the atlas texture: smooth them. */
 const SMOOTH: SamplingOptions = { filter: FilterMode.Linear, mipmap: MipmapMode.None };
+/** Highlight masks kept per artwork (the active color and the last few ones). */
+const HIGHLIGHT_CACHE_SIZE = 6;
+
 /** Gap (cells) between the cell under the finger and the continuous-fill ring. */
 const RING_PAD = 0.2;
 
@@ -301,8 +305,12 @@ export function PixelCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [colorPixels, colorRevision, width, height],
   );
-  // Highlight masks never change while coloring: built lazily, once per color, per artwork.
-  const highlightCache = useMemo(() => ({ artwork, images: new Map<number, SkImage | null>() }), [artwork]);
+  // Highlight masks never change while coloring: built lazily, once per color, per artwork. The
+  // few most recent are kept (each is w×h×4 bytes: 256 KB on a 256×256 artwork, F33).
+  const highlightCache = useMemo(
+    () => ({ artwork, images: new LruCache<number, SkImage | null>(HIGHLIGHT_CACHE_SIZE) }),
+    [artwork],
+  );
   const highlight = useMemo(() => {
     if (activeColor === null || activeColor < 0 || activeColor >= artwork.palette.colors.length) return null;
     let image = highlightCache.images.get(activeColor);

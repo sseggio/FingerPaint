@@ -45,6 +45,7 @@ import octopus from './artworks/ocean/octopus.json';
 import sailboat from './artworks/ocean/sailboat.json';
 import seaTurtle from './artworks/ocean/sea-turtle.json';
 import starfish from './artworks/ocean/starfish.json';
+import sunsetIsland from './artworks/ocean/sunset-island.json';
 import tropicalFish from './artworks/ocean/tropical-fish.json';
 import astronaut from './artworks/space/astronaut.json';
 import comet from './artworks/space/comet.json';
@@ -54,6 +55,7 @@ import littleRocket from './artworks/space/little-rocket.json';
 import moonBase from './artworks/space/moon-base.json';
 import ringedPlanet from './artworks/space/ringed-planet.json';
 import sleepyMoon from './artworks/space/sleepy-moon.json';
+import starVoyage from './artworks/space/star-voyage.json';
 
 export const albumsData: unknown = albums;
 
@@ -72,6 +74,7 @@ export const artworkData: readonly unknown[] = [
   octopus,
   sailboat,
   seaTurtle,
+  sunsetIsland,
   dolphin,
   lighthouse,
   strawberry,
@@ -98,6 +101,7 @@ export const artworkData: readonly unknown[] = [
   astronaut,
   ringedPlanet,
   moonBase,
+  starVoyage,
   jellyfish,
   seahorse,
   anglerfish,

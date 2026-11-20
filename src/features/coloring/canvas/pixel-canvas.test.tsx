@@ -64,7 +64,7 @@ function Subject({
 }
 
 describe('PixelCanvas (Skia mock)', () => {
-  it('renders the 128×128 fixture once measured: two layers, grid and numbers', async () => {
+  it('renders the 256×256 fixture once measured: two layers, grid and numbers', async () => {
     const { rerender } = await render(<Subject />);
     const canvas = screen.getByLabelText('Artwork');
     // Nothing is drawn before the size is known.

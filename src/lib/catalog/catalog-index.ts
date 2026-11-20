@@ -2,7 +2,7 @@
  * Local index of the downloaded catalog (persisted under `fp:catalog`) and the pure sync
  * planning: which manifest artworks to download, keep, retire or forget.
  */
-import { isContentId, type Manifest, type ManifestAlbum, type ManifestArtwork } from './manifest';
+import { isContentId, isSupportedSize, type Manifest, type ManifestAlbum, type ManifestArtwork } from './manifest';
 
 export interface CatalogEntry {
   id: string;
@@ -92,6 +92,12 @@ export interface SyncPlan {
   remove: string[];
   /** Manifest ids that collide with bundled artworks: ignored (bundled content wins). */
   collisions: string[];
+  /**
+   * Listed artworks declared larger than this app supports (manifest `w` / `h` above MAX_SIZE,
+   * F33): never downloaded and not counted as failures (the ETag is kept). A local revision
+   * that this app could open is kept as is.
+   */
+  unsupported: ManifestArtwork[];
 }
 
 export interface PlanContext {
@@ -102,7 +108,7 @@ export interface PlanContext {
 
 /** Compares a validated manifest with the local index. Pure. */
 export function planSync(manifest: Manifest, index: CatalogIndex, ctx: PlanContext): SyncPlan {
-  const plan: SyncPlan = { download: [], keep: [], retire: [], remove: [], collisions: [] };
+  const plan: SyncPlan = { download: [], keep: [], retire: [], remove: [], collisions: [], unsupported: [] };
   const listed = new Set<string>();
   for (const art of manifest.artworks) {
     if (ctx.embeddedIds.has(art.id)) {
@@ -111,6 +117,10 @@ export function planSync(manifest: Manifest, index: CatalogIndex, ctx: PlanConte
     }
     listed.add(art.id);
     const local = index.entries[art.id];
+    if (!isSupportedSize(art)) {
+      plan.unsupported.push(art);
+      continue;
+    }
     // Revisions are immutable: only a strictly higher one is fetched (never a rollback).
     if (!local || art.rev > local.rev) plan.download.push(art);
     else plan.keep.push(art);
@@ -160,6 +170,11 @@ export function applySync(index: CatalogIndex, manifest: Manifest, plan: SyncPla
     } else if (local) {
       entries[art.id] = { ...local, retired: false };
     }
+  }
+  for (const art of plan.unsupported) {
+    // Still listed: an older revision this app could open stays available.
+    const local = index.entries[art.id];
+    if (local) entries[art.id] = { ...local, retired: false };
   }
   for (const id of plan.retire) {
     const local = index.entries[id];

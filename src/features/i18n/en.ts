@@ -15,7 +15,7 @@ export const en = {
   'library.subtitle': 'Pixels to color, no ads.',
   'library.artworkCount': { one: '{count} artwork to color', other: '{count} artworks to color' },
   'library.openArtwork': 'Open “{title}”',
-  'library.devPerf': 'Performance test 128×128 (dev)',
+  'library.devPerf': 'Performance test 256×256 (dev)',
   'library.greeting': 'What shall we color today?',
   'library.stats': '{done} finished · {inProgress} in progress',
   'library.continueTitle': 'Continue',

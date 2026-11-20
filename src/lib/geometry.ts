@@ -242,9 +242,9 @@ export function focusCellViewport(
 
 /**
  * Base for packing range bounds into one number. Bounds go from 0 to the grid size, and the
- * artwork validator caps grids at MAX_SIZE (128), so each bound takes MAX_SIZE + 1 values.
- * Raising MAX_SIZE raises the base with it; the packed key (< base⁴ ≈ 2.8e8 for 128) must stay
- * a safe integer, which holds for any grid up to ~9 000 cells wide.
+ * artwork validator caps grids at MAX_SIZE (256 since F33), so each bound takes MAX_SIZE + 1
+ * values. Raising MAX_SIZE raises the base with it; the packed key (< base⁴ ≈ 4.3e9 for 256) must
+ * stay a safe integer, which holds for any grid up to ~9 000 cells wide.
  */
 export const RANGE_KEY_BASE = MAX_SIZE + 1;
 if (RANGE_KEY_BASE ** 4 > Number.MAX_SAFE_INTEGER) {

@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
-import type { AlbumsFile, ArtworkSource } from '@/lib/artwork/types';
+import { MAX_SIZE, type AlbumsFile, type ArtworkSource } from '@/lib/artwork/types';
 import { formatIssue, validateContent } from '@/lib/artwork/validate';
 
 import { albumsData, artworkData } from './index';
@@ -46,17 +46,18 @@ describe('bundled content', () => {
 });
 
 describe('content V1 catalog', () => {
-  it('has 6 albums of 8 artworks each', () => {
+  it('has 6 albums of 8 artworks each, plus the 2 large F33 artworks (ocean, space)', () => {
     expect(albums.map((a) => a.id)).toEqual(['garden', 'ocean', 'kitchen', 'animals', 'space', 'deep-ocean']);
+    const expected: Record<string, number> = { ocean: 9, space: 9 };
     for (const album of albums) {
-      expect([album.id, artworks.filter((a) => a.album === album.id).length]).toEqual([album.id, 8]);
+      expect([album.id, artworks.filter((a) => a.album === album.id).length]).toEqual([album.id, expected[album.id] ?? 8]);
     }
-    expect(artworks).toHaveLength(48);
+    expect(artworks).toHaveLength(50);
   });
 
-  it('splits access into 32 free, 8 Pro (spread over free albums) and 8 pack artworks', () => {
+  it('splits access into 33 free, 9 Pro (spread over free albums) and 8 pack artworks', () => {
     const count = (kind: string) => artworks.filter((a) => accessKind(a) === kind).length;
-    expect({ free: count('free'), pro: count('pro'), pack: count('pack') }).toEqual({ free: 32, pro: 8, pack: 8 });
+    expect({ free: count('free'), pro: count('pro'), pack: count('pack') }).toEqual({ free: 33, pro: 9, pack: 8 });
 
     const packAlbums = albums.filter((a) => a.pack);
     for (const album of albums) {
@@ -75,13 +76,19 @@ describe('content V1 catalog', () => {
     expect(packAlbums.map((a) => a.id)).toEqual(['deep-ocean']);
   });
 
-  it('varies sizes (16 to 64, plus 2 large ones of 96 or 128), difficulties and palettes', () => {
+  it('varies sizes (16 to 64, plus 2 large ones of 96 or 128 and 2 very large ones of 192 and 256), difficulties and palettes', () => {
     const large = artworks.filter((a) => Math.max(a.w, a.h) > 64);
-    expect(large).toHaveLength(2);
+    expect(large).toHaveLength(4);
     for (const a of large) {
-      expect([96, 128]).toContain(Math.max(a.w, a.h));
+      expect([96, 128, 192, 256]).toContain(Math.max(a.w, a.h));
       expect(a.difficulty).toBe(3);
     }
+    // F33: one free 192×192 and one Pro 256×256 (MAX_SIZE).
+    const veryLarge = large.filter((a) => Math.max(a.w, a.h) > 128).map((a) => [a.id, a.w, a.h, a.access]);
+    expect(veryLarge.sort()).toEqual([
+      ['star-voyage', MAX_SIZE, MAX_SIZE, 'pro'],
+      ['sunset-island', 192, 192, 'free'],
+    ]);
     for (const a of artworks) {
       expect(Math.max(a.w, a.h)).toBeGreaterThanOrEqual(16);
       expect(a.palette.length).toBeGreaterThanOrEqual(4);

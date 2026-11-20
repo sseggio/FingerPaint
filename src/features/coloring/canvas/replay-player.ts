@@ -58,9 +58,8 @@ export function createReplayPlayer({
 
   const paintUpTo = (target: number) => {
     if (target <= shown) return false;
-    const batch: number[] = [];
-    for (let k = shown; k < target; k++) batch.push(order[k]);
-    paintCells(pixels, artwork, batch);
+    // Paints the slice in place: a frame of a 256×256 replay can hold thousands of cells.
+    paintCells(pixels, artwork, order, shown, target);
     shown = target;
     return true;
   };

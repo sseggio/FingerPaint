@@ -4,8 +4,9 @@
  *
  * Rule: the largest integer factor in [EXPORT_MIN_SCALE, EXPORT_MAX_SCALE] whose longest side
  * fits in EXPORT_MAX_SIDE. Examples: 16×16 → ×32 (512 px), 64×64 → ×32 (2048 px),
- * 100×80 → ×20 (2000×1600), 128×128 → ×16 (2048 px). Grids too large for ×8 within the cap
- * (never the case for bundled content, max 128) fall back to the largest factor that fits (≥ 1).
+ * 100×80 → ×20 (2000×1600), 128×128 → ×16 (2048 px), 192×192 → ×10 (1920 px),
+ * 256×256 → ×8 (2048 px). Every valid artwork (sides ≤ MAX_SIZE = 256) thus gets at least ×8;
+ * larger grids (none today) would fall back to the largest factor that fits (≥ 1).
  */
 export const EXPORT_MIN_SCALE = 8;
 export const EXPORT_MAX_SCALE = 32;

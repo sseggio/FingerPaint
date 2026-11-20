@@ -1,4 +1,5 @@
-import { fitScale, MAX_CELL_PT, scaleBounds } from './geometry';
+import { MAX_SIZE } from './artwork/types';
+import { fitScale, MAX_CELL_PT, maxVisibleCells, scaleBounds } from './geometry';
 import {
   GRID_FULL_CELL_PT,
   GRID_MIN_CELL_PT,
@@ -100,5 +101,27 @@ describe('number visibility (F17)', () => {
     expect(gridVisibility((GRID_MIN_CELL_PT + GRID_FULL_CELL_PT) / 2)).toBeCloseTo(0.5);
     const { range } = rangeFor({ width: 128, height: 128 });
     expect(GRID_FULL_CELL_PT).toBeLessThanOrEqual(range.start);
+  });
+
+  it('handles a 256×256 artwork (F33): sharp overview, readable numbers once zoomed in', () => {
+    const art = { width: MAX_SIZE, height: MAX_SIZE };
+    const bounds = scaleBounds(art, phone, PADDING);
+    // The overview shows the whole grid (~1.5 pt per cell), the max zoom is unchanged in points.
+    expect(bounds.min).toBeCloseTo((phone.width - 2 * PADDING) / MAX_SIZE);
+    expect(bounds.max).toBe(MAX_CELL_PT);
+    // So the zoom factor reaches ~33×: well past the numbers threshold.
+    expect(bounds.max / bounds.min).toBeGreaterThan(30);
+    for (const large of [false, true]) {
+      const { fit, range } = rangeFor(art, large);
+      expect(numberOpacity(fit, range)).toBe(0);
+      expect(range.full).toBe(numberThreshold(large));
+      expect(range.full).toBeLessThan(bounds.max);
+      expect(numberOpacity(MAX_CELL_PT, range)).toBe(1);
+      // The glyph buffer is sized by the visible cells at the fade start, never by w×h.
+      const capacity = maxVisibleCells(phone, range.start, art);
+      expect(capacity).toBeLessThan(1000);
+      expect(capacity).toBeLessThan(MAX_SIZE * MAX_SIZE);
+    }
+    expect(gridVisibility(bounds.min)).toBe(0);
   });
 });

@@ -1,7 +1,9 @@
+import { toArtwork } from '@/lib/artwork/codec';
 import { completeReplayOrder } from '@/lib/fill-order';
 import { REPLAY_DURATION_MS } from '@/lib/replay';
 
 import { tinyArtwork } from '../__fixtures__/tiny-artwork';
+import { createPerfArtworkSource } from './__fixtures__/perf-artwork';
 import { buildColorPixels } from './layers';
 import { createReplayPlayer } from './replay-player';
 
@@ -91,5 +93,48 @@ describe('replay player', () => {
     frame(5000);
     expect(onDone).not.toHaveBeenCalled();
     expect(player.shown()).toBe(0);
+  });
+});
+
+describe('replay player on a 256×256 artwork (F33)', () => {
+  it('keeps the fixed duration, one image per frame, every cell painted', () => {
+    const big = toArtwork(createPerfArtworkSource());
+    const bigOrder = completeReplayOrder(big.cells, []);
+    let time = 0;
+    let pending: (() => void) | null = null;
+    const frames: number[] = [];
+    const onDone = jest.fn();
+    const player = createReplayPlayer({
+      artwork: big,
+      order: bigOrder,
+      onFrame: (_p, shown) => frames.push(shown),
+      onDone,
+      now: () => time,
+      scheduler: {
+        request: (cb) => {
+          pending = cb;
+          return 1;
+        },
+        cancel: () => {
+          pending = null;
+        },
+      },
+    });
+    player.start();
+    let ticks = 0;
+    while (!onDone.mock.calls.length && ticks < 1000) {
+      time += 1000 / 60;
+      ticks++;
+      const cb = pending as (() => void) | null;
+      pending = null;
+      cb?.();
+    }
+    expect(time).toBeGreaterThan(REPLAY_DURATION_MS - 1000 / 60);
+    expect(time).toBeLessThan(REPLAY_DURATION_MS + 1000 / 60 + 1);
+    // At most one onFrame per tick (plus the empty first frame).
+    expect(frames.length).toBeLessThanOrEqual(ticks + 1);
+    expect(frames[frames.length - 1]).toBe(bigOrder.length);
+    const bits = new Uint8Array(big.cells.length / 8).fill(255);
+    expect(player.pixels).toEqual(buildColorPixels(big, bits));
   });
 });

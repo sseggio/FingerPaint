@@ -37,6 +37,15 @@ describe('RLE codec', () => {
     expect(decodeRow('100A28.')).toHaveLength(128);
   });
 
+  it('handles 256 columns (F33)', () => {
+    const row = new Array(256).fill(1);
+    expect(encodeRow(row)).toBe('256A');
+    expect(decodeRow('256A')).toEqual(row);
+    const alternating = Array.from({ length: 256 }, (_, i) => (i % 2) + 1);
+    expect(encodeRow(alternating)).toHaveLength(256);
+    expect(decodeRow(encodeRow(alternating))).toEqual(alternating);
+  });
+
   it('uses every key of the 52-key alphabet', () => {
     const values = Array.from({ length: KEYS.length }, (_, i) => i + 1);
     expect(encodeRow(values)).toBe(KEYS);
@@ -49,6 +58,8 @@ describe('RLE codec', () => {
     [48, 30, 40, 3],
     [128, 128, 52, 4],
     [128, 9, 3, 5],
+    [256, 256, 40, 6],
+    [256, 8, 52, 7],
   ])('decode(encode(g)) is the identity (%i×%i, %i colors)', (w, h, colors, seed) => {
     const grid = randomGrid(w, h, colors, seed);
     const rows = encode(grid);

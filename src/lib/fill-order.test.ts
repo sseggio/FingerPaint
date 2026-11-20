@@ -1,3 +1,4 @@
+import { MAX_SIZE } from './artwork/types';
 import { createBitset, encodeBase64, setBit } from './bitset';
 import {
   appendFillJournal,
@@ -32,6 +33,25 @@ describe('fill journal', () => {
     expect(() => createFillJournal(MAX_FILL_ORDER_CELLS + 1)).toThrow(RangeError);
     expect(() => createFillJournal(-1)).toThrow(RangeError);
     expect(createFillJournal(128 * 128).cells.length).toBe(16_384);
+  });
+
+  it('indexes a full 256×256 grid (65 536 cells, the Uint16 range exactly) (F33)', () => {
+    const n = MAX_SIZE * MAX_SIZE;
+    expect(n).toBe(MAX_FILL_ORDER_CELLS);
+    const order = Array.from({ length: n }, (_, k) => n - 1 - k);
+    const journal = createFillJournal(n, order);
+    expect(journal.length).toBe(n);
+    expect(journal.cells[0]).toBe(65_535);
+    expect(journal.cells[n - 1]).toBe(0);
+    const bits = createBitset(n).fill(255);
+    const decoded = decodeFillOrder(encodeFillOrder(journal), bits, n);
+    expect(decoded).not.toBeNull();
+    expect(decoded?.length).toBe(n);
+    expect(decoded?.[0]).toBe(65_535);
+    expect(decoded?.[n - 1]).toBe(0);
+    // One entry more than the grid: refused.
+    expect(decodeFillOrder(encodeFillOrder(Uint16Array.from([...order, 0])), bits, n)).toBeNull();
+    expect(decodeFillOrder(encodeFillOrder(journal), bits, n + 1)).toBeNull();
   });
 });
 

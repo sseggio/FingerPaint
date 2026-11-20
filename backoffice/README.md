@@ -253,11 +253,11 @@ L'app lit l'adresse du catalogue dans la variable `EXPO_PUBLIC_CATALOG_URL`, **a
 2. En local : `EXPO_PUBLIC_CATALOG_URL=https://catalogue.example.com npx expo start` (ou une ligne dans `.env.local`).
 3. Rebuild (`eas build`) : la variable est figée dans l'app au moment du build.
 
-L'app télécharge le manifeste au démarrage puis au retour au premier plan (au plus toutes les 6 h), et seulement les œuvres nouvelles ou modifiées (`rev` supérieure). Requêtes anonymes : aucun cookie, aucun identifiant, aucun en-tête personnalisé. Les fichiers sont vérifiés (SHA-256, 256 Ko max., mêmes règles de validation) et gardés sur l'appareil : tout reste coloriable hors ligne. Une œuvre dépubliée disparaît de la Bibliothèque mais reste dans « Mes œuvres » pour les joueurs qui l'ont commencée. Les URL des œuvres doivent être sur le **même hôte** que `EXPO_PUBLIC_CATALOG_URL` (`PUBLIC_URL` du back-office) : sinon l'app ignore tout le manifeste.
+L'app télécharge le manifeste au démarrage puis au retour au premier plan (au plus toutes les 6 h), et seulement les œuvres nouvelles ou modifiées (`rev` supérieure). Requêtes anonymes : aucun cookie, aucun identifiant, aucun en-tête personnalisé. Les fichiers sont vérifiés (SHA-256, 256 Ko max. — une œuvre 256×256 pèse au pire ~70 Ko —, mêmes règles de validation) et gardés sur l'appareil : tout reste coloriable hors ligne. Chaque entrée du manifeste déclare `w` et `h` (F33) : une app dont la taille max. est plus petite (les builds ≤ 7 sont limitées à 128×128) ignore ces œuvres avant téléchargement. Les builds ≤ 7 ne lisent pas encore ces champs : elles téléchargent l'œuvre, la refusent à la validation et gardent tout le reste du catalogue (seule cette œuvre manque, retentée à la synchro suivante). Une œuvre dépubliée disparaît de la Bibliothèque mais reste dans « Mes œuvres » pour les joueurs qui l'ont commencée. Les URL des œuvres doivent être sur le **même hôte** que `EXPO_PUBLIC_CATALOG_URL` (`PUBLIC_URL` du back-office) : sinon l'app ignore tout le manifeste.
 
 ## 4. Utilisation du back-office
 
-1. **Nouvelle œuvre** : choisis un PNG (un pixel = une case, 8 à 128 px de côté, 1 Mo max., la transparence donne des cases vides) et le nombre maximal de couleurs, puis **Convertir**. Le serveur fusionne les couleurs trop proches (ΔE < 10) ou en surnombre et trie la palette du plus sombre au plus clair, exactement comme `scripts/png-to-artwork.mjs`.
+1. **Nouvelle œuvre** : choisis un PNG (un pixel = une case, 8 à 256 px de côté, 1 Mo max., la transparence donne des cases vides) et le nombre maximal de couleurs, puis **Convertir**. Le serveur fusionne les couleurs trop proches (ΔE < 10) ou en surnombre et trie la palette du plus sombre au plus clair, exactement comme `scripts/png-to-artwork.mjs`.
 2. Vérifie l'aperçu (image agrandie, palette numérotée, nombre de cases).
 3. Renseigne l'identifiant (kebab-case, ex. `sea-otter`, définitif), les titres FR/EN, l'album (existant ou nouveau), la difficulté, l'accès (`Gratuit`, `Pro` ou `Pack` + id du pack, ex. `ocean`) et la publication (maintenant ou à une date).
 4. **Enregistrer en brouillon** ou **Publier**. L'œuvre est validée avec les mêmes règles que le contenu de l'app : en cas d'erreur, la liste s'affiche et rien n'est enregistré.
@@ -346,7 +346,8 @@ rm -rf /tmp/restore
       "rev": 2,                                   // entier >= 1, +1 à chaque modification du contenu
       "url": "https://catalogue.example.com/catalog/v1/artworks/flower.2.json",
       "sha256": "0dd2…41ae07",                    // hex, SHA-256 des octets exacts du fichier
-      "publishedAt": "2026-11-15T14:33:05.132Z"
+      "publishedAt": "2026-11-15T14:33:05.132Z",
+      "w": 64, "h": 48                            // taille de la grille (F33), 8..256
     }
   ]
 }
@@ -354,6 +355,7 @@ rm -rf /tmp/restore
 
 - `access` (album) a la même forme que dans les œuvres : `"free"`, `"pro"` ou `{ "pack": "<id>" }`. Un album embarqué (ex. `garden`) peut apparaître s'il reçoit de nouvelles œuvres.
 - Les albums sont triés par `order` puis `id`, les œuvres par `publishedAt` puis `id`.
+- `w` / `h` (F33) : l'app ignore, sans les télécharger, les œuvres plus grandes que sa taille max. (256 depuis F33). Champs optionnels côté app : un manifeste sans eux reste valide, et les anciennes versions les ignorent.
 
 `GET /catalog/v1/artworks/<id>.<rev>.json` — le fichier au format `ArtworkSource` (voir `docs/artwork-format.md`), immuable : `Cache-Control: public, max-age=31536000, immutable`. 404 pour une œuvre non publiée, planifiée, ou une révision inconnue.
 
@@ -366,7 +368,7 @@ rm -rf /tmp/restore
 - CSRF : jeton par session exigé dans l'en-tête `X-CSRF-Token` + vérification de l'en-tête `Origin` sur toute requête qui modifie quelque chose (y compris la connexion).
 - Connexion limitée à 5 tentatives / 15 min par client et 50 au total (compteurs en mémoire uniquement ; la limite globale peut bloquer aussi l'admin pendant une attaque, voir Dépannage). La tentative est comptée **avant** la vérification du mot de passe (remboursée si elle réussit), et au plus 2 vérifications scrypt tournent en parallèle (au-delà : 429 immédiat), ce qui empêche de contourner la limite par rafales et d'épuiser CPU/mémoire.
 - `/admin` : CSP stricte (`default-src 'none'; script-src 'self'; …`, aucun script ni style en ligne), `X-Frame-Options: DENY`, `no-store`. HSTS envoyé par l'app elle-même dès que `PUBLIC_URL` est en `https` (donc derrière Caddy comme derrière Nginx).
-- Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..128 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
+- Uploads : 1 Mo max., taille de l'image lue dans l'en-tête PNG **avant** décodage (8..256 px), corps JSON limités à 256 Ko, toutes les entrées validées, puis l'œuvre entière passe par `validateArtwork`.
 - Conteneur : utilisateur non-root, système de fichiers en lecture seule (sauf `/data`), aucune capability, port 8080 non exposé (mode `traefik` : joignable uniquement via le réseau Docker `edge` ; mode `caddy` : seul Caddy est joignable ; mode `nginx` : publié uniquement sur `127.0.0.1:8787`).
 - Proxy : `X-Forwarded-For` (entrée la plus à droite) n'est pris en compte que si la connexion TCP vient d'un proxy listé dans `TRUSTED_PROXIES` : `172.30.0.2` (Traefik partagé, mode `traefik`), `caddy` (service résolu par DNS, mode `caddy`), `127.0.0.1, ::1, gateway` (passerelle du bridge Docker, mode `nginx`). Liste vide = aucune confiance, l'adresse du socket est utilisée. Limite de connexion par client **et** par pair TCP (20 / 15 min).
 - Vérification `Origin` : même hôte que `PUBLIC_URL` **et** schéma `https:` quand `PUBLIC_URL` est en https.

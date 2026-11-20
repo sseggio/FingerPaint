@@ -6,7 +6,7 @@ Construit avec Expo SDK 58, React Native, TypeScript, Expo Router, Skia, Reanima
 
 ## Fonctionnalités V1
 
-- **48 illustrations originales** en 6 albums (Jardin, Océan, Cuisine, Animaux, Espace, et le pack Océan profond), de 16×16 à 96×96.
+- **50 illustrations originales** en 6 albums (Jardin, Océan, Cuisine, Animaux, Espace, et le pack Océan profond), de 16×16 à 256×256.
 - **Coloriage fluide** (canvas Skia) : zoom et déplacement, glisser pour remplir, indices gratuits et illimités, confettis à la complétion, sauvegarde automatique.
 - **Image du jour** et série indulgente (jokers, jamais de pression).
 - **Mes œuvres** : galerie, export PNG, sauvegarde/restauration de la progression dans un fichier `.pixeljoy`.
