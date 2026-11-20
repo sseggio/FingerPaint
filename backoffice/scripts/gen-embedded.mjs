@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Writes generated/embedded.json: the artwork ids and albums shipped in the app
- * (src/content), so the server can refuse id collisions with built-in content.
+ * (src/content), so the server can refuse id collisions with built-in content; and
+ * generated/embedded-artworks.json: the full artworks, remix sources for the generators (F34).
  *   node scripts/gen-embedded.mjs [--content <dir>] [--out <file>]
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -19,6 +20,7 @@ const out = opt('--out', join(HERE, '..', 'generated', 'embedded.json'));
 
 const albumsFile = JSON.parse(readFileSync(join(contentDir, 'albums.json'), 'utf8'));
 const artworkIds = [];
+const artworks = [];
 const artDir = join(contentDir, 'artworks');
 for (const album of readdirSync(artDir, { withFileTypes: true })) {
   if (!album.isDirectory()) continue;
@@ -26,10 +28,14 @@ for (const album of readdirSync(artDir, { withFileTypes: true })) {
     if (!file.endsWith('.json')) continue;
     const art = JSON.parse(readFileSync(join(artDir, album.name, file), 'utf8'));
     artworkIds.push(art.id);
+    artworks.push(art);
   }
 }
 artworkIds.sort();
 const albums = albumsFile.albums.map(({ id, title, order, pack }) => ({ id, title, order, ...(pack ? { pack } : {}) }));
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify({ v: 1, artworkIds, albums }, null, 2)}\n`);
-console.log(`wrote ${out} (${artworkIds.length} artworks, ${albums.length} albums)`);
+const sourcesOut = join(dirname(out), 'embedded-artworks.json');
+artworks.sort((a, b) => a.id.localeCompare(b.id));
+writeFileSync(sourcesOut, `${JSON.stringify({ v: 1, artworks })}\n`);
+console.log(`wrote ${out} (${artworkIds.length} artworks, ${albums.length} albums) and ${sourcesOut}`);

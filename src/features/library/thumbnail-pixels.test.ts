@@ -83,4 +83,15 @@ describe('downscaled thumbnails (F33)', () => {
     expect(px(pixels, 128 + 1)).toEqual([0, 0, 255, 255]);
     expect(px(pixels, 0)).not.toEqual([0, 0, 255, 255]);
   });
+
+  it('a filled cell wins its block, so fine details stay visible', () => {
+    const bits = createBitset(256 * 256);
+    setBit(bits, 256 * 4 + 4); // row 4, col 4: corner (not center) of block (2, 2)
+    const pixels = buildThumbnailPixels(big, bits, THUMBNAIL_MAX_SIDE);
+    const cell = big.cells[256 * 4 + 4];
+    expect(px(pixels, 128 * 2 + 2)).toEqual([...big.palette.colors[cell - 1].rgb, 255]);
+    // Neighbor blocks without filled cells stay gray.
+    const [r, g, b] = px(pixels, 128 * 2 + 3);
+    expect(r === g && g === b).toBe(true);
+  });
 });

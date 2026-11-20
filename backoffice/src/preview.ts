@@ -12,10 +12,13 @@ export interface PreviewInput {
 /** Target size of the longest side of the enlarged preview, in pixels. */
 const PREVIEW_SIDE = 384;
 
-/** Renders the artwork as an enlarged PNG (empty cells as a light checkerboard). */
-export function renderPreview(art: PreviewInput): Buffer {
+/**
+ * Renders the artwork as an enlarged PNG (empty cells as a light checkerboard). `side` is the
+ * target longest side; 1 gives one pixel per cell (the admin UI zooms it with CSS).
+ */
+export function renderPreview(art: PreviewInput, side = PREVIEW_SIDE): Buffer {
   const { cells } = decode(art.rows, art.w, art.h, art.palette.length);
-  const scale = Math.max(1, Math.floor(PREVIEW_SIDE / Math.max(art.w, art.h)));
+  const scale = Math.max(1, Math.floor(side / Math.max(art.w, art.h)));
   const rgb = art.palette.map((hex) => hexToRgb(hex));
   const png = new PNG({ width: art.w * scale, height: art.h * scale });
   const half = Math.max(1, scale >> 1);

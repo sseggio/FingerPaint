@@ -35,6 +35,23 @@ export const BACKUP_EXTENSION = '.pixeljoy';
  * imported. Builds up to 7 keep refusing files above 5 MB.
  */
 export const MAX_BACKUP_BYTES = 16 * 1024 * 1024;
+/** Import limit of builds up to 7: bigger backups only import into F33+ builds (the user is told). */
+export const LEGACY_MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+
+/** UTF-8 byte size of a string (settings may hold a few non-ASCII characters). */
+export function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 0x80) bytes += 1;
+    else if (c < 0x800) bytes += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      bytes += 4;
+      i++;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 /** Upper bound on progress entries (far above the catalog size; guards against huge files). */
 export const MAX_BACKUP_ENTRIES = 10_000;
 
@@ -157,19 +174,24 @@ export function serializeBackup(data: BackupData, createdAt: number, maxBytes: n
     return `${JSON.stringify(file, null, 2)}\n`;
   };
   let text = write();
-  // Base64 and JSON keys are ASCII: the string length is the byte size, except for non-ASCII
-  // settings, a few bytes at most (covered by the margin below).
-  if (text.length <= maxBytes) return text;
+  if (utf8ByteLength(text) <= maxBytes) return text;
+  // Too big: leave out the largest fill orders first. The estimate below drops a first batch in
+  // one go; the file is then re-measured, and orders keep being dropped one at a time until the
+  // real size fits (base64 and JSON are ASCII, but settings may hold multi-byte characters).
   const withOrder = Object.values(progress)
     .filter((p) => p.order !== undefined)
     .sort((a, b) => (b.order?.length ?? 0) - (a.order?.length ?? 0));
-  let size = text.length;
-  for (const p of withOrder) {
-    if (size <= maxBytes - 1024) break;
-    size -= (p.order?.length ?? 0) + 20;
-    delete p.order;
+  let size = utf8ByteLength(text);
+  let next = 0;
+  for (; next < withOrder.length && size > maxBytes - 1024; next++) {
+    size -= (withOrder[next].order?.length ?? 0) + 20;
+    delete withOrder[next].order;
   }
   text = write();
+  while (utf8ByteLength(text) > maxBytes && next < withOrder.length) {
+    delete withOrder[next++].order;
+    text = write();
+  }
   return text;
 }
 

@@ -111,7 +111,7 @@ describe('backup export → reinstall → import', () => {
     await useDailyStore.getState().replace(streak);
     await useSettingsStore.getState().update({ colorblindSymbols: true, sessionTimerMin: 20 });
 
-    await expect(exportBackup('Save', () => NOW)).resolves.toBe('shared');
+    await expect(exportBackup('Save', () => NOW)).resolves.toMatchObject({ status: 'shared', legacyIncompatible: false });
     expect(mocked.writeFile).toHaveBeenCalledWith('cache', 'backups', 'pixeljoy-2026-11-14.pixeljoy', expect.any(String));
     const uri = mocked.writeFile.mock.results[0].value as Promise<string>;
     const fileUri = await uri;
@@ -222,7 +222,7 @@ describe('backup export → reinstall → import', () => {
 
   it('says when sharing is unavailable', async () => {
     mocked.shareFile.mockResolvedValueOnce(false);
-    await expect(exportBackup('Save', () => NOW)).resolves.toBe('unavailable');
+    await expect(exportBackup('Save', () => NOW)).resolves.toMatchObject({ status: 'unavailable' });
   });
 
   it('names files by local day', () => {

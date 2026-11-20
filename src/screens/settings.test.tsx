@@ -21,7 +21,7 @@ jest.mock('expo-haptics', () => ({
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/features/backup/backup-io', () => {
   const actual = jest.requireActual('@/features/backup/backup-io');
-  return { ...actual, exportBackup: jest.fn(async () => 'shared'), pickBackup: jest.fn(async () => ({ status: 'cancelled' })) };
+  return { ...actual, exportBackup: jest.fn(async () => ({ status: 'shared', bytes: 1000, legacyIncompatible: false })), pickBackup: jest.fn(async () => ({ status: 'cancelled' })) };
 });
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
@@ -186,11 +186,16 @@ describe('SettingsScreen', () => {
       fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
     });
     expect(mockedExport).toHaveBeenCalledWith('Save your PixelJoy backup');
-    mockedExport.mockResolvedValueOnce('unavailable');
+    mockedExport.mockResolvedValueOnce({ status: 'unavailable', bytes: 1000, legacyIncompatible: false });
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
     });
     expect(screen.getByText('Sharing is not available on this device.')).toBeTruthy();
+    mockedExport.mockResolvedValueOnce({ status: 'shared', bytes: 6.5 * 1024 * 1024, legacyIncompatible: true });
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Export a backup file of your progress' }));
+    });
+    expect(screen.getByText('Backup saved (6.5 MB). It is larger than 5 MB: only recent PixelJoy versions can import it.')).toBeTruthy();
   });
 
   it('imports: errors are explained, a valid file opens the confirmation', async () => {
