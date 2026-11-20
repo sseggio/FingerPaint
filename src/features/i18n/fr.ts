@@ -277,6 +277,7 @@ export const fr: Dictionary = {
   'settings.data.importLabel': 'Importer un fichier de sauvegarde',
   'settings.data.exportDialog': 'Enregistrer ta sauvegarde PixelJoy',
   'settings.data.exportUnavailable': 'Le partage n’est pas disponible sur cet appareil.',
+  'settings.data.exportLarge': 'Sauvegarde créée ({size} Mo). Elle dépasse 5 Mo : seules les versions récentes de PixelJoy pourront l’importer.',
   'settings.data.exportFailed': 'La sauvegarde n’a pas pu être créée. Réessaie.',
   'settings.data.error.too-large': 'Ce fichier est trop gros pour être une sauvegarde PixelJoy (5 Mo max).',
   'settings.data.error.not-json': 'Ce fichier n’est pas une sauvegarde PixelJoy.',

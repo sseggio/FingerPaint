@@ -12,6 +12,7 @@ import {
   MAX_BACKUP_BYTES,
   parseBackup,
   serializeBackup,
+  utf8ByteLength,
   type BackupArtwork,
   type BackupData,
   type CatalogLookup,
@@ -317,5 +318,16 @@ describe('256×256 artworks (F33)', () => {
     const kept = [...r.backup.progress.values()].filter((e) => e.order).length;
     expect(kept).toBeGreaterThan(0);
     expect(kept).toBeLessThan(4);
+  });
+
+  it('re-measures the real file size after dropping orders (multi-byte settings included)', () => {
+    const data = bigData(3);
+    // The order-size estimate alone would stop too early: the final, measured size must still fit.
+    for (const limit of [400 * 1024, 420 * 1024, 600 * 1024]) {
+      const text = serializeBackup(data, 1, limit);
+      expect(utf8ByteLength(text)).toBeLessThanOrEqual(limit);
+      expect(parseBackup(text, big).ok).toBe(true);
+    }
+    expect(utf8ByteLength('aé€😀')).toBe(1 + 2 + 3 + 4);
   });
 });

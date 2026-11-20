@@ -266,6 +266,18 @@ Onglet **Œuvres** : statut (brouillon, planifiée, publiée), **Modifier** (tit
 
 Onglet **Albums** : titres, accès et ordre d'affichage des albums du catalogue. Les albums embarqués dans l'app sont en lecture seule.
 
+### 4 bis. Générer des dessins (sans IA)
+
+L'onglet **Générer** crée des dessins procéduraux, déterministes : même générateur + même graine + mêmes réglages = même dessin.
+
+- 6 générateurs : **Créature** (créatures, robots, insectes symétriques), **Mandala** (symétrie 4/6/8/12, miroir), **Paysage** (ciel, montagnes, eau et reflets), **Plante** (L-systèmes : arbres, buissons, fleurs, bouquets), **Motif** (carreaux, vagues, damiers, quilts, chevrons, cubes isométriques), **Remix** (nouvelles couleurs d'une œuvre embarquée ou du catalogue, même dessin).
+- Réglages : taille 16 à 256 cases (préréglages 32 → 256, formats carré / 4:3 / 3:4 / 2:1), 4 à 24 couleurs, palette nommée ou « aléatoire harmonieuse », difficulté automatique ou forcée, réglages propres au générateur. Les valeurs hors bornes sont refusées.
+- « Générer » donne une proposition, « 12 propositions » une grille de vignettes ; « Autre graine » relance au hasard. Rien n'est enregistré avant « Publier » / « Enregistrer en brouillon ».
+- À l'enregistrement, le serveur **régénère** le dessin à partir de la graine et des réglages (une grille envoyée par le navigateur est ignorée), puis suit le même chemin qu'un import PNG (quantification ΔE76, validation, révision, publication).
+- Limites : 12 propositions par requête, ~1,5 s par dessin et 4 s par requête (au-delà : propositions partielles ou refus 503), 240 propositions par minute.
+- API : `GET /admin/api/generators`, `POST /admin/api/generate` `{ generator, params, seed?, count }`, `POST /admin/api/generate/save` `{ generator, params, seed, id, titleFr, titleEn, album | newAlbum, difficulty?, access, publish }`.
+- Les sources de remix embarquées viennent de `generated/embedded-artworks.json` (écrit par `npm run gen:embedded`, comme `embedded.json`).
+
 ## 5. Mise à jour
 
 ```sh

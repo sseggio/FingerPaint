@@ -7,6 +7,7 @@
     <title>PixelJoy · Back-office</title>
     <link rel="icon" href="/admin/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/admin/admin.css" />
+    <script src="/admin/generate.js" defer></script>
     <script src="/admin/admin.js" defer></script>
   </head>
   <body>
@@ -28,6 +29,7 @@
         <div class="brand"><span class="brand-mark" aria-hidden="true"></span>PixelJoy <span class="brand-sub">back-office</span></div>
         <nav class="tabs" role="tablist" aria-label="Sections">
           <button type="button" role="tab" class="tab" data-tab="new" aria-selected="true" aria-label="Nouvelle œuvre">Nouvelle œuvre</button>
+          <button type="button" role="tab" class="tab" data-tab="generate" aria-selected="false" aria-label="Générer des dessins">Générer</button>
           <button type="button" role="tab" class="tab" data-tab="artworks" aria-selected="false" aria-label="Œuvres">Œuvres</button>
           <button type="button" role="tab" class="tab" data-tab="albums" aria-selected="false" aria-label="Albums">Albums</button>
         </nav>
@@ -85,6 +87,85 @@
           <div class="actions">
             <button type="submit" name="action" value="draft" class="btn btn-secondary" aria-label="Enregistrer en brouillon">Enregistrer en brouillon</button>
             <button type="submit" name="action" value="publish" class="btn btn-primary" aria-label="Publier">Publier</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Procedural generators (F34) -->
+      <section id="tab-generate" class="panel" role="tabpanel" hidden>
+        <div class="card">
+          <h2>1. Générateur</h2>
+          <p class="muted">Dessins procéduraux, sans IA : même graine + mêmes réglages = même dessin. Rien n’est enregistré avant « Publier ».</p>
+          <div id="gen-cards" class="gen-cards" role="radiogroup" aria-label="Générateurs"></div>
+        </div>
+
+        <form id="gen-form" class="card" novalidate>
+          <h2>2. Réglages</h2>
+          <div id="gen-size-fields">
+            <fieldset>
+              <legend>Taille (côté le plus long, en cases)</legend>
+              <div id="gen-size" class="segmented"></div>
+            </fieldset>
+            <div class="grid-3">
+              <label class="field"><span>Format</span><select id="gen-format" aria-label="Format"></select></label>
+              <label class="field">
+                <span>Couleurs max. : <strong id="gen-colors-value">12</strong></span>
+                <input id="gen-colors" type="range" min="4" max="24" value="12" aria-label="Nombre maximal de couleurs" />
+              </label>
+              <label class="field"><span>Palette</span><select id="gen-palette" aria-label="Palette"></select></label>
+            </div>
+          </div>
+          <div id="gen-specific" class="grid-3"></div>
+          <div class="grid-3">
+            <label class="field"><span>Difficulté</span><select id="gen-difficulty" aria-label="Difficulté"></select></label>
+            <label class="field">
+              <span>Graine (vide = au hasard)</span>
+              <input id="gen-seed" maxlength="32" autocomplete="off" placeholder="ex. 4821" aria-label="Graine" />
+            </label>
+          </div>
+          <p id="gen-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="button" id="gen-reseed" class="btn btn-ghost" aria-label="Générer avec une autre graine">Autre graine</button>
+            <button type="button" id="gen-many" class="btn btn-secondary" aria-label="Générer 12 propositions">12 propositions</button>
+            <button type="submit" id="gen-one" class="btn btn-primary" aria-label="Générer une proposition">Générer</button>
+          </div>
+        </form>
+
+        <div id="gen-proposals-card" class="card" hidden>
+          <h2>3. Propositions</h2>
+          <p class="muted" id="gen-proposals-hint">Clique sur une vignette pour la choisir.</p>
+          <div id="gen-proposals" class="gen-proposals" role="listbox" aria-label="Propositions"></div>
+        </div>
+
+        <div id="gen-preview-card" class="card" hidden>
+          <h2>4. Aperçu</h2>
+          <label class="field gen-zoom">
+            <span>Zoom : <strong id="gen-zoom-value">4</strong> px par case</span>
+            <input id="gen-zoom" type="range" min="1" max="16" value="4" aria-label="Zoom de l’aperçu" />
+          </label>
+          <div class="preview gen-preview">
+            <img id="gen-preview-img" alt="Aperçu du dessin généré" />
+          </div>
+          <p id="gen-stats" class="stats"></p>
+          <ol id="gen-palette-list" class="palette" aria-label="Palette du dessin"></ol>
+        </div>
+
+        <form id="gen-meta-form" class="card" hidden novalidate>
+          <h2>5. Publier</h2>
+          <p class="muted">Le serveur régénère le dessin à partir de la graine et des réglages : c’est exactement l’aperçu.</p>
+          <div class="grid-3">
+            <label class="field">
+              <span>Identifiant (kebab-case)</span>
+              <input name="id" required maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" aria-label="Identifiant" />
+            </label>
+            <label class="field"><span>Titre FR</span><input name="titleFr" required maxlength="60" aria-label="Titre en français" /></label>
+            <label class="field"><span>Titre EN</span><input name="titleEn" required maxlength="60" aria-label="Titre en anglais" /></label>
+          </div>
+          <div data-meta-fields></div>
+          <ul class="error-list" data-errors role="alert" hidden></ul>
+          <div class="actions">
+            <button type="submit" value="draft" class="btn btn-secondary" aria-label="Enregistrer le dessin généré en brouillon">Enregistrer en brouillon</button>
+            <button type="submit" value="publish" class="btn btn-primary" aria-label="Publier le dessin généré">Publier</button>
           </div>
         </form>
       </section>

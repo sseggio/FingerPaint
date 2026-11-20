@@ -9,9 +9,11 @@ import { toDayKey } from '@/lib/daily';
 
 import {
   BACKUP_EXTENSION,
+  LEGACY_MAX_BACKUP_BYTES,
   MAX_BACKUP_BYTES,
   parseBackup,
   serializeBackup,
+  utf8ByteLength,
   type BackupArtwork,
   type BackupData,
   type BackupError,
@@ -57,17 +59,26 @@ export function backupFileName(date: Date): string {
   return `pixeljoy-${toDayKey(date)}${BACKUP_EXTENSION}`;
 }
 
+/** Export summary: share outcome and file size (F33: larger backups need a recent build). */
+export interface ExportResult {
+  status: 'shared' | 'unavailable';
+  bytes: number;
+  /** Above 5 MB: builds up to 7 refuse to import this file. */
+  legacyIncompatible: boolean;
+}
+
 /** Writes a `.pixeljoy` file to the cache and opens the share sheet. */
-export async function exportBackup(dialogTitle: string, now: () => Date = () => new Date()): Promise<'shared' | 'unavailable'> {
+export async function exportBackup(dialogTitle: string, now: () => Date = () => new Date()): Promise<ExportResult> {
   const date = now();
   const text = serializeBackup(await collectBackupData(), date.getTime());
+  const bytes = utf8ByteLength(text);
   const name = backupFileName(date);
   const uri = await writeFile('cache', 'backups', name, text);
   // Earlier exports are only temporary share copies: keep the latest one.
   pruneFolder('cache', 'backups', (file) => file !== name);
   // `application/octet-stream` keeps the `.pixeljoy` extension on iOS (no type is appended).
   const shared = await shareFile(uri, { mimeType: 'application/octet-stream', dialogTitle });
-  return shared ? 'shared' : 'unavailable';
+  return { status: shared ? 'shared' : 'unavailable', bytes, legacyIncompatible: bytes > LEGACY_MAX_BACKUP_BYTES };
 }
 
 export type PickOutcome =

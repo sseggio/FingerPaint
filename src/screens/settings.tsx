@@ -197,7 +197,13 @@ function DataSection({ onNotice }: { onNotice(notice: Notice): void }) {
     setBusy('export');
     try {
       const outcome = await exportBackup(t('settings.data.exportDialog'));
-      if (outcome === 'unavailable') onNotice({ message: t('settings.data.exportUnavailable'), accent: palette.sun });
+      if (outcome.status === 'unavailable') onNotice({ message: t('settings.data.exportUnavailable'), accent: palette.sun });
+      else if (outcome.legacyIncompatible) {
+        onNotice({
+          message: t('settings.data.exportLarge', { size: (outcome.bytes / (1024 * 1024)).toFixed(1) }),
+          accent: palette.sun,
+        });
+      }
     } catch {
       onNotice({ message: t('settings.data.exportFailed'), accent: palette.orange });
     } finally {

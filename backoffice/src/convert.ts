@@ -150,20 +150,25 @@ export function clampMaxColors(value: unknown): number {
   return Math.min(MAX_COLORS, Math.max(MIN_MAX_COLORS, n));
 }
 
-/** PNG buffer → palette + RLE rows. Throws ConvertError with a French, user-facing message. */
-export function convertPng(buffer: Buffer, maxColors = DEFAULT_MAX_COLORS): ConvertedGrid {
+/**
+ * Color grid → palette + RLE rows (shared by the PNG import and the procedural generators, F34):
+ * pre-quantization above 512 colors, greedy ΔE76 merge down to `maxColors`, palette sorted by
+ * luminance, rows RLE-encoded with the app's codec.
+ */
+export function gridToConverted(grid: readonly (readonly (HexColor | null)[])[], maxColors = DEFAULT_MAX_COLORS): ConvertedGrid {
   const limit = clampMaxColors(maxColors);
-  const decoded = readPixels(buffer);
-  let grid = decoded.grid;
-  const distinct = new Set(grid.flat().filter(Boolean));
-  if (distinct.size > PREQUANTIZE_ABOVE) grid = prequantize(grid);
+  const h = grid.length;
+  const w = h > 0 ? grid[0].length : 0;
+  let cellsGrid = grid as Grid;
+  const distinct = new Set(cellsGrid.flat().filter(Boolean));
+  if (distinct.size > PREQUANTIZE_ABOVE) cellsGrid = prequantize(cellsGrid);
   const counts = new Map<HexColor, number>();
-  for (const c of grid.flat()) if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
+  for (const c of cellsGrid.flat()) if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
   const target = reducePalette(counts, limit);
   const palette = [...new Set(target.values())].sort((a, b) => luminance(a) - luminance(b) || a.localeCompare(b));
   const valueOf = new Map(palette.map((c, i) => [c, i + 1]));
   let cells = 0;
-  const rows = grid.map((row) =>
+  const rows = cellsGrid.map((row) =>
     encodeRow(
       row.map((c) => {
         if (!c) return 0;
@@ -172,5 +177,11 @@ export function convertPng(buffer: Buffer, maxColors = DEFAULT_MAX_COLORS): Conv
       }),
     ),
   );
-  return { w: decoded.width, h: decoded.height, palette, rows, cells, merged: counts.size - palette.length };
+  return { w, h, palette, rows, cells, merged: counts.size - palette.length };
+}
+
+/** PNG buffer → palette + RLE rows. Throws ConvertError with a French, user-facing message. */
+export function convertPng(buffer: Buffer, maxColors = DEFAULT_MAX_COLORS): ConvertedGrid {
+  const decoded = readPixels(buffer);
+  return gridToConverted(decoded.grid, maxColors);
 }

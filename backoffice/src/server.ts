@@ -11,7 +11,8 @@ import { createApp } from './app';
 import { CHANGED_AT_KEY, findEmbeddedCollisions } from './catalog';
 import { readConfig } from './config';
 import { CatalogDb } from './db';
-import { loadEmbedded } from './embedded';
+import { validateArtwork } from './artwork-lib';
+import { loadEmbedded, loadEmbeddedSources } from './embedded';
 import { parseDefaultGateway, TrustedProxies } from './trusted-proxies';
 
 const baseDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,6 +25,8 @@ try {
 }
 mkdirSync(config.dataDir, { recursive: true });
 const embedded = loadEmbedded(config.embeddedPath);
+// Remix sources (F34): optional, the generators work without them.
+const embeddedSources = loadEmbeddedSources(join(dirname(config.embeddedPath), 'embedded-artworks.json'), (a) => validateArtwork(a).length === 0);
 const db = new CatalogDb(join(config.dataDir, 'catalog.sqlite'));
 db.syncBuiltinAlbums(embedded, new Date().toISOString());
 if (!db.getMeta(CHANGED_AT_KEY)) db.setMeta(CHANGED_AT_KEY, new Date().toISOString());
@@ -50,6 +53,7 @@ const app = createApp({
   db,
   dataDir: config.dataDir,
   embedded,
+  embeddedSources,
   passwordHash: config.passwordHash,
   sessionSecret: config.sessionSecret,
   publicUrl: config.publicUrl,

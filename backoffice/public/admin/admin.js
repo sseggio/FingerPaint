@@ -105,6 +105,7 @@
     tab.addEventListener('click', () => {
       for (const t of $$('.tab')) t.setAttribute('aria-selected', String(t === tab));
       for (const p of $$('.panel')) p.hidden = p.id !== `tab-${tab.dataset.tab}`;
+      if (tab.dataset.tab === 'generate') void loadGenerators();
     });
   }
 
@@ -439,6 +440,225 @@
     form.reset();
     toast('Album créé');
     await refresh();
+  });
+
+
+  // ------------------------------------------------------------------ generators (F34)
+
+  const G = globalThis.PixelJoyGenerate;
+  const gen = { descriptors: [], sources: [], maxCount: 12, current: null, proposals: [], selected: null, loaded: false, busy: false };
+
+  function genDescriptor() {
+    return gen.descriptors.find((d) => d.id === gen.current) ?? null;
+  }
+
+  function selectOptions(select, options, value) {
+    select.replaceChildren(...options.map((o) => h('option', { value: o.value, selected: o.value === value }, o.label)));
+  }
+
+  async function loadGenerators() {
+    if (gen.loaded) return;
+    const res = await api('GET', '/generators');
+    if (!res.ok) return;
+    gen.loaded = true;
+    gen.descriptors = res.data.generators;
+    gen.sources = res.data.sources;
+    gen.maxCount = res.data.maxCount;
+    $('#gen-many').textContent = `${gen.maxCount} propositions`;
+    $('#gen-many').setAttribute('aria-label', `Générer ${gen.maxCount} propositions`);
+    $('#gen-size').replaceChildren(
+      ...G.SIZE_PRESETS.map((n) =>
+        h('label', {}, h('input', { type: 'radio', name: 'genSize', value: String(n), checked: n === 64, 'aria-label': `${n} cases` }), String(n)),
+      ),
+    );
+    selectOptions($('#gen-format'), G.FORMATS, 'square');
+    $('#gen-cards').replaceChildren(
+      ...gen.descriptors.map((d) => {
+        const img = h('img', { alt: '', class: 'gen-thumb' });
+        const card = h(
+          'button',
+          { type: 'button', class: 'gen-card', role: 'radio', 'aria-checked': 'false', 'data-gen': d.id, 'aria-label': `${d.name.fr} : ${d.description}`, onclick: () => chooseGenerator(d.id) },
+          img,
+          h('span', { class: 'gen-card-name' }, d.name.fr),
+          h('span', { class: 'gen-card-desc' }, d.description),
+        );
+        return card;
+      }),
+    );
+    chooseGenerator(gen.descriptors[0]?.id);
+    // Card illustrations: one small live drawing per generator (fixed seed).
+    for (const d of gen.descriptors) {
+      if (d.id === 'remix') continue;
+      const r = await api('POST', '/generate', { generator: d.id, params: { width: 32, height: 32, colors: 10 }, seed: 7, count: 1 });
+      const img = $(`.gen-card[data-gen="${d.id}"] img`);
+      if (r.ok && img) img.src = r.data.proposals[0].preview;
+    }
+    const remixCard = $('.gen-card[data-gen="remix"] img');
+    if (remixCard && gen.sources.length) {
+      const r = await api('POST', '/generate', { generator: 'remix', params: { source: gen.sources[gen.sources.length - 1].value }, seed: 7, count: 1 });
+      if (r.ok) remixCard.src = r.data.proposals[0].preview;
+    }
+  }
+
+  function chooseGenerator(id) {
+    gen.current = id;
+    for (const c of $$('.gen-card')) c.setAttribute('aria-checked', String(c.dataset.gen === id));
+    const d = genDescriptor();
+    if (!d) return;
+    const spec = (key) => d.params.find((p) => p.key === key);
+    const isRemix = d.id === 'remix';
+    $('#gen-size-fields').hidden = isRemix;
+    const colors = spec('colors');
+    if (colors) {
+      $('#gen-colors').value = String(colors.default);
+      $('#gen-colors-value').textContent = String(colors.default);
+    }
+    if (!isRemix) selectOptions($('#gen-palette'), spec('palette').options, spec('palette').default);
+    selectOptions($('#gen-difficulty'), spec('difficulty').options, spec('difficulty').default);
+    // Generator-specific controls, built from the server's parameter schema.
+    $('#gen-specific').replaceChildren(
+      ...d.params
+        .filter((p) => !G.COMMON_KEYS.includes(p.key) || (isRemix && p.key === 'palette'))
+        .filter((p) => p.key !== 'difficulty')
+        .map((p) => {
+          const name = `gp-${p.key}`;
+          if (p.kind === 'bool') {
+            return h('label', { class: 'field' }, h('span', {}, p.label), h('input', { type: 'checkbox', name, checked: p.default, 'aria-label': p.label }));
+          }
+          if (p.kind === 'int') {
+            const out = h('strong', {}, String(p.default));
+            const input = h('input', { type: 'range', name, min: p.min, max: p.max, step: p.step ?? 1, value: p.default, 'aria-label': p.label });
+            input.addEventListener('input', () => (out.textContent = input.value));
+            return h('label', { class: 'field' }, h('span', {}, `${p.label} : `, out), input);
+          }
+          const options = p.kind === 'source' ? gen.sources : p.options;
+          const select = h('select', { name, 'aria-label': p.label });
+          selectOptions(select, options, p.default || options[0]?.value);
+          return h('label', { class: 'field' }, h('span', {}, p.label), select);
+        }),
+    );
+  }
+
+  function readGenParams() {
+    const d = genDescriptor();
+    const values = {};
+    if (d.id !== 'remix') {
+      const size = $('input[name=genSize]:checked')?.value ?? '64';
+      Object.assign(values, G.sizeFromPreset(size, $('#gen-format').value));
+      values.colors = $('#gen-colors').value;
+      values.palette = $('#gen-palette').value;
+    }
+    values.difficulty = $('#gen-difficulty').value;
+    for (const el of $$('#gen-specific [name^="gp-"]')) values[el.name.slice(3)] = el.type === 'checkbox' ? el.checked : el.value;
+    return G.buildParams(d, values);
+  }
+
+  async function runGenerate(count, seed) {
+    if (gen.busy || !genDescriptor()) return;
+    const err = $('#gen-error');
+    err.hidden = true;
+    gen.busy = true;
+    for (const b of ['#gen-one', '#gen-many', '#gen-reseed']) $(b).disabled = true;
+    const body = { generator: gen.current, params: readGenParams(), count };
+    if (seed !== undefined && seed !== '') body.seed = /^\d{1,9}$/.test(String(seed)) ? Number(seed) : String(seed);
+    const res = await api('POST', '/generate', body);
+    gen.busy = false;
+    for (const b of ['#gen-one', '#gen-many', '#gen-reseed']) $(b).disabled = false;
+    if (!res.ok) {
+      err.textContent = errorMessages(res).join(' · ');
+      err.hidden = false;
+      return;
+    }
+    gen.proposals = res.data.proposals;
+    renderProposals(res.data.truncated);
+    selectProposal(gen.proposals[0]);
+  }
+
+  function renderProposals(truncated) {
+    const card = $('#gen-proposals-card');
+    card.hidden = gen.proposals.length < 2;
+    $('#gen-proposals-hint').textContent = truncated
+      ? 'Temps de calcul dépassé : propositions partielles. Clique sur une vignette pour la choisir.'
+      : 'Clique sur une vignette pour la choisir.';
+    $('#gen-proposals').replaceChildren(
+      ...gen.proposals.map((p) =>
+        h(
+          'button',
+          { type: 'button', class: 'gen-proposal', role: 'option', 'aria-selected': 'false', 'data-seed': p.seed, 'aria-label': `Proposition, graine ${p.seed}`, onclick: () => selectProposal(p) },
+          h('img', { src: p.preview, alt: '' }),
+          h('span', {}, `n°${p.seed}`),
+        ),
+      ),
+    );
+  }
+
+  function applyZoom() {
+    const p = gen.selected;
+    if (!p) return;
+    const z = $('#gen-zoom').value;
+    $('#gen-zoom-value').textContent = z;
+    const size = G.zoomedSize(p.w, p.h, z);
+    const img = $('#gen-preview-img');
+    img.style.width = `${size.width}px`;
+    img.style.height = `${size.height}px`;
+  }
+
+  function selectProposal(p) {
+    if (!p) return;
+    gen.selected = p;
+    for (const b of $$('.gen-proposal')) b.setAttribute('aria-selected', String(b.dataset.seed === p.seed));
+    $('#gen-seed').value = p.seed;
+    $('#gen-preview-card').hidden = false;
+    $('#gen-preview-img').src = p.pixels;
+    $('#gen-zoom').value = String(G.defaultZoom(p.w, p.h));
+    applyZoom();
+    $('#gen-stats').textContent = G.formatStats(p);
+    $('#gen-palette-list').replaceChildren(
+      ...p.palette.map((hex, i) => {
+        const sw = h('li', { class: 'swatch', title: hex, 'aria-label': `Couleur ${i + 1} : ${hex}` }, String(i + 1));
+        sw.style.background = hex;
+        sw.style.color = G.inkOn(hex);
+        return sw;
+      }),
+    );
+    const form = $('#gen-meta-form');
+    form.hidden = false;
+    metaFields(form, { difficulty: p.difficulty, publishModes: [['now', 'Maintenant'], ['schedule', 'Planifiée']], publish: 'now' });
+    form.elements.id.value = G.suggestId(p.generator, p.seed, state.artworks.map((a) => a.id));
+    form.elements.titleFr.value = p.title.fr;
+    form.elements.titleEn.value = p.title.en;
+    showErrors($('[data-errors]', form), []);
+  }
+
+  $('#gen-zoom').addEventListener('input', applyZoom);
+  $('#gen-colors').addEventListener('input', (ev) => ($('#gen-colors-value').textContent = ev.target.value));
+  $('#gen-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    void runGenerate(1, $('#gen-seed').value.trim());
+  });
+  $('#gen-many').addEventListener('click', () => void runGenerate(gen.maxCount, $('#gen-seed').value.trim()));
+  $('#gen-reseed').addEventListener('click', () => {
+    const seed = G.randomSeed();
+    $('#gen-seed').value = String(seed);
+    void runGenerate(1, seed);
+  });
+
+  $('#gen-meta-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const p = gen.selected;
+    if (!p) return;
+    const form = ev.target;
+    const action = ev.submitter?.value === 'publish' ? undefined : 'draft';
+    const body = { generator: p.generator, params: p.params, seed: p.seed, id: form.elements.id.value.trim(), ...readMeta(form, action) };
+    const res = await api('POST', '/generate/save', body);
+    if (!res.ok) {
+      showErrors($('[data-errors]', form), errorMessages(res));
+      return;
+    }
+    toast(res.data.artwork.state === 'draft' ? 'Brouillon enregistré' : res.data.artwork.state === 'scheduled' ? 'Publication planifiée' : 'Œuvre publiée');
+    form.hidden = true;
+    await refresh();
+    form.elements.id.value = G.suggestId(p.generator, p.seed, state.artworks.map((a) => a.id));
   });
 
   // ------------------------------------------------------------------ boot

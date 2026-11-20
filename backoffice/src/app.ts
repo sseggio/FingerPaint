@@ -3,7 +3,7 @@
  * - public, read-only catalog under /catalog/v1 (no auth, no cookies, no logs);
  * - single-admin back-office under /admin (static UI + JSON API behind a session cookie + CSRF).
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -21,7 +21,9 @@ import { buildManifest, CHANGED_AT_KEY, findEmbeddedCollisions } from './catalog
 import { convertPng, ConvertError, MAX_PNG_BYTES } from './convert';
 import type { AlbumRecord, ArtworkRecord, CatalogDb } from './db';
 import type { EmbeddedContent } from './embedded';
-import type { ArtworkMetaInput, FieldError } from './input';
+import type { GeneratedArtwork } from './generators';
+import { describeGenerators, generate, GenerateTimeoutError, isGeneratorId, ParamError, suggestTitle } from './generators';
+import type { ArtworkCreateInput, ArtworkMetaInput, FieldError } from './input';
 import { accessToSource, InputError, isRecord, isValidId, parseAlbum, parseArtworkCreate, parseArtworkUpdate } from './input';
 import { verifyPassword } from './password';
 import { renderPreview } from './preview';
@@ -32,6 +34,8 @@ export interface AppConfig {
   db: CatalogDb;
   dataDir: string;
   embedded: EmbeddedContent;
+  /** Full embedded artworks (remix sources of the generators); optional. */
+  embeddedSources?: ReadonlyMap<string, ArtworkSource>;
   passwordHash: string;
   sessionSecret: string;
   /** Public origin, e.g. https://catalog.example.com (used for artwork URLs in the manifest). */
@@ -50,11 +54,46 @@ export interface AppConfig {
   /** Password verifications allowed in parallel (default MAX_LOGIN_CHECKS). */
   maxConcurrentLogins?: number;
   now?: () => Date;
+  /** Generator limits (defaults: GENERATE_LIMITS). */
+  generateLimits?: Partial<GenerateLimits>;
   /** Client address when not behind a proxy (from the socket); tests leave it out. */
   remoteAddress?: (c: Context) => string | undefined;
 }
 
 const JSON_LIMIT = 256 * 1024;
+const GENERATE_JSON_LIMIT = 8 * 1024;
+
+export interface GenerateLimits {
+  /** Proposals per request. */
+  maxCount: number;
+  /** Wall-clock budget of one /generate request (all proposals). */
+  requestBudgetMs: number;
+  /** Budget of a single artwork. */
+  artworkBudgetMs: number;
+  /** Proposals allowed per sliding minute (all requests together). */
+  perMinute: number;
+}
+
+export const GENERATE_LIMITS: GenerateLimits = { maxCount: 12, requestBudgetMs: 4000, artworkBudgetMs: 1500, perMinute: 240 };
+
+/** Fixed-window budget (single admin: one shared counter is enough). */
+class MinuteBudget {
+  private used = 0;
+  private resetAt = 0;
+
+  constructor(private readonly limit: number) {}
+
+  /** Seconds to wait, or 0 when `cost` was taken. */
+  take(cost: number, now: number): number {
+    if (now >= this.resetAt) {
+      this.used = 0;
+      this.resetAt = now + 60_000;
+    }
+    if (this.used + cost > this.limit) return Math.max(1, Math.ceil((this.resetAt - now) / 1000));
+    this.used += cost;
+    return 0;
+  }
+}
 export const MAX_LOGIN_CHECKS = 2;
 const UPLOAD_LIMIT = MAX_PNG_BYTES + 64 * 1024;
 
@@ -74,6 +113,7 @@ const STATIC_FILES: Record<string, string> = {
   'index.html': 'text/html; charset=utf-8',
   'admin.css': 'text/css; charset=utf-8',
   'admin.js': 'text/javascript; charset=utf-8',
+  'generate.js': 'text/javascript; charset=utf-8',
   'favicon.svg': 'image/svg+xml',
 };
 
@@ -432,15 +472,8 @@ export function createApp(cfg: AppConfig) {
     return { cells: n, colors: source.palette.length };
   }
 
-  api.post('/artworks', requireAuth, jsonLimit, async (c) => {
-    const nowIso = now().toISOString();
-    let input;
-    try {
-      input = parseArtworkCreate(await readJson(c), nowIso);
-    } catch (e) {
-      if (e instanceof InputError) return fieldErrors(c, e.errors);
-      throw e;
-    }
+  /** Shared by the upload form and the generators: id checks, album, validation, storage. */
+  function createArtwork(c: Context, input: ArtworkCreateInput, nowIso: string): Response {
     if (embeddedIds.has(input.id)) {
       return fieldErrors(c, [{ field: 'id', message: 'Cet identifiant est déjà utilisé par une œuvre embarquée dans l’app.' }], 409);
     }
@@ -481,6 +514,152 @@ export function createApp(cfg: AppConfig) {
       return rec;
     });
     return c.json({ artwork: artworkJson(record, nowIso) }, 201);
+  }
+
+  api.post('/artworks', requireAuth, jsonLimit, async (c) => {
+    const nowIso = now().toISOString();
+    let input;
+    try {
+      input = parseArtworkCreate(await readJson(c), nowIso);
+    } catch (e) {
+      if (e instanceof InputError) return fieldErrors(c, e.errors);
+      throw e;
+    }
+    return createArtwork(c, input, nowIso);
+  });
+
+  // ------------------------------------------------------------------ procedural generators (F34)
+  const genLimits: GenerateLimits = { ...GENERATE_LIMITS, ...cfg.generateLimits };
+  const genBudget = new MinuteBudget(genLimits.perMinute);
+  let generating = false;
+  const genJsonLimit = bodyLimit({ maxSize: GENERATE_JSON_LIMIT, onError: (c) => c.json({ error: 'too_large' }, 413) });
+
+  /** Remix sources: embedded artworks and the current revision of catalog artworks (revalidated). */
+  function resolveSource(kind: 'embedded' | 'catalog', id: string): ArtworkSource | null {
+    if (kind === 'embedded') return cfg.embeddedSources?.get(id) ?? null;
+    const rec = isValidId(id) ? cfg.db.getArtwork(id) : null;
+    const src = rec ? store.readSource(rec.id, rec.rev) : null;
+    return src && validateArtwork(src).length === 0 ? (src as ArtworkSource) : null;
+  }
+
+  function remixSources() {
+    const embedded = [...(cfg.embeddedSources?.values() ?? [])]
+      .map((a) => ({ value: `embedded:${a.id}`, label: `${a.title.fr} (app, ${a.w}×${a.h})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+    const catalog = cfg.db.listArtworks().map((a) => ({ value: `catalog:${a.id}`, label: `${a.titleFr} (catalogue, ${a.w}×${a.h})` }));
+    return [...catalog, ...embedded];
+  }
+
+  /** Runs the generator with the time budget; maps errors to HTTP responses. */
+  function runGenerator(c: Context, generator: unknown, params: unknown, seed: unknown, budgetMs: number): GeneratedArtwork | Response {
+    if (!isGeneratorId(generator)) return fieldErrors(c, [{ field: 'generator', message: 'Générateur inconnu.' }]);
+    try {
+      return generate(generator, params, seed, { resolveSource, budgetMs });
+    } catch (e) {
+      if (e instanceof ParamError) return fieldErrors(c, e.issues);
+      throw e;
+    }
+  }
+
+  function proposalJson(art: GeneratedArtwork) {
+    const preview = renderPreview(art);
+    return {
+      generator: art.generator,
+      seed: art.seed,
+      params: art.params,
+      w: art.w,
+      h: art.h,
+      palette: art.palette,
+      difficulty: art.difficulty,
+      stats: art.stats,
+      ms: art.ms,
+      title: suggestTitle(art.generator, art.seed),
+      preview: `data:image/png;base64,${preview.toString('base64')}`,
+      /** One pixel per cell, for the zoomable preview. */
+      pixels: `data:image/png;base64,${renderPreview(art, 1).toString('base64')}`,
+    };
+  }
+
+  api.get('/generators', requireAuth, (c) => c.json({ generators: describeGenerators(), sources: remixSources(), maxCount: genLimits.maxCount }));
+
+  /** Proposals only: nothing is stored. Seeds are returned so a proposal can be saved later. */
+  api.post('/generate', requireAuth, genJsonLimit, async (c) => {
+    const body = await readJson(c);
+    if (!isRecord(body)) return fieldErrors(c, [{ field: 'body', message: 'JSON attendu.' }], 400);
+    const count = body.count === undefined ? 1 : body.count;
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > genLimits.maxCount) {
+      return fieldErrors(c, [{ field: 'count', message: `Entier attendu entre 1 et ${genLimits.maxCount}.` }]);
+    }
+    if (generating) return c.json({ error: 'busy', retryAfter: 1 }, 429, { 'Retry-After': '1' });
+    const wait = genBudget.take(count, now().getTime());
+    if (wait > 0) return c.json({ error: 'rate_limited', retryAfter: wait }, 429, { 'Retry-After': String(wait) });
+    generating = true;
+    try {
+      const start = performance.now();
+      const proposals = [];
+      let truncated = false;
+      for (let i = 0; i < count; i++) {
+        const left = genLimits.requestBudgetMs - (performance.now() - start);
+        if (left <= 0) {
+          truncated = true;
+          break;
+        }
+        // The given seed is used for the first proposal; the others get fresh random seeds.
+        const seed = i === 0 && body.seed !== undefined && body.seed !== null && body.seed !== '' ? body.seed : randomInt(1, 1_000_000);
+        let art: GeneratedArtwork | Response;
+        try {
+          art = runGenerator(c, body.generator, body.params, seed, Math.min(genLimits.artworkBudgetMs, left));
+        } catch (e) {
+          if (!(e instanceof GenerateTimeoutError)) throw e;
+          truncated = true;
+          break;
+        }
+        if (art instanceof Response) return art;
+        proposals.push(proposalJson(art));
+      }
+      if (proposals.length === 0) {
+        return c.json({ error: 'timeout', message: 'La génération a pris trop de temps : réduis la taille ou le nombre de propositions.' }, 503);
+      }
+      return c.json({ proposals, truncated });
+    } finally {
+      generating = false;
+    }
+  });
+
+  /**
+   * Saves a generated artwork. The grid is ALWAYS regenerated here from (generator, params,
+   * seed): a grid sent by the client is ignored. Then the regular create path (ids, album,
+   * validation, storage, publication) runs, exactly like an upload.
+   */
+  api.post('/generate/save', requireAuth, genJsonLimit, async (c) => {
+    const nowIso = now().toISOString();
+    const body = await readJson(c);
+    if (!isRecord(body)) return fieldErrors(c, [{ field: 'body', message: 'JSON attendu.' }], 400);
+    if (body.seed === undefined || body.seed === null || body.seed === '') return fieldErrors(c, [{ field: 'seed', message: 'Graine requise.' }]);
+    if (generating) return c.json({ error: 'busy', retryAfter: 1 }, 429, { 'Retry-After': '1' });
+    const wait = genBudget.take(1, now().getTime());
+    if (wait > 0) return c.json({ error: 'rate_limited', retryAfter: wait }, 429, { 'Retry-After': String(wait) });
+    generating = true;
+    let art: GeneratedArtwork | Response;
+    try {
+      art = runGenerator(c, body.generator, body.params, body.seed, genLimits.artworkBudgetMs);
+    } catch (e) {
+      if (e instanceof GenerateTimeoutError) return c.json({ error: 'timeout', message: 'La génération a pris trop de temps.' }, 503);
+      throw e;
+    } finally {
+      generating = false;
+    }
+    if (art instanceof Response) return art;
+    const difficulty = body.difficulty === undefined || body.difficulty === null ? art.difficulty : body.difficulty;
+    let input: ArtworkCreateInput;
+    try {
+      // Grid fields come from the server-side generation only.
+      input = parseArtworkCreate({ ...body, difficulty, w: art.w, h: art.h, palette: art.palette, rows: art.rows }, nowIso);
+    } catch (e) {
+      if (e instanceof InputError) return fieldErrors(c, e.errors);
+      throw e;
+    }
+    return createArtwork(c, input, nowIso);
   });
 
   api.patch('/artworks/:id', requireAuth, jsonLimit, async (c) => {

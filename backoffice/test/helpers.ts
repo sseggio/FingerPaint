@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { PNG } from 'pngjs';
 
+import type { GenerateLimits } from '../src/app';
 import { createApp } from '../src/app';
+import type { ArtworkSource } from '../src/artwork-lib';
 import { CatalogDb } from '../src/db';
 import type { EmbeddedContent } from '../src/embedded';
 import { hashPassword } from '../src/password';
@@ -57,7 +59,11 @@ export interface SetupOptions {
   publicUrl?: string;
   /** TRUSTED_PROXIES (default: the Nginx bridge gateway and the shared Traefik of the tests). */
   trustedProxies?: string;
+  generateLimits?: Partial<GenerateLimits>;
 }
+
+/** The app's fox (embedded remix source in the tests). */
+export const FOX = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'src', 'content', 'artworks', 'animals', 'fox.json'), 'utf8')) as ArtworkSource;
 
 export async function setup(opts: SetupOptions = {}) {
   cachedHash ??= await hashPassword(PASSWORD, 1 << 14);
@@ -70,6 +76,8 @@ export async function setup(opts: SetupOptions = {}) {
     db,
     dataDir,
     embedded: EMBEDDED,
+    embeddedSources: new Map([[FOX.id, FOX]]),
+    generateLimits: opts.generateLimits,
     passwordHash: cachedHash,
     sessionSecret: 'x'.repeat(48),
     publicUrl: opts.publicUrl ?? ORIGIN,

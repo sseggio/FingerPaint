@@ -281,6 +281,7 @@ export const en = {
   'settings.data.importLabel': 'Import a backup file',
   'settings.data.exportDialog': 'Save your PixelJoy backup',
   'settings.data.exportUnavailable': 'Sharing is not available on this device.',
+  'settings.data.exportLarge': 'Backup saved ({size} MB). It is larger than 5 MB: only recent PixelJoy versions can import it.',
   'settings.data.exportFailed': 'The backup could not be created. Please try again.',
   'settings.data.error.too-large': 'This file is too big to be a PixelJoy backup (5 MB max).',
   'settings.data.error.not-json': 'This file is not a PixelJoy backup.',
