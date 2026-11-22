@@ -49,7 +49,7 @@ services:
   # /opt/affiny/deploy/preprod/backoffice: they are served at once (bind mount), no restart.
   backoffice:
     # Pinned by digest (stable branch; to update: docker buildx imagetools inspect nginx:<version>-alpine).
-    image: nginx:1.30.7-alpine@sha256:bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598
+    image: nginx:1.31.8-alpine@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084d30b8df19ae88d72
     restart: unless-stopped
     # Runs nginx directly (no /docker-entrypoint.sh scripts, which try to edit the read-only conf).
     entrypoint: ["nginx", "-g", "daemon off;"]
